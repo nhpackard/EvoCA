@@ -47,7 +47,7 @@ _WORKER          = os.path.join(os.path.dirname(__file__), "sdl_worker.py")
 _QUIT, _CMODE, _STEP, _FPS10, _PAUSED = 0, 1, 2, 3, 4
 
 
-def run_with_controls(sim, cell_px=None, colormode=0):
+def run_with_controls(sim, cell_px=None, colormode=0, paused=False):
     """
     Display ipywidgets controls and open an SDL2 simulation window.
 
@@ -59,6 +59,7 @@ def run_with_controls(sim, cell_px=None, colormode=0):
     sim       : initialised EvoCA instance
     cell_px   : screen pixels per cell (default: sim.cell_px from CELL_PX #define)
     colormode : initial colour mode (0=state, 1=env-food, 2=priv-food)
+    paused    : if True, start in paused state
 
     Returns
     -------
@@ -74,7 +75,7 @@ def run_with_controls(sim, cell_px=None, colormode=0):
     # numpy views into shared memory
     pixels = np.ndarray((N * N,), dtype=np.int32, buffer=pixel_shm.buf)
     ctrl   = np.ndarray((5,),     dtype=np.int32, buffer=ctrl_shm.buf)
-    ctrl[:] = [0, colormode, 0, 0, 0]
+    ctrl[:] = [0, colormode, 0, 0, int(paused)]
 
     # ── SDL2 subprocess ───────────────────────────────────────────
     sdl_proc = subprocess.Popen(
@@ -91,7 +92,7 @@ def run_with_controls(sim, cell_px=None, colormode=0):
     threading.Thread(target=_reader, name="evoca-sdl-reader", daemon=True).start()
 
     # ── Shared sim state ──────────────────────────────────────────
-    st    = dict(paused=False, running=True, colormode=colormode, step_cnt=0)
+    st    = dict(paused=bool(paused), running=True, colormode=colormode, step_cnt=0)
     # _alive guards widget callbacks against use-after-free:
     # set to False just before shared memory is released.
     _alive        = [True]
@@ -123,7 +124,7 @@ def run_with_controls(sim, cell_px=None, colormode=0):
 
     # ── ipywidgets ─────────────────────────────────────────────────
     btn_pause = widgets.ToggleButton(
-        value=False, description="Pause",
+        value=bool(paused), description="Run" if paused else "Pause",
         button_style="", layout=widgets.Layout(width="90px"))
     btn_step  = widgets.Button(
         description="Step",  layout=widgets.Layout(width="70px"))
@@ -143,6 +144,11 @@ def run_with_controls(sim, cell_px=None, colormode=0):
     sl_food_repro = widgets.FloatSlider(
         value=sim.food_repro, min=0.0, max=2.0,  step=0.05,
         description="food_repro:", readout_format=".2f", **sl_kw)
+    sl_gdiff = widgets.IntSlider(
+        value=sim.gdiff, min=0, max=10, step=1,
+        description="gdiff:",
+        style={"description_width": "90px"},
+        layout=widgets.Layout(width="440px"))
 
     color_dd   = widgets.Dropdown(
         options=COLOR_MODES, value=COLOR_MODES[colormode],
@@ -152,7 +158,7 @@ def run_with_controls(sim, cell_px=None, colormode=0):
 
     ipy_display(widgets.VBox([
         widgets.HBox([btn_pause, btn_step, btn_quit]),
-        sl_food_inc, sl_m_scale, sl_food_repro,
+        sl_food_inc, sl_m_scale, sl_food_repro, sl_gdiff,
         widgets.HBox([color_dd, status_lbl]),
     ]))
 
@@ -178,7 +184,9 @@ def run_with_controls(sim, cell_px=None, colormode=0):
         if st['paused']:
             sim.step()
             st['step_cnt'] += 1
+            ctrl[_STEP] = st['step_cnt']
             sim.colorize(pixels, st['colormode'])
+            status_lbl.value = f"t={st['step_cnt']}  (paused)"
 
     def on_quit(_):
         st['running'] = False
@@ -231,6 +239,7 @@ def run_with_controls(sim, cell_px=None, colormode=0):
     _make_slider_cb("food_inc",   sl_food_inc)
     _make_slider_cb("m_scale",    sl_m_scale)
     _make_slider_cb("food_repro", sl_food_repro)
+    _make_slider_cb("gdiff",      sl_gdiff)
 
     # ── Simulation thread ─────────────────────────────────────────
     def _sim_thread():

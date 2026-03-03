@@ -55,8 +55,9 @@ class EvoCA:
         self._lib        = ctypes.CDLL(lib_path or _find_lib())
         self._N          = 0
         self.food_inc    = 0.0
-        self.m_scale     = 1.0
+        self.m_scale     = 0.0
         self.food_repro  = 0.5
+        self.gdiff       = 0
         self._setup_signatures()
 
     def _setup_signatures(self):
@@ -72,6 +73,10 @@ class EvoCA:
         L.evoca_set_m_scale.restype     = None
         L.evoca_set_food_repro.argtypes = [ctypes.c_float]
         L.evoca_set_food_repro.restype  = None
+        L.evoca_set_gdiff.argtypes      = [ctypes.c_int]
+        L.evoca_set_gdiff.restype       = None
+        L.evoca_get_gdiff.argtypes      = []
+        L.evoca_get_gdiff.restype       = ctypes.c_int
         L.evoca_set_v_all.argtypes      = [ctypes.POINTER(ctypes.c_uint8),
                                             ctypes.c_int]
         L.evoca_set_v_all.restype       = None
@@ -104,12 +109,14 @@ class EvoCA:
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 
-    def init(self, N, food_inc=0.0, m_scale=1.0, food_repro=0.5):
+    def init(self, N, food_inc=0.0, m_scale=1.0, food_repro=0.5, gdiff=0):
         self._N         = N
         self.food_inc   = float(food_inc)
         self.m_scale    = float(m_scale)
         self.food_repro = float(food_repro)
+        self.gdiff      = int(gdiff)
         self._lib.evoca_init(N, self.food_inc, self.m_scale, self.food_repro)
+        self._lib.evoca_set_gdiff(self.gdiff)
 
     def free(self):
         self._lib.evoca_free()
@@ -135,6 +142,10 @@ class EvoCA:
     def update_food_repro(self, r):
         self.food_repro = float(r)
         self._lib.evoca_set_food_repro(self.food_repro)
+
+    def update_gdiff(self, d):
+        self.gdiff = int(d)
+        self._lib.evoca_set_gdiff(self.gdiff)
 
     # ── Grid setters ──────────────────────────────────────────────────
 
@@ -163,6 +174,12 @@ class EvoCA:
 
     def set_F_all(self, F):
         self._lib.evoca_set_F_all(float(F))
+
+    def set_F_random(self, lo=0.0, hi=1.0):
+        """Set env food F(x) to uniform random values in [lo, hi]."""
+        ptr = self._lib.evoca_get_F()
+        arr = np.ctypeslib.as_array(ptr, shape=(self._N * self._N,))
+        arr[:] = np.random.uniform(lo, hi, self._N * self._N).astype(np.float32)
 
     # ── Step and colorize ─────────────────────────────────────────────
 

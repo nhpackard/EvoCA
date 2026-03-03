@@ -68,6 +68,7 @@ static int    gN          = 0;
 static float  gfood_inc   = 0.0f;
 static float  gm_scale    = 1.0f;
 static float  gfood_repro = 0.5f;
+static int    ggdiff      = 0;    /* diffusion passes per step */
 
 static uint8_t *v_curr = NULL;   /* [N*N]            */
 static uint8_t *v_next = NULL;   /* [N*N]            */
@@ -75,6 +76,7 @@ static uint8_t *lut    = NULL;   /* [N*N * LUT_BYTES] */
 static uint8_t *cgenom = NULL;   /* [N*N]            */
 static float   *f_priv = NULL;   /* [N*N]            */
 static float   *F_food = NULL;   /* [N*N]            */
+static float   *F_temp = NULL;   /* [N*N] scratch for diffusion */
 
 /* ── Lifecycle ──────────────────────────────────────────────────── */
 
@@ -93,6 +95,7 @@ void evoca_init(int N, float food_inc, float m_scale, float food_repro)
     cgenom = calloc(cells,               sizeof(uint8_t));
     f_priv = calloc(cells,               sizeof(float));
     F_food = calloc(cells,               sizeof(float));
+    F_temp = calloc(cells,               sizeof(float));
 }
 
 void evoca_free(void)
@@ -103,6 +106,7 @@ void evoca_free(void)
     free(cgenom); cgenom = NULL;
     free(f_priv); f_priv = NULL;
     free(F_food); F_food = NULL;
+    free(F_temp); F_temp = NULL;
     gN = 0;
 }
 
@@ -111,6 +115,8 @@ void evoca_free(void)
 void evoca_set_food_inc(float f)   { gfood_inc   = f; }
 void evoca_set_m_scale(float m)    { gm_scale    = m; }
 void evoca_set_food_repro(float r) { gfood_repro = r; }
+void evoca_set_gdiff(int d)        { ggdiff      = d; }
+int  evoca_get_gdiff(void)         { return ggdiff;   }
 
 /* ── Bulk setters ───────────────────────────────────────────────── */
 
@@ -184,6 +190,28 @@ static int fiducial_matches(int row, int col, uint8_t cg)
     return matches;
 }
 
+/* ── Food diffusion (3×3 box blur, periodic) ───────────────────── */
+
+static void diffuse_food_once(void)
+{
+    int N = gN;
+    for (int row = 0; row < N; row++) {
+        for (int col = 0; col < N; col++) {
+            float sum = 0.0f;
+            for (int di = -1; di <= 1; di++) {
+                int r = ((row + di) % N + N) % N;
+                for (int dj = -1; dj <= 1; dj++) {
+                    int c = ((col + dj) % N + N) % N;
+                    sum += F_food[r * N + c];
+                }
+            }
+            F_temp[row * N + col] = sum * (1.0f / 9.0f);
+        }
+    }
+    /* swap buffers */
+    float *tmp = F_food; F_food = F_temp; F_temp = tmp;
+}
+
 /* ── Time step ──────────────────────────────────────────────────── */
 
 void evoca_step(void)
@@ -207,6 +235,10 @@ void evoca_step(void)
         if (F_food[i] > 1.0f) F_food[i] = 1.0f;
     }
 
+    /* Phase 2b: Food diffusion (gdiff passes of 3×3 box blur) */
+    for (int d = 0; d < ggdiff; d++)
+        diffuse_food_once();
+
     /* Phase 3: Eating */
     for (int row = 0; row < N; row++) {
         for (int col = 0; col < N; col++) {
@@ -214,6 +246,8 @@ void evoca_step(void)
             int   matches  = fiducial_matches(row, col, cgenom[idx]);
             float mouthful = (gm_scale / 25.0f) * matches;
             if (mouthful > F_food[idx]) mouthful = F_food[idx];
+            float headroom = 1.0f - f_priv[idx];
+            if (mouthful > headroom) mouthful = headroom;
             F_food[idx] -= mouthful;
             f_priv[idx] += mouthful;
         }
@@ -270,7 +304,8 @@ void evoca_colorize(int32_t *pixels, int colormode)
             break;
         case 1:
             for (size_t i = 0; i < cells; i++) {
-                uint8_t g = (uint8_t)(F_food[i] * 255.0f);
+                float fv = F_food[i]; if (fv > 1.0f) fv = 1.0f;
+                uint8_t g = (uint8_t)(fv * 255.0f);
                 uint8_t r = v_curr[i] ? 180 : 0;
                 pixels[i] = (int32_t)(0xFF000000u
                              | ((uint32_t)r << 16) | ((uint32_t)g << 8));
@@ -278,7 +313,8 @@ void evoca_colorize(int32_t *pixels, int colormode)
             break;
         case 2:
             for (size_t i = 0; i < cells; i++) {
-                uint8_t b = (uint8_t)(f_priv[i] * 255.0f);
+                float fv = f_priv[i]; if (fv > 1.0f) fv = 1.0f;
+                uint8_t b = (uint8_t)(fv * 255.0f);
                 uint8_t r = v_curr[i] ? 180 : 0;
                 pixels[i] = (int32_t)(0xFF000000u
                              | ((uint32_t)r << 16) | (uint32_t)b);

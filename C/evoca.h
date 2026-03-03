@@ -48,6 +48,7 @@ void evoca_free(void);
 void evoca_set_food_inc(float f);
 void evoca_set_m_scale(float m);
 void evoca_set_food_repro(float r);
+void evoca_set_gdiff(int d);
 
 /* ── Bulk setters ───────────────────────────────────────────────────── */
 
@@ -82,5 +83,6 @@ float   *evoca_get_F(void);
 float   *evoca_get_f(void);
 int      evoca_get_N(void);
 int      evoca_get_cell_px(void);
+int      evoca_get_gdiff(void);
 
 #endif /* EVOCA_H */
