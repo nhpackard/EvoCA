@@ -74,6 +74,8 @@ class EvoCA:
         self.m_scale     = 0.0
         self.food_repro  = 0.5
         self.gdiff       = 0
+        self.mu_lut      = 0.0
+        self.mu_cgenom   = 0.0
         self.cgenom      = 0
         self._setup_signatures()
 
@@ -94,6 +96,14 @@ class EvoCA:
         L.evoca_set_gdiff.restype       = None
         L.evoca_get_gdiff.argtypes      = []
         L.evoca_get_gdiff.restype       = ctypes.c_int
+        L.evoca_set_mu_lut.argtypes     = [ctypes.c_float]
+        L.evoca_set_mu_lut.restype      = None
+        L.evoca_set_mu_cgenom.argtypes  = [ctypes.c_float]
+        L.evoca_set_mu_cgenom.restype   = None
+        L.evoca_get_mu_lut.argtypes     = []
+        L.evoca_get_mu_lut.restype      = ctypes.c_float
+        L.evoca_get_mu_cgenom.argtypes  = []
+        L.evoca_get_mu_cgenom.restype   = ctypes.c_float
         L.evoca_set_v_all.argtypes      = [ctypes.POINTER(ctypes.c_uint8),
                                             ctypes.c_int]
         L.evoca_set_v_all.restype       = None
@@ -132,7 +142,8 @@ class EvoCA:
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 
-    def init(self, N, food_inc=0.0, m_scale=1.0, food_repro=0.5, gdiff=0):
+    def init(self, N, food_inc=0.0, m_scale=1.0, food_repro=0.5, gdiff=0,
+             mu_lut=0.0, mu_cgenom=0.0):
         stop = getattr(self, '_stop_display', None)
         if stop is not None:
             stop()
@@ -142,8 +153,12 @@ class EvoCA:
         self.m_scale    = float(m_scale)
         self.food_repro = float(food_repro)
         self.gdiff      = int(gdiff)
+        self.mu_lut     = float(mu_lut)
+        self.mu_cgenom  = float(mu_cgenom)
         self._lib.evoca_init(N, self.food_inc, self.m_scale, self.food_repro)
         self._lib.evoca_set_gdiff(self.gdiff)
+        self._lib.evoca_set_mu_lut(self.mu_lut)
+        self._lib.evoca_set_mu_cgenom(self.mu_cgenom)
 
     def free(self):
         stop = getattr(self, '_stop_display', None)
@@ -177,6 +192,14 @@ class EvoCA:
     def update_gdiff(self, d):
         self.gdiff = int(d)
         self._lib.evoca_set_gdiff(self.gdiff)
+
+    def update_mu_lut(self, m):
+        self.mu_lut = float(m)
+        self._lib.evoca_set_mu_lut(self.mu_lut)
+
+    def update_mu_cgenom(self, m):
+        self.mu_cgenom = float(m)
+        self._lib.evoca_set_mu_cgenom(self.mu_cgenom)
 
     # ── Grid setters ──────────────────────────────────────────────────
 

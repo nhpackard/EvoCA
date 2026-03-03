@@ -1,6 +1,7 @@
 #include "evoca.h"
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 /* xorshift32 PRNG — stochastic tie-breaking in reproduction */
 static uint32_t g_rng = 0x12345678u;
@@ -54,12 +55,41 @@ static inline uint8_t lut_get(const uint8_t *b, int bit)
     return (b[bit >> 3] >> (bit & 7)) & 1;
 }
 
-/* lut_set reserved for future mutation support */
-__attribute__((unused))
-static inline void lut_set(uint8_t *b, int bit, uint8_t val)
+static inline void lut_flip(uint8_t *b, int bit)
 {
-    if (val) b[bit >> 3] |=  (uint8_t)(1u << (bit & 7));
-    else     b[bit >> 3] &= ~(uint8_t)(1u << (bit & 7));
+    b[bit >> 3] ^= (uint8_t)(1u << (bit & 7));
+}
+
+/* FNV-1a hash of a LUT → 32-bit value for genome coloring */
+static uint32_t lut_hash_fn(const uint8_t *b)
+{
+    uint32_t h = 0x811c9dc5u;
+    for (int i = 0; i < LUT_BYTES; i++) {
+        h ^= b[i];
+        h *= 0x01000193u;
+    }
+    return h;
+}
+
+/* Map LUT hash → ARGB color.  Wild-type hash maps to white. */
+static int32_t hash_to_color(uint32_t h, uint32_t wt)
+{
+    if (h == wt) return (int32_t)0xFFFFFFFFu;
+    return (int32_t)(0xFF000000u | (h & 0x00FFFFFFu));
+}
+
+/* Poisson sample using Knuth's algorithm with the existing PRNG. */
+static int poisson_sample(float lambda)
+{
+    if (lambda < 1e-6f) return 0;
+    float L = expf(-lambda);
+    float p = 1.0f;
+    int k = 0;
+    do {
+        k++;
+        p *= (float)(rng_next() & 0xFFFFFF) / 16777216.0f;
+    } while (p > L);
+    return k - 1;
 }
 
 /* ── Grid state ─────────────────────────────────────────────────── */
@@ -69,6 +99,8 @@ static float  gfood_inc   = 0.0f;
 static float  gm_scale    = 1.0f;
 static float  gfood_repro = 0.5f;
 static int    ggdiff      = 0;    /* diffusion passes per step */
+static float  gmu_lut     = 0.0f; /* per-bit LUT mutation rate */
+static float  gmu_cgenom  = 0.0f; /* per-bit cgenom mutation rate */
 
 static uint8_t *v_curr = NULL;   /* [N*N]            */
 static uint8_t *v_next = NULL;   /* [N*N]            */
@@ -77,7 +109,9 @@ static uint8_t *cgenom = NULL;   /* [N*N]            */
 static float   *f_priv = NULL;   /* [N*N]            */
 static float   *F_food = NULL;   /* [N*N]            */
 static float   *F_temp = NULL;   /* [N*N] scratch for diffusion */
-static uint8_t *births = NULL;   /* [N*N] birth events this step */
+static uint8_t  *births    = NULL;   /* [N*N] birth events this step */
+static uint32_t *lut_color = NULL;   /* [N*N] cached ARGB per cell */
+static uint32_t  wt_hash   = 0;     /* hash of wild-type LUT */
 
 /* ── Lifecycle ──────────────────────────────────────────────────── */
 
@@ -97,7 +131,8 @@ void evoca_init(int N, float food_inc, float m_scale, float food_repro)
     f_priv = calloc(cells,               sizeof(float));
     F_food = calloc(cells,               sizeof(float));
     F_temp = calloc(cells,               sizeof(float));
-    births = calloc(cells,               sizeof(uint8_t));
+    births    = calloc(cells,               sizeof(uint8_t));
+    lut_color = calloc(cells,               sizeof(uint32_t));
 }
 
 void evoca_free(void)
@@ -109,7 +144,8 @@ void evoca_free(void)
     free(f_priv); f_priv = NULL;
     free(F_food); F_food = NULL;
     free(F_temp); F_temp = NULL;
-    free(births); births = NULL;
+    free(births);    births    = NULL;
+    free(lut_color); lut_color = NULL;
     gN = 0;
 }
 
@@ -120,6 +156,10 @@ void evoca_set_m_scale(float m)    { gm_scale    = m; }
 void evoca_set_food_repro(float r) { gfood_repro = r; }
 void evoca_set_gdiff(int d)        { ggdiff      = d; }
 int  evoca_get_gdiff(void)         { return ggdiff;   }
+void  evoca_set_mu_lut(float m)    { gmu_lut     = m; }
+void  evoca_set_mu_cgenom(float m) { gmu_cgenom  = m; }
+float evoca_get_mu_lut(void)       { return gmu_lut;    }
+float evoca_get_mu_cgenom(void)    { return gmu_cgenom;  }
 
 /* ── Bulk setters ───────────────────────────────────────────────── */
 
@@ -133,11 +173,16 @@ void evoca_set_lut_all(const uint8_t *lb)
     size_t cells = (size_t)gN * gN;
     for (size_t i = 0; i < cells; i++)
         memcpy(lut + i * LUT_BYTES, lb, LUT_BYTES);
+    wt_hash = lut_hash_fn(lb);
+    int32_t wt_color = hash_to_color(wt_hash, wt_hash);  /* white */
+    for (size_t i = 0; i < cells; i++)
+        lut_color[i] = (uint32_t)wt_color;
 }
 
 void evoca_set_lut(int idx, const uint8_t *lb)
 {
     memcpy(lut + (size_t)idx * LUT_BYTES, lb, LUT_BYTES);
+    lut_color[idx] = (uint32_t)hash_to_color(lut_hash_fn(lb), wt_hash);
 }
 
 void evoca_set_cgenom_all(uint8_t cg) { memset(cgenom, cg, (size_t)gN * gN); }
@@ -288,6 +333,22 @@ void evoca_step(void)
                    lut + (size_t)idx   * LUT_BYTES, LUT_BYTES);
             cgenom[child] = cgenom[idx];
             births[child] = 1;
+
+            /* Mutate child's LUT */
+            uint8_t *child_lut = lut + (size_t)child * LUT_BYTES;
+            int nf = poisson_sample(gmu_lut * LUT_BITS);
+            for (int f = 0; f < nf; f++)
+                lut_flip(child_lut, rng_next() % LUT_BITS);
+
+            /* Mutate child's cgenom */
+            int nc = poisson_sample(gmu_cgenom * 6);
+            for (int f = 0; f < nc; f++)
+                cgenom[child] ^= (uint8_t)(1u << (rng_next() % 6));
+
+            /* Update cached genome color */
+            lut_color[child] = (uint32_t)hash_to_color(
+                lut_hash_fn(child_lut), wt_hash);
+
             /* v_curr is dynamical state, not genome — do not copy */
             float half    = f_priv[idx] * 0.5f;
             f_priv[idx]   = half;
@@ -304,7 +365,7 @@ void evoca_colorize(int32_t *pixels, int colormode)
     switch (colormode) {
         case 0:
             for (size_t i = 0; i < cells; i++)
-                pixels[i] = v_curr[i] ? (int32_t)0xFFFFFFFF
+                pixels[i] = v_curr[i] ? (int32_t)lut_color[i]
                                       : (int32_t)0xFF000000;
             break;
         case 1:

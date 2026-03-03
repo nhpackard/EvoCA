@@ -45,6 +45,8 @@ All metaparameters can be set at init or adjusted at runtime via sliders.
 | `m_scale`    | float | 1.0     | [0, 10]        | Mouthful scale factor for eating                   |
 | `food_repro` | float | 0.5     | [0, 2]         | Private food threshold triggering reproduction     |
 | `gdiff`      | int   | 0       | [0, 10]        | Food diffusion passes (3x3 box blur) per step      |
+| `mu_lut`     | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction    |
+| `mu_cgenom`  | float | 0.0     | [0, 0.05]      | Per-bit cgenom mutation probability on reproduction |
 
 ---
 
@@ -184,27 +186,43 @@ For each cell:
 
 Private food f(x) is hard-capped at 1.0.
 
-### Phase 4: Reproduction
+### Phase 4: Reproduction and Mutation
 
 For each cell where `f(x) >= food_repro`:
 1. Find the Moore neighbor (8 cells) with the lowest f(x').
    Ties broken by uniform random (xorshift32 PRNG).
-2. Copy parent genome to child: LUT, cgenom, v_curr.
-3. Split food: `f(parent) = f(child) = f(parent) / 2`
+2. Copy parent genome to child: LUT, cgenom.
+   (v_curr is dynamical state, NOT copied.)
+3. **Mutate child's LUT**: draw n_flips ~ Poisson(mu_lut * 11250),
+   flip that many random bits in the child's LUT.
+4. **Mutate child's cgenom**: draw n_flips ~ Poisson(mu_cgenom * 6),
+   flip that many random bits in the child's cgenom.
+5. Update child's cached genome color (FNV-1a hash of LUT).
+6. Split food: `f(parent) = f(child) = f(parent) / 2`
+
+The `births` array is set for each child cell (used by colormode 3).
 
 ---
 
 ## Visualization (Color Modes)
 
-Three modes, selectable via dropdown or the `colormode` parameter:
+Five modes, selectable via dropdown or the `colormode` parameter:
 
-| Mode | Name       | Channel mapping (ARGB)                          |
-|------|------------|-------------------------------------------------|
-| 0    | `state`    | alive = white (0xFFFFFFFF), dead = black         |
-| 1    | `env-food` | Green = F(x)*255, Red = 180 if alive else 0      |
-| 2    | `priv-food`| Blue = f(x)*255, Red = 180 if alive else 0       |
+| Mode | Name       | Channel mapping (ARGB)                                        |
+|------|------------|---------------------------------------------------------------|
+| 0    | `state`    | alive = LUT-hashed genome color (wild-type = white), dead = black |
+| 1    | `env-food` | Green = F(x)*255, Red = 180 if alive else 0                   |
+| 2    | `priv-food`| Blue = f(x)*255, Red = 180 if alive else 0                    |
+| 3    | `births`   | birth+alive = bright yellow, birth+dead = dim yellow, alive = dim grey, dead = black |
 
 All food values are clamped to [0, 1] before the float-to-uint8 cast.
+
+### Genome coloring (mode 0)
+
+Each cell caches an ARGB color derived from an FNV-1a hash of its 1407-byte
+LUT.  The hash computed by `set_lut_all()` is stored as the **wild-type hash**;
+any cell whose LUT hashes to this value displays as white.  Mutant genomes
+get pseudo-random colors from the lower 24 bits of their hash.
 
 ---
 
@@ -218,7 +236,8 @@ All food values are clamped to [0, 1] before the float-to-uint8 cast.
 sim = EvoCA(lib_path=None)
     # Load the shared library (auto-finds C/libevoca.dylib or .so)
 
-sim.init(N, food_inc=0.0, m_scale=1.0, food_repro=0.5, gdiff=0)
+sim.init(N, food_inc=0.0, m_scale=1.0, food_repro=0.5, gdiff=0,
+         mu_lut=0.0, mu_cgenom=0.0)
     # Allocate N x N lattice, set metaparameters.
     # All grids initialized to zero.
 
@@ -233,6 +252,8 @@ sim.update_food_inc(f)       # float
 sim.update_m_scale(m)        # float
 sim.update_food_repro(r)     # float
 sim.update_gdiff(d)          # int
+sim.update_mu_lut(m)         # float, per-bit LUT mutation rate
+sim.update_mu_cgenom(m)      # float, per-bit cgenom mutation rate
 ```
 
 Each setter updates both the Python attribute (`sim.food_inc`, etc.)
@@ -271,17 +292,20 @@ sim.step()
 
 sim.colorize(pixels, colormode=0)
     # Fill a (N*N,) int32 numpy array with ARGB pixel values.
-    # colormode: 0=state, 1=env-food, 2=priv-food
+    # colormode: 0=state, 1=env-food, 2=priv-food, 3=births
 ```
 
 #### Getters
 
 ```python
-sim.get_v()   -> np.ndarray   # (N, N) uint8, cell states (copy)
-sim.get_F()   -> np.ndarray   # (N, N) float32, env food (copy)
-sim.get_f()   -> np.ndarray   # (N, N) float32, private food (copy)
-sim.N         -> int           # lattice size
-sim.cell_px   -> int           # CELL_PX compile-time constant
+sim.get_v()       -> np.ndarray   # (N, N) uint8, cell states (copy)
+sim.get_F()       -> np.ndarray   # (N, N) float32, env food (copy)
+sim.get_f()       -> np.ndarray   # (N, N) float32, private food (copy)
+sim.get_cgenom()  -> np.ndarray   # (N, N) uint8, fiducial genomes (copy)
+sim.get_births()  -> np.ndarray   # (N, N) uint8, birth events last step (copy)
+sim.get_lut(idx)  -> np.ndarray   # (LUT_BYTES,) uint8, one cell's LUT (copy)
+sim.N             -> int           # lattice size
+sim.cell_px       -> int           # CELL_PX compile-time constant
 ```
 
 #### Stored Attributes
@@ -289,7 +313,8 @@ sim.cell_px   -> int           # CELL_PX compile-time constant
 After `init()` or the corresponding setter, these Python attributes
 reflect current values:
 
-    sim.food_inc, sim.m_scale, sim.food_repro, sim.gdiff, sim.cgenom
+    sim.food_inc, sim.m_scale, sim.food_repro, sim.gdiff,
+    sim.mu_lut, sim.mu_cgenom, sim.cgenom
 
 ---
 
@@ -298,7 +323,7 @@ reflect current values:
 ### run_with_controls  (`python/controls.py`)
 
 ```python
-run_with_controls(sim, cell_px=None, colormode=0, paused=False)
+run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
     -> threading.Thread
 ```
 
@@ -311,8 +336,9 @@ notebook cell.  Returns immediately (non-blocking).
 |-------------|-------|----------------|--------------------------------------|
 | `sim`       | EvoCA | (required)     | Initialized EvoCA instance           |
 | `cell_px`   | int   | `sim.cell_px`  | Screen pixels per simulation cell    |
-| `colormode` | int   | 0              | Initial color mode (0/1/2)           |
+| `colormode` | int   | 0              | Initial color mode (0/1/2/3)         |
 | `paused`    | bool  | False          | Start in paused state                |
+| `probes`    | dict  | None           | Probe names to enable, e.g. `{'env_food': True}` |
 
 **Widgets**:
 - **Pause/Run** toggle button
@@ -322,7 +348,10 @@ notebook cell.  Returns immediately (non-blocking).
 - **m_scale** slider: [0, 10], step 0.1
 - **food_repro** slider: [0, 2], step 0.05
 - **gdiff** slider: [0, 10], step 1
-- **Color** dropdown: state / env-food / priv-food
+- **mu_lut** slider: [0, 0.001], step 0.00001
+- **mu_cgenom** slider: [0, 0.05], step 0.001
+- **Color** dropdown: state / env-food / priv-food / births
+- **Save Plots** button: saves probe strip charts to PNG (when paused)
 - **Fiducial pattern**: 5x5 matplotlib grid displayed above widgets
 
 **SDL2 window title** shows: time step, FPS (when running), color mode,
@@ -438,10 +467,10 @@ display scaling.  Change it and recompile.
 ### Memory
 
 Per cell: 1407 (LUT) + 1 (cgenom) + 1 (v_curr) + 1 (v_next) + 4 (f_priv)
-+ 4 (F_food) + 4 (F_temp) = **1422 bytes**.
++ 4 (F_food) + 4 (F_temp) + 1 (births) + 4 (lut_color) = **1427 bytes**.
 
 - N=256: ~93 MB
-- N=512: ~373 MB
+- N=512: ~374 MB
 
 ### SDL2 on macOS
 

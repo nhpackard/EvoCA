@@ -227,6 +227,12 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
         description="gdiff:",
         style={"description_width": "90px"},
         layout=widgets.Layout(width="440px"))
+    sl_mu_lut = widgets.FloatSlider(
+        value=sim.mu_lut, min=0.0, max=0.001, step=0.00001,
+        description="mu_lut:",    readout_format=".5f", **sl_kw)
+    sl_mu_cgenom = widgets.FloatSlider(
+        value=sim.mu_cgenom, min=0.0, max=0.05, step=0.001,
+        description="mu_cgenom:", readout_format=".3f", **sl_kw)
 
     color_dd   = widgets.Dropdown(
         options=COLOR_MODES, value=COLOR_MODES[colormode],
@@ -250,6 +256,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
     ipy_display(widgets.VBox([
         widgets.HBox([btn_pause, btn_step, btn_quit, btn_save]),
         sl_food_inc, sl_m_scale, sl_food_repro, sl_gdiff,
+        sl_mu_lut, sl_mu_cgenom,
         widgets.HBox([color_dd, status_lbl]),
     ]))
 
@@ -361,6 +368,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
     _make_slider_cb("m_scale",    sl_m_scale)
     _make_slider_cb("food_repro", sl_food_repro)
     _make_slider_cb("gdiff",      sl_gdiff)
+    _make_slider_cb("mu_lut",     sl_mu_lut)
+    _make_slider_cb("mu_cgenom",  sl_mu_cgenom)
 
     # ── Simulation thread ─────────────────────────────────────────
     def _sim_thread():

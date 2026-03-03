@@ -60,7 +60,11 @@ Total: 2×5×5×5×9×5 = **11 250 bits = 1 407 bytes** (bit-packed) per cell.
 2. Each cell eats: mouthful `M(x) = (m/25) · matches(C(x), c(x))` transferred from `F(x)` to `f(x)`
 3. Reproduction: when `f(x) >= food_repro`, copy genome to the Moore-neighbor with lowest `f(x')`; split food 50/50
 
-**Global metaparameters**: `food_inc`, `m_scale`, `food_repro`
+**Mutation** (applied to child's genome during reproduction):
+- `mu_lut`: per-bit flip probability for the 11250-bit LUT. n_flips drawn from Poisson(mu_lut * 11250).
+- `mu_cgenom`: per-bit flip probability for the 6-bit cgenom. n_flips drawn from Poisson(mu_cgenom * 6).
+
+**Global metaparameters**: `food_inc`, `m_scale`, `food_repro`, `gdiff`, `mu_lut`, `mu_cgenom`
 
 **Fiducial pattern `c(x)`**: D4-symmetric 5×5 binary pattern. The 25 cells form 6 orbits under D4 (reflections about horizontal/vertical midlines and diagonals), requiring 6 independent bits. The orbit map:
 
