@@ -2,6 +2,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* xorshift32 PRNG — stochastic tie-breaking in reproduction */
+static uint32_t g_rng = 0x12345678u;
+static inline uint32_t rng_next(void)
+{
+    g_rng ^= g_rng << 13;
+    g_rng ^= g_rng >> 17;
+    g_rng ^= g_rng << 5;
+    return g_rng;
+}
+
 /*
  * Distance-ring classification for each (di,dj) offset, indexed [di+2][dj+2].
  *
@@ -215,16 +225,23 @@ void evoca_step(void)
             int idx = row * N + col;
             if (f_priv[idx] < gfood_repro) continue;
 
+            /* Reservoir-sample the neighbour with minimum f_priv.
+             * Tie-breaking is uniformly random to avoid directional drift. */
             int   best_r = -1, best_c = -1;
             float best_f = 1e30f;
+            int   n_best = 0;
             for (int di = -1; di <= 1; di++) {
                 int r = ((row + di) % N + N) % N;
                 for (int dj = -1; dj <= 1; dj++) {
                     if (di == 0 && dj == 0) continue;
                     int c = ((col + dj) % N + N) % N;
-                    if (f_priv[r * N + c] < best_f) {
-                        best_f = f_priv[r * N + c];
-                        best_r = r; best_c = c;
+                    float f = f_priv[r * N + c];
+                    if (f < best_f - 1e-7f) {
+                        best_f = f; best_r = r; best_c = c; n_best = 1;
+                    } else if (f < best_f + 1e-7f) {
+                        if ((rng_next() % (uint32_t)++n_best) == 0) {
+                            best_r = r; best_c = c;
+                        }
                     }
                 }
             }
@@ -275,7 +292,8 @@ void evoca_colorize(int32_t *pixels, int colormode)
 
 /* ── Accessors ──────────────────────────────────────────────────── */
 
-uint8_t *evoca_get_v(void) { return v_curr; }
-float   *evoca_get_F(void) { return F_food; }
-float   *evoca_get_f(void) { return f_priv; }
-int      evoca_get_N(void) { return gN;     }
+uint8_t *evoca_get_v(void)    { return v_curr; }
+float   *evoca_get_F(void)    { return F_food; }
+float   *evoca_get_f(void)    { return f_priv; }
+int      evoca_get_N(void)    { return gN;     }
+int      evoca_get_cell_px(void) { return CELL_PX; }

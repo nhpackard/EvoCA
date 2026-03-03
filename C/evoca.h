@@ -31,6 +31,9 @@
 #define LUT_BITS  11250   /* 2*5*5*5*9*5 */
 #define LUT_BYTES  1407   /* ceil(11250/8) */
 
+/* Display scale: screen pixels per simulation cell.  Change and recompile. */
+#define CELL_PX  2
+
 /* Flat bit index from per-ring counts. */
 #define LUT_IDX(vx,n1,n2,n3,n4,n5) \
     ((vx)*5625 + (n1)*1125 + (n2)*225 + (n3)*45 + (n4)*5 + (n5))
@@ -78,5 +81,6 @@ uint8_t *evoca_get_v(void);
 float   *evoca_get_F(void);
 float   *evoca_get_f(void);
 int      evoca_get_N(void);
+int      evoca_get_cell_px(void);
 
 #endif /* EVOCA_H */

@@ -99,6 +99,8 @@ class EvoCA:
         L.evoca_get_f.restype           = ctypes.POINTER(ctypes.c_float)
         L.evoca_get_N.argtypes          = []
         L.evoca_get_N.restype           = ctypes.c_int
+        L.evoca_get_cell_px.argtypes    = []
+        L.evoca_get_cell_px.restype     = ctypes.c_int
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 
@@ -195,6 +197,10 @@ class EvoCA:
     @property
     def N(self):
         return self._N
+
+    @property
+    def cell_px(self):
+        return self._lib.evoca_get_cell_px()
 
 
 # ── LUT construction helpers ───────────────────────────────────────────
