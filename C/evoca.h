@@ -81,6 +81,8 @@ void evoca_colorize(int32_t *pixels, int colormode);
 uint8_t *evoca_get_v(void);
 float   *evoca_get_F(void);
 float   *evoca_get_f(void);
+uint8_t *evoca_get_cgenom(void);
+uint8_t *evoca_get_lut(void);    /* [N*N * LUT_BYTES] */
 int      evoca_get_N(void);
 int      evoca_get_cell_px(void);
 int      evoca_get_gdiff(void);

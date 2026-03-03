@@ -328,8 +328,10 @@ void evoca_colorize(int32_t *pixels, int colormode)
 
 /* ── Accessors ──────────────────────────────────────────────────── */
 
-uint8_t *evoca_get_v(void)    { return v_curr; }
-float   *evoca_get_F(void)    { return F_food; }
-float   *evoca_get_f(void)    { return f_priv; }
-int      evoca_get_N(void)    { return gN;     }
+uint8_t *evoca_get_v(void)      { return v_curr; }
+float   *evoca_get_F(void)      { return F_food; }
+float   *evoca_get_f(void)      { return f_priv; }
+uint8_t *evoca_get_cgenom(void) { return cgenom; }
+uint8_t *evoca_get_lut(void)    { return lut;    }
+int      evoca_get_N(void)      { return gN;     }
 int      evoca_get_cell_px(void) { return CELL_PX; }

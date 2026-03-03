@@ -119,6 +119,10 @@ class EvoCA:
         L.evoca_get_F.restype           = ctypes.POINTER(ctypes.c_float)
         L.evoca_get_f.argtypes          = []
         L.evoca_get_f.restype           = ctypes.POINTER(ctypes.c_float)
+        L.evoca_get_cgenom.argtypes     = []
+        L.evoca_get_cgenom.restype      = ctypes.POINTER(ctypes.c_uint8)
+        L.evoca_get_lut.argtypes        = []
+        L.evoca_get_lut.restype         = ctypes.POINTER(ctypes.c_uint8)
         L.evoca_get_N.argtypes          = []
         L.evoca_get_N.restype           = ctypes.c_int
         L.evoca_get_cell_px.argtypes    = []
@@ -236,6 +240,19 @@ class EvoCA:
         ptr = self._lib.evoca_get_f()
         return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)) \
                  .copy().reshape(self._N, self._N)
+
+    def get_cgenom(self):
+        """Return (N, N) uint8 array of fiducial genomes (6-bit values)."""
+        ptr = self._lib.evoca_get_cgenom()
+        return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)) \
+                 .copy().reshape(self._N, self._N)
+
+    def get_lut(self, idx):
+        """Return LUT_BYTES-length uint8 array for cell at flat index idx."""
+        ptr = self._lib.evoca_get_lut()
+        arr = np.ctypeslib.as_array(ptr, shape=(self._N * self._N * LUT_BYTES,))
+        off = int(idx) * LUT_BYTES
+        return arr[off:off + LUT_BYTES].copy()
 
     @property
     def N(self):
