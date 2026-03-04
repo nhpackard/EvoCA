@@ -292,8 +292,7 @@ void evoca_step(void)
         for (int col = 0; col < N; col++) {
             int   idx      = row * N + col;
             int   matches  = fiducial_matches(row, col, cgenom[idx]);
-            float mouthful = (gm_scale / 25.0f) * matches;
-            if (mouthful > F_food[idx]) mouthful = F_food[idx];
+            float mouthful = (gm_scale / 25.0f) * matches * F_food[idx];
             float headroom = 1.0f - f_priv[idx];
             if (mouthful > headroom) mouthful = headroom;
             F_food[idx] -= mouthful;
@@ -332,8 +331,6 @@ void evoca_step(void)
             memcpy(lut + (size_t)child * LUT_BYTES,
                    lut + (size_t)idx   * LUT_BYTES, LUT_BYTES);
             cgenom[child] = cgenom[idx];
-            births[child] = 1;
-
             /* Mutate child's LUT */
             uint8_t *child_lut = lut + (size_t)child * LUT_BYTES;
             int nf = poisson_sample(gmu_lut * LUT_BITS);
@@ -344,6 +341,9 @@ void evoca_step(void)
             int nc = poisson_sample(gmu_cgenom * 6);
             for (int f = 0; f < nc; f++)
                 cgenom[child] ^= (uint8_t)(1u << (rng_next() % 6));
+
+            /* births: 1 = normal, 2 = mutant */
+            births[child] = (nf > 0 || nc > 0) ? 2 : 1;
 
             /* Update cached genome color (skip expensive hash if unchanged) */
             if (nf > 0)
@@ -391,7 +391,10 @@ void evoca_colorize(int32_t *pixels, int colormode)
             break;
         case 3:
             for (size_t i = 0; i < cells; i++) {
-                if (births[i])
+                if (births[i] == 2)       /* mutant birth: bright magenta */
+                    pixels[i] = v_curr[i] ? (int32_t)0xFFFF00FFu
+                                          : (int32_t)0xFF800080u;
+                else if (births[i] == 1)  /* normal birth: yellow */
                     pixels[i] = v_curr[i] ? (int32_t)0xFFFFFF00u
                                           : (int32_t)0xFF808000u;
                 else
