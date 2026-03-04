@@ -196,6 +196,30 @@ class EvoCA:
         self.mu_cgenom = float(m)
         self._lib.evoca_set_mu_cgenom(self.mu_cgenom)
 
+    # ── Params export ─────────────────────────────────────────────────
+
+    _DEFAULTS = dict(food_inc=0.0, m_scale=1.0, food_repro=0.5,
+                      gdiff=0, mu_lut=0.0, mu_cgenom=0.0)
+
+    def params(self):
+        """Return current metaparameters as a dict suitable for init(**d)."""
+        return dict(N=self._N, food_inc=self.food_inc, m_scale=self.m_scale,
+                    food_repro=self.food_repro, gdiff=self.gdiff,
+                    mu_lut=self.mu_lut, mu_cgenom=self.mu_cgenom)
+
+    def params_str(self):
+        """Return a copy-pasteable sim.init(...) call with defaults annotated."""
+        p = self.params()
+        lines = ["sim.init("]
+        for k, v in p.items():
+            val = repr(v)
+            if k in self._DEFAULTS and v != self._DEFAULTS[k]:
+                lines.append(f"    {k}={val},   # default: {self._DEFAULTS[k]!r}")
+            else:
+                lines.append(f"    {k}={val},")
+        lines.append(")")
+        return "\n".join(lines)
+
     # ── Grid setters ──────────────────────────────────────────────────
 
     def set_v(self, v_array):

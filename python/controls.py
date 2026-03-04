@@ -209,6 +209,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
         layout=widgets.Layout(width="70px"))
     btn_save  = widgets.Button(
         description="Save Plots", layout=widgets.Layout(width="100px"))
+    btn_export = widgets.Button(
+        description="Export Params", layout=widgets.Layout(width="110px"))
 
     sl_kw = dict(continuous_update=True,
                  style={"description_width": "90px"},
@@ -254,7 +256,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
     plt.show()
 
     ipy_display(widgets.VBox([
-        widgets.HBox([btn_pause, btn_step, btn_quit, btn_save]),
+        widgets.HBox([btn_pause, btn_step, btn_quit, btn_save, btn_export]),
         sl_food_inc, sl_m_scale, sl_food_repro, sl_gdiff,
         sl_mu_lut, sl_mu_cgenom,
         widgets.HBox([color_dd, status_lbl]),
@@ -328,10 +330,14 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
             plt.close(fig_s)
         status_lbl.value = f"Saved {n_probes} probe plot(s)"
 
+    def on_export(_):
+        print(sim.params_str())
+
     btn_pause.observe(on_pause_toggle, names='value')
     btn_step.on_click(on_step)
     btn_quit.on_click(on_quit)
     btn_save.on_click(on_save)
+    btn_export.on_click(on_export)
     color_dd.observe(on_color, names='value')
 
     # Slider drag: pause on first touch, auto-resume after 200 ms idle
