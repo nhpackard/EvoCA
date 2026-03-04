@@ -18,8 +18,9 @@
  *
  * This separately-counted approach is required for exact GoL:
  *   Moore count = n1+n2; GoL ignores n3,n4,n5 and conditions on v_x.
- *   The previously considered weighted-sum (A=n1+2n3, B=n2+2n5, C=n4)
- *   conflates inner/outer ring counts and cannot represent GoL exactly.
+ *   A Euclidean-norm weighted sum S = Σ v·‖δ‖ conflates n1/n3 and
+ *   n2/n5 (dist 2 = 2×dist 1, dist 2√2 = 2×dist √2) and cannot
+ *   represent rules that depend on n1 alone.
  *
  * LUT size: 2 × 5 × 5 × 5 × 9 × 5 = 11250 bits  → 1407 bytes (bit-packed)
  * Flat bit index:  v_x*5625 + n1*1125 + n2*225 + n3*45 + n4*5 + n5

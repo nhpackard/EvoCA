@@ -78,12 +78,16 @@ count of active (v=1) cells in distance-ring k:
  4   3   2   3   4
 ```
 
-**Design rationale**: The original spec proposed a weighted sum
-S = A + B*sqrt(2) + C*sqrt(5) with A = n1 + 2*n3.  This conflates n1
-and n3: the same A can arise from different Moore counts, making GoL
-unrepresentable.  Separate per-ring counts remove this ambiguity.
-GoL (B3/S23) is exactly encodable: it conditions on n1+n2 and ignores
-n3, n4, n5.
+**Design rationale**: An earlier design considered a Euclidean-norm
+weighted sum S_x = Σ v_{x+δ} · ‖δ‖, which weights each active
+neighbor by its distance.  Because the distance weights for n3 and n5
+are exact multiples of those for n1 and n2 (dist 2 = 2 × dist 1,
+dist 2√2 = 2 × dist √2), their contributions are conflated:
+different (n1, n3) combinations yield the same sum, so a rule that
+depends on n1 alone (e.g. GoL, which uses n1+n2) cannot be
+distinguished from one that trades n1 for n3.  Separate per-ring
+counts remove this ambiguity.  GoL (B3/S23) is exactly encodable:
+it conditions on n1+n2 and ignores n3, n4, n5.
 
 ---
 

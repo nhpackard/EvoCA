@@ -345,9 +345,12 @@ void evoca_step(void)
             for (int f = 0; f < nc; f++)
                 cgenom[child] ^= (uint8_t)(1u << (rng_next() % 6));
 
-            /* Update cached genome color */
-            lut_color[child] = (uint32_t)hash_to_color(
-                lut_hash_fn(child_lut), wt_hash);
+            /* Update cached genome color (skip expensive hash if unchanged) */
+            if (nf > 0)
+                lut_color[child] = (uint32_t)hash_to_color(
+                    lut_hash_fn(child_lut), wt_hash);
+            else
+                lut_color[child] = lut_color[idx];
 
             /* v_curr is dynamical state, not genome — do not copy */
             float half    = f_priv[idx] * 0.5f;

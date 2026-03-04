@@ -51,7 +51,7 @@ The LUT is indexed by `(v_x, n1, n2, n3, n4, n5)` where `nk` = count of active c
 Flat bit index: `v_x*5625 + n1*1125 + n2*225 + n3*45 + n4*5 + n5`
 Total: 2×5×5×5×9×5 = **11 250 bits = 1 407 bytes** (bit-packed) per cell.
 
-**Why per-ring, not weighted sum**: The spec's original `S_x = A+B√2+C√5` with `A=n1+2n3` conflates n1 (Moore ring) and n3 (outer ring). The same A can arise from different Moore counts — GoL and other Moore-neighbourhood rules cannot be exactly represented. Separate per-ring counts remove this ambiguity and make GoL exactly encodable.
+**Why per-ring, not weighted sum**: An earlier design considered a Euclidean-norm weighted sum S = Σ v·‖δ‖ over the 5×5 neighbourhood. Because dist(n3) = 2 × dist(n1) and dist(n5) = 2 × dist(n2), these rings' contributions are conflated — a rule that depends on n1 alone (e.g. GoL, which uses n1+n2) cannot be distinguished from one that trades n1 for n3. Separate per-ring counts remove this ambiguity and make GoL exactly encodable.
 
 **GoL initialization** (`make_gol_lut()`): sets new_state = 1 iff Moore count `n1+n2` == 3 (dead cell) or ∈ {2,3} (alive cell), regardless of n3/n4/n5. With mutation=0 (all cells keep the same LUT), the simulation runs exact Conway's Game of Life.
 

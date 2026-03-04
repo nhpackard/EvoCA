@@ -16,8 +16,8 @@ Total bits:  2*5*5*5*9*5 = 11250  →  1407 bytes bit-packed per cell.
 
 This per-ring count approach makes GoL exactly representable:
   GoL only cares about (v_x, n1+n2); n3,n4,n5 are ignored.
-  The former weighted-sum approach (A=n1+2n3, B=n2+2n5) could not
-  do this because the same A can arise from different (n1,n3) pairs.
+  A Euclidean-norm weighted sum S = Σ v·‖δ‖ conflates n1/n3 and
+  n2/n5 (dist 2 = 2×1, dist 2√2 = 2×√2), so GoL is not encodable.
 """
 
 import ctypes
