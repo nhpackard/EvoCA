@@ -102,6 +102,12 @@ static int    ggdiff      = 0;    /* diffusion passes per step */
 static float  gmu_lut     = 0.0f; /* per-bit LUT mutation rate */
 static float  gmu_cgenom  = 0.0f; /* per-bit cgenom mutation rate */
 static float  gtax        = 0.0f; /* priv food decrement per step */
+static int    grestricted_mu = 0; /* 0=random mutation, 1=restricted to active bits */
+
+/* Restricted mutation: tracks which LUT bit indices are queried each step */
+static uint8_t lut_active[LUT_BYTES];   /* 250-bit mask */
+static int     active_bits[LUT_BITS];   /* indices of set bits */
+static int     n_active = 0;
 
 static uint8_t *v_curr = NULL;   /* [N*N]            */
 static uint8_t *v_next = NULL;   /* [N*N]            */
@@ -123,6 +129,37 @@ static uint32_t  g_step    = 0;     /* global step counter */
 static uint32_t *last_event_step = NULL;  /* [N*N] step of birth or repro */
 static uint32_t  repro_age_hist[REPRO_AGE_MAX]; /* cumulative histogram */
 static uint32_t  repro_age_t0 = 0;        /* start accumulating after this step */
+
+/* ── Cgenom activity (fixed-size, 64 entries) ──────────────────── */
+
+#define CGENOM_COUNT 64
+
+static uint64_t cg_act[CGENOM_COUNT];        /* cumulative activity */
+static uint32_t cg_pop[CGENOM_COUNT];        /* current population */
+static int32_t  cg_color[CGENOM_COUNT];      /* ARGB color per cgenom */
+static uint8_t  wt_cgenom_val = 0;           /* wild-type cgenom */
+static int      cg_act_ymax = 2000;          /* Y-scale for cgenom activity */
+
+/* Precompute colors for all 64 cgenoms.  Wild-type = white;
+ * others = FNV-1a hash of the byte value → ARGB. */
+static void cg_init_colors(uint8_t wt)
+{
+    wt_cgenom_val = wt;
+    for (int i = 0; i < CGENOM_COUNT; i++) {
+        if ((uint8_t)i == wt) {
+            cg_color[i] = (int32_t)0xFFFFFFFFu;
+        } else {
+            uint32_t h = 0x811c9dc5u ^ (uint32_t)i;
+            h *= 0x01000193u;
+            /* Ensure minimum brightness: set each channel to at least 0x40 */
+            uint8_t r = (uint8_t)((h >> 16) & 0xFF); if (r < 0x40) r |= 0x80;
+            uint8_t g = (uint8_t)((h >>  8) & 0xFF); if (g < 0x40) g |= 0x80;
+            uint8_t b = (uint8_t)( h        & 0xFF); if (b < 0x40) b |= 0x80;
+            cg_color[i] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                                    | ((uint32_t)g << 8) | b);
+        }
+    }
+}
 
 /* ── Activity hash table ───────────────────────────────────────── */
 
@@ -216,6 +253,8 @@ void evoca_init(int N, float food_inc, float m_scale, float food_repro)
     memset(repro_age_hist, 0, sizeof(repro_age_hist));
     g_step = 0;
     evoca_activity_init();
+    memset(cg_act, 0, sizeof(cg_act));
+    memset(cg_pop, 0, sizeof(cg_pop));
 }
 
 void evoca_free(void)
@@ -232,6 +271,8 @@ void evoca_free(void)
     free(lut_hash_cache); lut_hash_cache = NULL;
     free(last_event_step); last_event_step = NULL;
     evoca_activity_free();
+    memset(cg_act, 0, sizeof(cg_act));
+    memset(cg_pop, 0, sizeof(cg_pop));
     gN = 0;
 }
 
@@ -246,6 +287,8 @@ void  evoca_set_mu_lut(float m)    { gmu_lut     = m; }
 void  evoca_set_mu_cgenom(float m) { gmu_cgenom  = m; }
 float evoca_get_mu_lut(void)       { return gmu_lut;    }
 float evoca_get_mu_cgenom(void)    { return gmu_cgenom;  }
+void  evoca_set_restricted_mu(int r) { grestricted_mu = r; }
+int   evoca_get_restricted_mu(void)  { return grestricted_mu; }
 void  evoca_set_tax(float t)      { gtax       = t; }
 float evoca_get_tax(void)         { return gtax;      }
 
@@ -277,7 +320,10 @@ void evoca_set_lut(int idx, const uint8_t *lb)
     lut_hash_cache[idx] = h;
 }
 
-void evoca_set_cgenom_all(uint8_t cg) { memset(cgenom, cg, (size_t)gN * gN); }
+void evoca_set_cgenom_all(uint8_t cg) {
+    memset(cgenom, cg, (size_t)gN * gN);
+    cg_init_colors(cg);
+}
 
 void evoca_set_f_all(float f)
 {
@@ -361,14 +407,24 @@ void evoca_step(void)
     g_step++;
 
     /* Phase 1: CA state update (double-buffered) */
+    memset(lut_active, 0, LUT_BYTES);
     for (int row = 0; row < N; row++) {
         for (int col = 0; col < N; col++) {
             int idx = row * N + col;
             int bit = compute_lut_bit(row, col);
+            lut_active[bit >> 3] |= (uint8_t)(1u << (bit & 7));
             v_next[idx] = lut_get(lut + (size_t)idx * LUT_BYTES, bit);
         }
     }
     uint8_t *tmp = v_curr; v_curr = v_next; v_next = tmp;
+
+    /* Build active-bit index array for restricted mutation */
+    if (grestricted_mu) {
+        n_active = 0;
+        for (int i = 0; i < LUT_BITS; i++)
+            if ((lut_active[i >> 3] >> (i & 7)) & 1)
+                active_bits[n_active++] = i;
+    }
 
     /* Phase 2: Environmental food regeneration */
     for (size_t i = 0; i < cells; i++) {
@@ -451,9 +507,16 @@ void evoca_step(void)
             cgenom[child] = cgenom[idx];
             /* Mutate child's LUT */
             uint8_t *child_lut = lut + (size_t)child * LUT_BYTES;
-            int nf = poisson_sample(gmu_lut * LUT_BITS);
-            for (int f = 0; f < nf; f++)
-                lut_flip(child_lut, rng_next() % LUT_BITS);
+            int nf;
+            if (grestricted_mu && n_active > 0) {
+                nf = poisson_sample(gmu_lut * n_active);
+                for (int f = 0; f < nf; f++)
+                    lut_flip(child_lut, active_bits[rng_next() % n_active]);
+            } else {
+                nf = poisson_sample(gmu_lut * LUT_BITS);
+                for (int f = 0; f < nf; f++)
+                    lut_flip(child_lut, rng_next() % LUT_BITS);
+            }
 
             /* Mutate child's cgenom */
             int nc = poisson_sample(gmu_cgenom * 6);
@@ -567,6 +630,73 @@ int evoca_activity_get(uint32_t *keys, uint64_t *activities,
     }
     return n;
 }
+
+/* ── Cgenom activity tracking ──────────────────────────────────── */
+
+void evoca_cg_activity_update(void)
+{
+    size_t cells = (size_t)gN * gN;
+    memset(cg_pop, 0, sizeof(cg_pop));
+    for (size_t i = 0; i < cells; i++) {
+        if (!v_curr[i]) continue;
+        uint8_t cg = cgenom[i] & 0x3F;
+        cg_pop[cg]++;
+        cg_act[cg]++;
+    }
+}
+
+void evoca_cg_activity_render_col(int32_t *col, int height)
+{
+    for (int y = 0; y < height; y++)
+        col[y] = (int32_t)0xFF111111u;
+
+    uint64_t ymax = (uint64_t)cg_act_ymax;
+
+    uint32_t ypop[height];
+    memset(ypop, 0, (size_t)height * sizeof(uint32_t));
+
+    /* Pass 1: extinct cgenoms — dimmed */
+    for (int i = 0; i < CGENOM_COUNT; i++) {
+        if (cg_act[i] == 0 || cg_pop[i] > 0) continue;
+        uint64_t act = cg_act[i];
+        int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
+        if (y < 0) y = 0;
+        if (y >= height) y = height - 1;
+        uint32_t c = (uint32_t)cg_color[i];
+        uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
+        uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
+        uint8_t b = (uint8_t)(( c        & 0xFF) * 15 / 100);
+        col[y] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                           | ((uint32_t)g << 8) | b);
+    }
+
+    /* Pass 2: alive cgenoms — full color, higher pop wins */
+    for (int i = 0; i < CGENOM_COUNT; i++) {
+        if (cg_pop[i] == 0) continue;
+        uint64_t act = cg_act[i];
+        int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
+        if (y < 0) y = 0;
+        if (y >= height) y = height - 1;
+        if (cg_pop[i] >= ypop[y]) {
+            col[y] = cg_color[i];
+            ypop[y] = cg_pop[i];
+        }
+    }
+}
+
+int evoca_cg_activity_get(uint64_t *activities, uint32_t *pop_counts,
+                          int32_t *colors)
+{
+    for (int i = 0; i < CGENOM_COUNT; i++) {
+        activities[i] = cg_act[i];
+        pop_counts[i] = cg_pop[i];
+        colors[i]     = cg_color[i];
+    }
+    return CGENOM_COUNT;
+}
+
+void evoca_set_cg_act_ymax(int y) { cg_act_ymax = y > 1 ? y : 1; }
+int  evoca_get_cg_act_ymax(void)  { return cg_act_ymax; }
 
 /* ── Visualisation ──────────────────────────────────────────────── */
 

@@ -120,9 +120,12 @@ def main():
 
     # Optional activity probe (--activity=<shm_name>)
     activity_shm_name = None
+    cg_activity_shm_name = None
     for arg in sys.argv:
         if arg.startswith("--activity="):
             activity_shm_name = arg[len("--activity="):]
+        elif arg.startswith("--cg-activity="):
+            cg_activity_shm_name = arg[len("--cg-activity="):]
 
     ACT_H = 2 * PROBE_H  # 256
 
@@ -183,6 +186,24 @@ def main():
             print(f"EvoCA SDL: activity SharedMemory open failed: {e}",
                   flush=True)
             activity_shm_name = None
+
+    # Open cgenom activity shared memory
+    cg_activity_shm     = None
+    cg_activity_cursor  = None
+    cg_activity_pixels  = None
+    if cg_activity_shm_name:
+        try:
+            cg_activity_shm = SharedMemory(name=cg_activity_shm_name)
+            cg_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                            buffer=cg_activity_shm.buf)
+            cg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                            buffer=cg_activity_shm.buf, offset=4)
+            print(f"EvoCA SDL: cg_activity shm opened ({ACT_H}x{PROBE_W})",
+                  flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: cg_activity SharedMemory open failed: {e}",
+                  flush=True)
+            cg_activity_shm_name = None
 
     COLOR_MODES = ["state", "env-food", "priv-food", "births"]
 
@@ -334,6 +355,40 @@ def main():
         else:
             print("EvoCA SDL: activity window creation failed", flush=True)
 
+    # ── Cgenom activity window ──────────────────────────────────
+    cg_act_window_p  = None
+    cg_act_surface_p = None
+    cg_act_dst       = None
+    if cg_activity_shm is not None:
+        caw_x = main_x - PROBE_W
+        caw = sdl2.SDL_CreateWindow(
+            b"cg_activity",
+            caw_x, next_probe_y,
+            PROBE_W, ACT_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if caw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(caw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + ACT_H + real_title_h
+            caps = sdl2.SDL_GetWindowSurface(caw)
+            if caps:
+                sdl2.SDL_SetSurfaceBlendMode(caps, sdl2.SDL_BLENDMODE_NONE)
+                casurf   = caps.contents
+                cap_i32  = casurf.pitch // 4
+                cap_ptr  = ctypes.cast(casurf.pixels,
+                                       ctypes.POINTER(ctypes.c_int32))
+                cad_flat = np.ctypeslib.as_array(cap_ptr,
+                                                 shape=(ACT_H * cap_i32,))
+                cg_act_dst       = cad_flat.reshape(ACT_H, cap_i32)
+                cg_act_window_p  = caw
+                cg_act_surface_p = caps
+                print("EvoCA SDL: cg_activity window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(caw)
+        else:
+            print("EvoCA SDL: cg_activity window creation failed", flush=True)
+
     print("EvoCA SDL: entering main loop", flush=True)
 
     event = sdl2.SDL_Event()
@@ -383,6 +438,15 @@ def main():
             sdl2.SDL_UnlockSurface(act_surface_p)
             sdl2.SDL_UpdateWindowSurface(act_window_p)
 
+        # Render cgenom activity window
+        if cg_act_window_p is not None and cg_activity_pixels is not None:
+            sdl2.SDL_LockSurface(cg_act_surface_p)
+            cur_cga = int(cg_activity_cursor[0])
+            cg_act_dst[:ACT_H, :PROBE_W] = np.roll(cg_activity_pixels,
+                                                     -cur_cga, axis=1)
+            sdl2.SDL_UnlockSurface(cg_act_surface_p)
+            sdl2.SDL_UpdateWindowSurface(cg_act_window_p)
+
         # Window title
         step   = int(ctrl[2])
         mode   = COLOR_MODES[min(int(ctrl[1]), 3)]
@@ -396,6 +460,8 @@ def main():
         sdl2.SDL_SetWindowTitle(window_p, title.encode())
 
     print("EvoCA SDL: exiting cleanly", flush=True)
+    if cg_act_window_p is not None:
+        sdl2.SDL_DestroyWindow(cg_act_window_p)
     if act_window_p is not None:
         sdl2.SDL_DestroyWindow(act_window_p)
     for pw in probe_windows:
@@ -408,6 +474,8 @@ def main():
         probe_shm.close()
     if activity_shm is not None:
         activity_shm.close()
+    if cg_activity_shm is not None:
+        cg_activity_shm.close()
 
 
 if __name__ == "__main__":

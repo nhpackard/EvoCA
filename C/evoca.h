@@ -48,6 +48,8 @@ void evoca_set_gdiff(int d);
 void evoca_set_mu_lut(float m);
 void evoca_set_mu_cgenom(float m);
 void evoca_set_tax(float t);
+void evoca_set_restricted_mu(int r);
+int  evoca_get_restricted_mu(void);
 
 /* ── Bulk setters ───────────────────────────────────────────────────── */
 
@@ -73,6 +75,15 @@ void evoca_activity_update(void);
 void evoca_activity_render_col(int32_t *col, int height);
 int  evoca_activity_get(uint32_t *keys, uint64_t *activities,
                         uint32_t *pop_counts, int32_t *colors, int max_n);
+
+/* ── Cgenom activity tracking ─────────────────────────────────────── */
+
+void evoca_cg_activity_update(void);
+void evoca_cg_activity_render_col(int32_t *col, int height);
+int  evoca_cg_activity_get(uint64_t *activities, uint32_t *pop_counts,
+                           int32_t *colors);
+void evoca_set_cg_act_ymax(int y);
+int  evoca_get_cg_act_ymax(void);
 
 /* ── Visualisation ──────────────────────────────────────────────────── */
 

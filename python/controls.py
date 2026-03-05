@@ -122,6 +122,25 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
                                      buffer=activity_shm.buf, offset=4)
         activity_col = np.zeros(ACT_H, dtype=np.int32)
 
+    # ── Cgenom activity probe setup ──────────────────────────────────
+    cg_activity_enabled = bool((probes or {}).get('cg_activity'))
+    cg_activity_shm     = None
+    cg_activity_cursor  = None
+    cg_activity_pixels  = None
+    cg_activity_col     = None
+
+    if cg_activity_enabled:
+        cga_shm_size = 4 + PROBE_W * ACT_H * 4
+        cg_activity_shm = SharedMemory(create=True, size=cga_shm_size)
+        _cgabuf = np.ndarray((cga_shm_size,), dtype=np.uint8,
+                             buffer=cg_activity_shm.buf)
+        _cgabuf[:] = 0
+        cg_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                        buffer=cg_activity_shm.buf)
+        cg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                        buffer=cg_activity_shm.buf, offset=4)
+        cg_activity_col = np.zeros(ACT_H, dtype=np.int32)
+
     # ── Probe setup ─────────────────────────────────────────────────
     probe_names = [k for k, v in (probes or {}).items() if v and k in _PROBE_GETTER]
     n_probes    = len(probe_names)
@@ -161,6 +180,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
         cmd += [probe_shm.name, ",".join(probe_names)]
     if activity_enabled:
         cmd += ["--activity=" + activity_shm.name]
+    if cg_activity_enabled:
+        cmd += ["--cg-activity=" + cg_activity_shm.name]
     sdl_proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
@@ -196,6 +217,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
             all_shm.append(probe_shm)
         if activity_shm is not None:
             all_shm.append(activity_shm)
+        if cg_activity_shm is not None:
+            all_shm.append(cg_activity_shm)
         for shm in all_shm:
             try:
                 shm.unlink()
@@ -271,6 +294,18 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
             style={"description_width": "90px"},
             layout=widgets.Layout(width="440px"))
 
+    sl_cg_act_ymax = None
+    if cg_activity_enabled:
+        sl_cg_act_ymax = widgets.IntSlider(
+            value=2000, min=100, max=100000, step=100,
+            description="cg_act_ymax:",
+            style={"description_width": "90px"},
+            layout=widgets.Layout(width="440px"))
+
+    cb_restricted_mu = widgets.Checkbox(
+        value=bool(sim.restricted_mu),
+        description="restricted_mu",
+        layout=widgets.Layout(width="200px"))
     color_dd   = widgets.Dropdown(
         options=COLOR_MODES, value=COLOR_MODES[colormode],
         description="Color:",
@@ -294,10 +329,12 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
                     sl_mu_lut, sl_mu_cgenom, sl_tax]
     if sl_act_ymax is not None:
         _slider_list.append(sl_act_ymax)
+    if sl_cg_act_ymax is not None:
+        _slider_list.append(sl_cg_act_ymax)
     ipy_display(widgets.VBox([
         widgets.HBox([btn_pause, btn_step, btn_quit, btn_save, btn_export]),
         *_slider_list,
-        widgets.HBox([color_dd, status_lbl]),
+        widgets.HBox([color_dd, cb_restricted_mu, status_lbl]),
     ]))
 
     # ── Widget callbacks ──────────────────────────────────────────
@@ -341,6 +378,14 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
                 sim._lib.evoca_activity_render_col(act_col_ptr, ACT_H)
                 activity_pixels[:, act_cur] = activity_col
                 activity_cursor[0] = (act_cur + 1) % PROBE_W
+            if cg_activity_enabled:
+                sim._lib.evoca_cg_activity_update()
+                cga_cur = int(cg_activity_cursor[0])
+                cga_col_ptr = cg_activity_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_int32))
+                sim._lib.evoca_cg_activity_render_col(cga_col_ptr, ACT_H)
+                cg_activity_pixels[:, cga_cur] = cg_activity_col
+                cg_activity_cursor[0] = (cga_cur + 1) % PROBE_W
             status_lbl.value = f"t={st['step_cnt']}  (paused)"
 
     def on_quit(_):
@@ -379,11 +424,17 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
     def on_export(_):
         print(sim.params_str())
 
+    def on_restricted_mu(change):
+        if not _alive[0]:
+            return
+        sim.update_restricted_mu(int(change['new']))
+
     btn_pause.observe(on_pause_toggle, names='value')
     btn_step.on_click(on_step)
     btn_quit.on_click(on_quit)
     btn_save.on_click(on_save)
     btn_export.on_click(on_export)
+    cb_restricted_mu.observe(on_restricted_mu, names='value')
     color_dd.observe(on_color, names='value')
 
     # Slider drag: pause on first touch, auto-resume after 200 ms idle
@@ -425,6 +476,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
     _make_slider_cb("tax",        sl_tax)
     if sl_act_ymax is not None:
         _make_slider_cb("act_ymax", sl_act_ymax)
+    if sl_cg_act_ymax is not None:
+        _make_slider_cb("cg_act_ymax", sl_cg_act_ymax)
 
     # ── Simulation thread ─────────────────────────────────────────
     def _sim_thread():
@@ -474,6 +527,16 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None)
                 sim._lib.evoca_activity_render_col(act_col_ptr, ACT_H)
                 activity_pixels[:, act_cur] = activity_col
                 activity_cursor[0] = (act_cur + 1) % PROBE_W
+
+            # Record cgenom activity data
+            if cg_activity_enabled:
+                sim._lib.evoca_cg_activity_update()
+                cga_cur = int(cg_activity_cursor[0])
+                cga_col_ptr = cg_activity_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_int32))
+                sim._lib.evoca_cg_activity_render_col(cga_col_ptr, ACT_H)
+                cg_activity_pixels[:, cga_cur] = cg_activity_col
+                cg_activity_cursor[0] = (cga_cur + 1) % PROBE_W
 
             # FPS (only meaningful when running)
             t_now = time.perf_counter()

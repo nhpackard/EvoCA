@@ -63,8 +63,20 @@ The fiducial pattern for eating still uses the full 5×5 neighbourhood.
 **Mutation** (applied to child's genome during reproduction):
 - `mu_lut`: per-bit flip probability for the 250-bit LUT. n_flips drawn from Poisson(mu_lut * 250).
 - `mu_cgenom`: per-bit flip probability for the 6-bit cgenom. n_flips drawn from Poisson(mu_cgenom * 6).
+- `restricted_mu` (toggle, default off): when enabled, LUT mutations are restricted
+  to bit positions that were actually queried during the current CA step. A 250-bit
+  mask `lut_active` is built during Phase 1; only the `n_active` set bits are
+  eligible for mutation (Poisson rate becomes `mu_lut * n_active`). This ensures
+  every LUT mutation is immediately phenotypic — no silent mutations that merely
+  change the hash without affecting dynamics.
 
-**Global metaparameters**: `food_inc`, `m_scale`, `food_repro`, `gdiff`, `mu_lut`, `mu_cgenom`, `tax`
+**Random initialization helpers**:
+- `set_lut_random(n_init)`: each cell gets an independent random LUT.
+  `n_init` controls ring conditioning: 1 = (v_x, n1) only (10 bits),
+  2 = (v_x, n1, n2) (50 bits, GoL-level), 3 = all 250 bits.
+- `set_cgenom_random()`: each cell gets a random cgenom in [0, 63].
+
+**Global metaparameters**: `food_inc`, `m_scale`, `food_repro`, `gdiff`, `mu_lut`, `mu_cgenom`, `tax`, `restricted_mu`
 
 **Fiducial pattern `c(x)`**: D4-symmetric 5×5 binary pattern. The 25 cells form 6 orbits under D4 (reflections about horizontal/vertical midlines and diagonals), requiring 6 independent bits. The orbit map:
 
@@ -96,6 +108,14 @@ New genomes start at the bottom and rise as they accumulate presence; the curve
 compresses high-activity genomes toward the top without clipping, giving a natural
 logarithmic-like spread.  Lowering `ymax` makes waves rise faster; raising it
 spreads out low-activity genomes.
+
+**Cgenom activity tracking**: Mirrors LUT activity for the 6-bit cgenom (fiducial
+eating pattern). Since there are only 2^6 = 64 possible cgenoms, uses fixed-size
+arrays (`cg_act[64]`, `cg_pop[64]`, `cg_color[64]`) instead of a hash table.
+Wild-type cgenom is colored white; mutants get FNV-1a hash colors.
+`evoca_cg_activity_update()` / `evoca_cg_activity_render_col()` parallel the LUT
+activity functions. Separate `cg_act_ymax` slider. Enable with
+`probes={'cg_activity': True}`.
 
 **Reproduction age histogram**: Tracks the distribution of time between successive
 reproduction events (or birth-to-first-reproduction). A per-cell timestamp

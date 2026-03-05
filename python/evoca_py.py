@@ -72,6 +72,7 @@ class EvoCA:
         self.mu_lut      = 0.0
         self.mu_cgenom   = 0.0
         self.tax         = 0.0
+        self.restricted_mu = 0
         self.cgenom      = 0
         self._setup_signatures()
 
@@ -104,6 +105,10 @@ class EvoCA:
         L.evoca_set_tax.restype         = None
         L.evoca_get_tax.argtypes        = []
         L.evoca_get_tax.restype         = ctypes.c_float
+        L.evoca_set_restricted_mu.argtypes = [ctypes.c_int]
+        L.evoca_set_restricted_mu.restype  = None
+        L.evoca_get_restricted_mu.argtypes = []
+        L.evoca_get_restricted_mu.restype  = ctypes.c_int
         L.evoca_set_v_all.argtypes      = [ctypes.POINTER(ctypes.c_uint8),
                                             ctypes.c_int]
         L.evoca_set_v_all.restype       = None
@@ -167,11 +172,26 @@ class EvoCA:
             ctypes.POINTER(ctypes.c_int32),
             ctypes.c_int]
         L.evoca_activity_get.restype    = ctypes.c_int
+        # Cgenom activity
+        L.evoca_cg_activity_update.argtypes  = []
+        L.evoca_cg_activity_update.restype   = None
+        L.evoca_cg_activity_render_col.argtypes = [
+            ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
+        L.evoca_cg_activity_render_col.restype  = None
+        L.evoca_cg_activity_get.argtypes = [
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_int32)]
+        L.evoca_cg_activity_get.restype  = ctypes.c_int
+        L.evoca_set_cg_act_ymax.argtypes = [ctypes.c_int]
+        L.evoca_set_cg_act_ymax.restype  = None
+        L.evoca_get_cg_act_ymax.argtypes = []
+        L.evoca_get_cg_act_ymax.restype  = ctypes.c_int
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 
     def init(self, N, food_inc=0.0, m_scale=1.0, food_repro=0.5, gdiff=0,
-             mu_lut=0.0, mu_cgenom=0.0, tax=0.0):
+             mu_lut=0.0, mu_cgenom=0.0, tax=0.0, restricted_mu=0):
         stop = getattr(self, '_stop_display', None)
         if stop is not None:
             stop()
@@ -184,11 +204,13 @@ class EvoCA:
         self.mu_lut     = float(mu_lut)
         self.mu_cgenom  = float(mu_cgenom)
         self.tax        = float(tax)
+        self.restricted_mu = int(restricted_mu)
         self._lib.evoca_init(N, self.food_inc, self.m_scale, self.food_repro)
         self._lib.evoca_set_gdiff(self.gdiff)
         self._lib.evoca_set_mu_lut(self.mu_lut)
         self._lib.evoca_set_mu_cgenom(self.mu_cgenom)
         self._lib.evoca_set_tax(self.tax)
+        self._lib.evoca_set_restricted_mu(self.restricted_mu)
 
     def free(self):
         stop = getattr(self, '_stop_display', None)
@@ -235,20 +257,28 @@ class EvoCA:
         self.tax = float(t)
         self._lib.evoca_set_tax(self.tax)
 
+    def update_restricted_mu(self, r):
+        self.restricted_mu = int(r)
+        self._lib.evoca_set_restricted_mu(self.restricted_mu)
+
     def update_act_ymax(self, y):
         self._lib.evoca_set_act_ymax(int(y))
+
+    def update_cg_act_ymax(self, y):
+        self._lib.evoca_set_cg_act_ymax(int(y))
 
     # ── Params export ─────────────────────────────────────────────────
 
     _DEFAULTS = dict(food_inc=0.0, m_scale=1.0, food_repro=0.5,
-                      gdiff=0, mu_lut=0.0, mu_cgenom=0.0, tax=0.0)
+                      gdiff=0, mu_lut=0.0, mu_cgenom=0.0, tax=0.0,
+                      restricted_mu=0)
 
     def params(self):
         """Return current metaparameters as a dict suitable for init(**d)."""
         return dict(N=self._N, food_inc=self.food_inc, m_scale=self.m_scale,
                     food_repro=self.food_repro, gdiff=self.gdiff,
                     mu_lut=self.mu_lut, mu_cgenom=self.mu_cgenom,
-                    tax=self.tax)
+                    tax=self.tax, restricted_mu=self.restricted_mu)
 
     def params_str(self):
         """Return a copy-pasteable sim.init(...) call with defaults annotated."""
@@ -285,6 +315,47 @@ class EvoCA:
     def set_cgenom_all(self, cg):
         self.cgenom = int(cg) & 0x3F
         self._lib.evoca_set_cgenom_all(self.cgenom)
+
+    def set_cgenom_random(self):
+        """Set each cell's cgenom to a random value in [0, 63].
+        No wild-type: all 64 cgenoms get distinct hash-based colors."""
+        self._lib.evoca_set_cgenom_all(0xFF)   # wt=0xFF → no match → all colored
+        ptr = self._lib.evoca_get_cgenom()
+        arr = np.ctypeslib.as_array(ptr, shape=(self._N * self._N,))
+        arr[:] = np.random.randint(0, 64, self._N * self._N, dtype=np.uint8)
+
+    def set_lut_random(self, n_init=3):
+        """Set each cell's LUT to an independent random rule.
+
+        n_init: number of rings the rule conditions on (1, 2, or 3).
+          1: depends on (v_x, n1) — 10 independent bits per LUT
+          2: depends on (v_x, n1, n2) — 50 independent bits
+          3: depends on (v_x, n1, n2, n3) — all 250 bits independent
+        """
+        N2 = self._N * self._N
+
+        if n_init >= 3:
+            bits = np.random.randint(0, 2, (N2, 2, 5, 5, 5), dtype=np.uint8)
+        elif n_init == 2:
+            core = np.random.randint(0, 2, (N2, 2, 5, 5, 1), dtype=np.uint8)
+            bits = np.tile(core, (1, 1, 1, 1, 5))
+        else:  # n_init == 1
+            core = np.random.randint(0, 2, (N2, 2, 5, 1, 1), dtype=np.uint8)
+            bits = np.tile(core, (1, 1, 1, 5, 5))
+
+        flat = bits.reshape(N2, LUT_BITS)
+
+        # Bit-pack to (N2, 32) bytes
+        padded = np.zeros((N2, 256), dtype=np.uint8)
+        padded[:, :LUT_BITS] = flat
+        grouped = padded.reshape(N2, 32, 8)
+        packed = np.zeros((N2, 32), dtype=np.uint8)
+        for b in range(8):
+            packed |= grouped[:, :, b] << b
+
+        packed = np.ascontiguousarray(packed)
+        for i in range(N2):
+            self.set_lut(i, packed[i])
 
     def set_f_all(self, f):
         self._lib.evoca_set_f_all(float(f))
@@ -364,6 +435,17 @@ class EvoCA:
     def get_step(self):
         """Return the current global step counter."""
         return int(self._lib.evoca_get_step())
+
+    def get_cg_activity(self):
+        """Return cgenom activity table as dict of arrays (64 entries)."""
+        acts = np.zeros(64, dtype=np.uint64)
+        pops = np.zeros(64, dtype=np.uint32)
+        cols = np.zeros(64, dtype=np.int32)
+        self._lib.evoca_cg_activity_get(
+            acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+            pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
+        return {'activity': acts, 'pop_count': pops, 'color': cols}
 
     def get_activity(self, max_n=4096):
         """Return activity table as dict of arrays.
