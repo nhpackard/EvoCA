@@ -65,7 +65,7 @@ _PROBE_GETTER = {
 _active_stop = None
 
 
-def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None,
+def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                       diag=False):
     """
     Display ipywidgets controls and open an SDL2 simulation window.
@@ -545,6 +545,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None,
             # colorize writes directly into shared pixel memory
             sim.colorize(pixels, st['colormode'])
 
+            _t2 = time.perf_counter() if diag else 0
+
             # Record probe data
             if n_probes > 0:
                 cur = int(probe_cursor[0])
@@ -566,7 +568,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None,
                 activity_pixels[:, act_cur] = activity_col
                 activity_cursor[0] = (act_cur + 1) % PROBE_W
 
-            _t2 = time.perf_counter() if diag else 0
+            _t3 = time.perf_counter() if diag else 0
 
             # Record cgenom activity data
             if cg_activity_enabled:
@@ -588,13 +590,14 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None,
                 lut_complexity_cursor[0] = (lc_cur + 1) % PROBE_W
 
             if diag:
-                _t3 = time.perf_counter()
-                _total = _t3 - _t0
+                _t4 = time.perf_counter()
+                _total = _t4 - _t0
                 if _total > 0.1:  # log steps taking > 100ms
                     print(f"DIAG t={st['step_cnt']}: "
                           f"step={(_t1-_t0)*1000:.1f}ms "
-                          f"act+color={(_t2-_t1)*1000:.1f}ms "
-                          f"probes={(_t3-_t2)*1000:.1f}ms "
+                          f"color={(_t2-_t1)*1000:.1f}ms "
+                          f"activity={(_t3-_t2)*1000:.1f}ms "
+                          f"probes={(_t4-_t3)*1000:.1f}ms "
                           f"total={_total*1000:.1f}ms",
                           flush=True)
 
@@ -611,7 +614,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=False, probes=None,
             ctrl[_FPS10] = int(fps * 10)
 
             # Update status label (infrequent — tolerate ZMQ non-safety)
-            if sc % 20 == 0:
+            if sc % 100 == 0:
                 status_lbl.value = f"t={sc}  fps={fps:.1f}"
 
         # Cleanup — also called by atexit if this thread doesn't finish in time
