@@ -73,6 +73,7 @@ class EvoCA:
         self.mu_cgenom   = 0.0
         self.tax         = 0.0
         self.restricted_mu = 0
+        self._n_ent      = 2
         self.cgenom      = 0
         self._setup_signatures()
 
@@ -198,11 +199,27 @@ class EvoCA:
         L.evoca_lut_complexity_render_col.argtypes = [
             ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
         L.evoca_lut_complexity_render_col.restype  = None
+        # Local-pattern activity & entropy
+        L.evoca_set_n_ent.argtypes = [ctypes.c_int]
+        L.evoca_set_n_ent.restype  = None
+        L.evoca_get_n_ent.argtypes = []
+        L.evoca_get_n_ent.restype  = ctypes.c_int
+        L.evoca_pat_update.argtypes = []
+        L.evoca_pat_update.restype  = None
+        L.evoca_get_entropy.argtypes = []
+        L.evoca_get_entropy.restype  = ctypes.c_float
+        L.evoca_pat_activity_render_col.argtypes = [
+            ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
+        L.evoca_pat_activity_render_col.restype  = None
+        L.evoca_set_pat_act_ymax.argtypes = [ctypes.c_int]
+        L.evoca_set_pat_act_ymax.restype  = None
+        L.evoca_get_pat_act_ymax.argtypes = []
+        L.evoca_get_pat_act_ymax.restype  = ctypes.c_int
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 
     def init(self, N, food_inc=0.0, m_scale=1.0, food_repro=0.5, gdiff=0,
-             mu_lut=0.0, mu_cgenom=0.0, tax=0.0, restricted_mu=0):
+             mu_lut=0.0, mu_cgenom=0.0, tax=0.0, restricted_mu=0, n_ent=2):
         stop = getattr(self, '_stop_display', None)
         if stop is not None:
             stop()
@@ -216,12 +233,14 @@ class EvoCA:
         self.mu_cgenom  = float(mu_cgenom)
         self.tax        = float(tax)
         self.restricted_mu = int(restricted_mu)
+        self._n_ent     = int(n_ent)
         self._lib.evoca_init(N, self.food_inc, self.m_scale, self.food_repro)
         self._lib.evoca_set_gdiff(self.gdiff)
         self._lib.evoca_set_mu_lut(self.mu_lut)
         self._lib.evoca_set_mu_cgenom(self.mu_cgenom)
         self._lib.evoca_set_tax(self.tax)
         self._lib.evoca_set_restricted_mu(self.restricted_mu)
+        self._lib.evoca_set_n_ent(self._n_ent)
 
     def free(self):
         stop = getattr(self, '_stop_display', None)
@@ -277,6 +296,9 @@ class EvoCA:
 
     def update_cg_act_ymax(self, y):
         self._lib.evoca_set_cg_act_ymax(int(y))
+
+    def update_pat_act_ymax(self, y):
+        self._lib.evoca_set_pat_act_ymax(int(y))
 
     # ── Params export ─────────────────────────────────────────────────
 
@@ -487,6 +509,10 @@ class EvoCA:
     @property
     def N(self):
         return self._N
+
+    @property
+    def n_ent(self):
+        return self._n_ent
 
     @property
     def cell_px(self):

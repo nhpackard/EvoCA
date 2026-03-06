@@ -145,6 +145,49 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                                         buffer=cg_activity_shm.buf, offset=4)
         cg_activity_col = np.zeros(ACT_H, dtype=np.int32)
 
+    # ── Entropy probe setup ──────────────────────────────────────────
+    entropy_enabled      = bool((probes or {}).get('entropy'))
+    entropy_shm          = None
+    entropy_cursor       = None   # int32[1] view
+    entropy_buf          = None   # float32[PROBE_W] view
+
+    if entropy_enabled:
+        ent_shm_size = 4 + PROBE_W * 4   # cursor + float32[PROBE_W]
+        entropy_shm = SharedMemory(create=True, size=ent_shm_size)
+        _ebuf = np.ndarray((ent_shm_size,), dtype=np.uint8,
+                           buffer=entropy_shm.buf)
+        _ebuf[:] = 0
+        entropy_cursor = np.ndarray((1,), dtype=np.int32,
+                                    buffer=entropy_shm.buf)
+        entropy_buf = np.ndarray((PROBE_W,), dtype=np.float32,
+                                 buffer=entropy_shm.buf, offset=4)
+
+    # ── Pattern activity probe setup ─────────────────────────────────
+    pat_activity_enabled = bool((probes or {}).get('pat_activity'))
+    PAT_H                = ACT_H   # 256 px tall (same as activity window)
+    pat_activity_shm     = None
+    pat_activity_cursor  = None
+    pat_activity_pixels  = None
+    pat_activity_col     = None
+
+    if pat_activity_enabled:
+        pa_shm_size = 4 + PROBE_W * PAT_H * 4
+        pat_activity_shm = SharedMemory(create=True, size=pa_shm_size)
+        _pabuf = np.ndarray((pa_shm_size,), dtype=np.uint8,
+                            buffer=pat_activity_shm.buf)
+        _pabuf[:] = 0
+        pat_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                         buffer=pat_activity_shm.buf)
+        pat_activity_pixels = np.ndarray((PAT_H, PROBE_W), dtype=np.int32,
+                                         buffer=pat_activity_shm.buf, offset=4)
+        pat_activity_col = np.zeros(PAT_H, dtype=np.int32)
+
+    pat_enabled = entropy_enabled or pat_activity_enabled
+
+    # ── Set n_ent on C library ───────────────────────────────────────
+    if pat_enabled:
+        sim._lib.evoca_set_n_ent(sim.n_ent)
+
     # ── LUT complexity probe setup ───────────────────────────────────
     lut_complexity_enabled = bool((probes or {}).get('lut_complexity'))
     lut_complexity_shm     = None
@@ -207,6 +250,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         cmd += ["--cg-activity=" + cg_activity_shm.name]
     if lut_complexity_enabled:
         cmd += ["--lut-complexity=" + lut_complexity_shm.name]
+    if entropy_enabled:
+        cmd += ["--entropy=" + entropy_shm.name]
+    if pat_activity_enabled:
+        cmd += ["--pat-activity=" + pat_activity_shm.name]
     sdl_proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
@@ -246,6 +293,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             all_shm.append(cg_activity_shm)
         if lut_complexity_shm is not None:
             all_shm.append(lut_complexity_shm)
+        if entropy_shm is not None:
+            all_shm.append(entropy_shm)
+        if pat_activity_shm is not None:
+            all_shm.append(pat_activity_shm)
         for shm in all_shm:
             try:
                 shm.unlink()
@@ -329,6 +380,14 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             style={"description_width": "90px"},
             layout=widgets.Layout(width="440px"))
 
+    sl_pat_act_ymax = None
+    if pat_activity_enabled:
+        sl_pat_act_ymax = widgets.IntSlider(
+            value=2000, min=100, max=100000, step=100,
+            description="pat_act_ymax:",
+            style={"description_width": "90px"},
+            layout=widgets.Layout(width="440px"))
+
     cb_restricted_mu = widgets.Checkbox(
         value=bool(sim.restricted_mu),
         description="restricted_mu",
@@ -358,6 +417,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         _slider_list.append(sl_act_ymax)
     if sl_cg_act_ymax is not None:
         _slider_list.append(sl_cg_act_ymax)
+    if sl_pat_act_ymax is not None:
+        _slider_list.append(sl_pat_act_ymax)
     ipy_display(widgets.VBox([
         widgets.HBox([btn_pause, btn_step, btn_quit, btn_save, btn_export]),
         *_slider_list,
@@ -420,6 +481,19 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 sim._lib.evoca_lut_complexity_render_col(lc_col_ptr, PROBE_H)
                 lut_complexity_pixels[:, lc_cur] = lut_complexity_col
                 lut_complexity_cursor[0] = (lc_cur + 1) % PROBE_W
+            if pat_enabled:
+                sim._lib.evoca_pat_update()
+                if entropy_enabled:
+                    ec = int(entropy_cursor[0])
+                    entropy_buf[ec] = sim._lib.evoca_get_entropy()
+                    entropy_cursor[0] = (ec + 1) % PROBE_W
+                if pat_activity_enabled:
+                    pac = int(pat_activity_cursor[0])
+                    pa_col_ptr = pat_activity_col.ctypes.data_as(
+                        ctypes.POINTER(ctypes.c_int32))
+                    sim._lib.evoca_pat_activity_render_col(pa_col_ptr, PAT_H)
+                    pat_activity_pixels[:, pac] = pat_activity_col
+                    pat_activity_cursor[0] = (pac + 1) % PROBE_W
             status_lbl.value = f"t={st['step_cnt']}  (paused)"
 
     def on_quit(_):
@@ -512,6 +586,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         _make_slider_cb("act_ymax", sl_act_ymax)
     if sl_cg_act_ymax is not None:
         _make_slider_cb("cg_act_ymax", sl_cg_act_ymax)
+    if sl_pat_act_ymax is not None:
+        _make_slider_cb("pat_act_ymax", sl_pat_act_ymax)
 
     # ── Simulation thread ─────────────────────────────────────────
     def _sim_thread():
@@ -591,6 +667,21 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 sim._lib.evoca_lut_complexity_render_col(lc_col_ptr, PROBE_H)
                 lut_complexity_pixels[:, lc_cur] = lut_complexity_col
                 lut_complexity_cursor[0] = (lc_cur + 1) % PROBE_W
+
+            # Record pattern entropy / pattern activity data
+            if pat_enabled:
+                sim._lib.evoca_pat_update()
+                if entropy_enabled:
+                    ec = int(entropy_cursor[0])
+                    entropy_buf[ec] = sim._lib.evoca_get_entropy()
+                    entropy_cursor[0] = (ec + 1) % PROBE_W
+                if pat_activity_enabled:
+                    pac = int(pat_activity_cursor[0])
+                    pa_col_ptr = pat_activity_col.ctypes.data_as(
+                        ctypes.POINTER(ctypes.c_int32))
+                    sim._lib.evoca_pat_activity_render_col(pa_col_ptr, PAT_H)
+                    pat_activity_pixels[:, pac] = pat_activity_col
+                    pat_activity_cursor[0] = (pac + 1) % PROBE_W
 
             _t4 = time.perf_counter()
             if diag:

@@ -92,6 +92,16 @@ int  evoca_get_cg_act_ymax(void);
 void evoca_lut_complexity_counts(uint32_t *counts);  /* counts[3]: n1, n1+n2, full */
 void evoca_lut_complexity_render_col(int32_t *col, int height);
 
+/* ── Local-pattern activity & entropy ─────────────────────────────── */
+
+void  evoca_set_n_ent(int n);         /* 1=VN, 2=Moore, 3=n3; resets history */
+int   evoca_get_n_ent(void);
+void  evoca_pat_update(void);         /* scan lattice; updates pat_pop/act + entropy */
+float evoca_get_entropy(void);        /* Shannon entropy from last evoca_pat_update() */
+void  evoca_pat_activity_render_col(int32_t *col, int height);
+void  evoca_set_pat_act_ymax(int y);
+int   evoca_get_pat_act_ymax(void);
+
 /* ── Visualisation ──────────────────────────────────────────────────── */
 
 /* Fill pixels[N*N] with int32 ARGB values.

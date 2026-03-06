@@ -122,6 +122,8 @@ def main():
     activity_shm_name = None
     cg_activity_shm_name = None
     lut_complexity_shm_name = None
+    entropy_shm_name = None
+    pat_activity_shm_name = None
     for arg in sys.argv:
         if arg.startswith("--activity="):
             activity_shm_name = arg[len("--activity="):]
@@ -129,6 +131,10 @@ def main():
             cg_activity_shm_name = arg[len("--cg-activity="):]
         elif arg.startswith("--lut-complexity="):
             lut_complexity_shm_name = arg[len("--lut-complexity="):]
+        elif arg.startswith("--entropy="):
+            entropy_shm_name = arg[len("--entropy="):]
+        elif arg.startswith("--pat-activity="):
+            pat_activity_shm_name = arg[len("--pat-activity="):]
 
     ACT_H = 2 * PROBE_H  # 256
 
@@ -444,6 +450,96 @@ def main():
         else:
             print("EvoCA SDL: lut_complexity window creation failed", flush=True)
 
+    # Open entropy shared memory + create window
+    entropy_shm      = None
+    entropy_cursor   = None
+    entropy_buf      = None
+    entropy_std_buf  = None
+    ent_window_p     = None
+    ent_surface_p    = None
+    ent_dst          = None
+    if entropy_shm_name:
+        try:
+            entropy_shm = SharedMemory(name=entropy_shm_name)
+            entropy_cursor = np.ndarray((1,), dtype=np.int32,
+                                        buffer=entropy_shm.buf)
+            entropy_buf = np.ndarray((PROBE_W,), dtype=np.float32,
+                                     buffer=entropy_shm.buf, offset=4)
+            entropy_std_buf = np.zeros(PROBE_W, dtype=np.float32)
+            print(f"EvoCA SDL: entropy shm opened", flush=True)
+            ew_x = main_x - PROBE_W
+            ew = sdl2.SDL_CreateWindow(
+                b"entropy", ew_x, next_probe_y, PROBE_W, PROBE_H,
+                sdl2.SDL_WINDOW_SHOWN)
+            if ew:
+                actual_y = ctypes.c_int(0)
+                sdl2.SDL_GetWindowPosition(ew, None, ctypes.byref(actual_y))
+                next_probe_y = actual_y.value + PROBE_H + real_title_h
+                eps = sdl2.SDL_GetWindowSurface(ew)
+                if eps:
+                    sdl2.SDL_SetSurfaceBlendMode(eps, sdl2.SDL_BLENDMODE_NONE)
+                    esurf  = eps.contents
+                    ep_i32 = esurf.pitch // 4
+                    ep_ptr = ctypes.cast(esurf.pixels,
+                                         ctypes.POINTER(ctypes.c_int32))
+                    ed_flat = np.ctypeslib.as_array(ep_ptr,
+                                                    shape=(PROBE_H * ep_i32,))
+                    ent_dst      = ed_flat.reshape(PROBE_H, ep_i32)
+                    ent_window_p  = ew
+                    ent_surface_p = eps
+                    print("EvoCA SDL: entropy window created", flush=True)
+                else:
+                    sdl2.SDL_DestroyWindow(ew)
+            else:
+                print("EvoCA SDL: entropy window creation failed", flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: entropy SharedMemory open failed: {e}", flush=True)
+            entropy_shm_name = None
+
+    # Open pattern activity shared memory + create window
+    pat_activity_shm     = None
+    pat_activity_cursor  = None
+    pat_activity_pixels  = None
+    pa_window_p  = None
+    pa_surface_p = None
+    pa_dst       = None
+    if pat_activity_shm_name:
+        try:
+            pat_activity_shm = SharedMemory(name=pat_activity_shm_name)
+            pat_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                             buffer=pat_activity_shm.buf)
+            pat_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                             buffer=pat_activity_shm.buf, offset=4)
+            print(f"EvoCA SDL: pat_activity shm opened ({ACT_H}x{PROBE_W})", flush=True)
+            paw_x = main_x - PROBE_W
+            paw = sdl2.SDL_CreateWindow(
+                b"pat_activity", paw_x, next_probe_y, PROBE_W, ACT_H,
+                sdl2.SDL_WINDOW_SHOWN)
+            if paw:
+                actual_y = ctypes.c_int(0)
+                sdl2.SDL_GetWindowPosition(paw, None, ctypes.byref(actual_y))
+                next_probe_y = actual_y.value + ACT_H + real_title_h
+                paps = sdl2.SDL_GetWindowSurface(paw)
+                if paps:
+                    sdl2.SDL_SetSurfaceBlendMode(paps, sdl2.SDL_BLENDMODE_NONE)
+                    pasurf   = paps.contents
+                    pap_i32  = pasurf.pitch // 4
+                    pap_ptr  = ctypes.cast(pasurf.pixels,
+                                           ctypes.POINTER(ctypes.c_int32))
+                    pad_flat = np.ctypeslib.as_array(pap_ptr,
+                                                     shape=(ACT_H * pap_i32,))
+                    pa_dst       = pad_flat.reshape(ACT_H, pap_i32)
+                    pa_window_p  = paw
+                    pa_surface_p = paps
+                    print("EvoCA SDL: pat_activity window created", flush=True)
+                else:
+                    sdl2.SDL_DestroyWindow(paw)
+            else:
+                print("EvoCA SDL: pat_activity window creation failed", flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: pat_activity SharedMemory open failed: {e}", flush=True)
+            pat_activity_shm_name = None
+
     print("EvoCA SDL: entering main loop", flush=True)
 
     event = sdl2.SDL_Event()
@@ -511,6 +607,25 @@ def main():
             sdl2.SDL_UnlockSurface(lc_surface_p)
             sdl2.SDL_UpdateWindowSurface(lc_window_p)
 
+        # Render entropy window
+        if ent_window_p is not None and entropy_buf is not None:
+            sdl2.SDL_LockSurface(ent_surface_p)
+            cur_ent = int(entropy_cursor[0])
+            _render_probe(ent_dst, ent_dst.shape[1],
+                          entropy_buf, entropy_std_buf, cur_ent,
+                          _c(0xFF00CCCC), _c(0xFF004444))
+            sdl2.SDL_UnlockSurface(ent_surface_p)
+            sdl2.SDL_UpdateWindowSurface(ent_window_p)
+
+        # Render pattern activity window
+        if pa_window_p is not None and pat_activity_pixels is not None:
+            sdl2.SDL_LockSurface(pa_surface_p)
+            cur_pa = int(pat_activity_cursor[0])
+            pa_dst[:ACT_H, :PROBE_W] = np.roll(pat_activity_pixels,
+                                                -cur_pa, axis=1)
+            sdl2.SDL_UnlockSurface(pa_surface_p)
+            sdl2.SDL_UpdateWindowSurface(pa_window_p)
+
         # Window title
         step   = int(ctrl[2])
         mode   = COLOR_MODES[min(int(ctrl[1]), 3)]
@@ -525,6 +640,10 @@ def main():
         sdl2.SDL_SetWindowTitle(window_p, title.encode())
 
     print("EvoCA SDL: exiting cleanly", flush=True)
+    if pa_window_p is not None:
+        sdl2.SDL_DestroyWindow(pa_window_p)
+    if ent_window_p is not None:
+        sdl2.SDL_DestroyWindow(ent_window_p)
     if lc_window_p is not None:
         sdl2.SDL_DestroyWindow(lc_window_p)
     if cg_act_window_p is not None:
@@ -545,6 +664,10 @@ def main():
         cg_activity_shm.close()
     if lut_complexity_shm is not None:
         lut_complexity_shm.close()
+    if entropy_shm is not None:
+        entropy_shm.close()
+    if pat_activity_shm is not None:
+        pat_activity_shm.close()
 
 
 if __name__ == "__main__":

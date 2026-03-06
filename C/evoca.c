@@ -163,6 +163,155 @@ static void cg_init_colors(uint8_t wt)
     }
 }
 
+/* ── Local-pattern activity & entropy ─────────────────────────── */
+
+#define PAT_MAX_BITS 13
+#define PAT_MAX_SIZE (1 << PAT_MAX_BITS)   /* 8192 */
+
+static int      g_n_ent      = 2;          /* 1=VN, 2=Moore, 3=n3 */
+static int      g_pat_bits   = 9;          /* bits in pattern key */
+static int      g_pat_size   = 512;        /* 2^pat_bits */
+static float    g_entropy    = 0.0f;       /* Shannon entropy (bits) */
+static uint64_t pat_act[PAT_MAX_SIZE];     /* cumulative presence */
+static uint32_t pat_pop[PAT_MAX_SIZE];     /* current step count */
+static int32_t  pat_color[PAT_MAX_SIZE];   /* ARGB per pattern key */
+static int      pat_act_ymax = 2000;
+
+void evoca_set_n_ent(int n)
+{
+    if (n < 1) n = 1;
+    if (n > 3) n = 3;
+    g_n_ent    = n;
+    g_pat_bits = (n == 1) ? 5 : (n == 2) ? 9 : 13;
+    g_pat_size = 1 << g_pat_bits;
+    memset(pat_act, 0, sizeof(pat_act));
+    memset(pat_pop, 0, sizeof(pat_pop));
+    /* Assign FNV-1a hash colors to all patterns */
+    for (int i = 0; i < g_pat_size; i++) {
+        uint32_t h = 0x811c9dc5u;
+        h ^= (uint32_t)(i & 0xFF);    h *= 0x01000193u;
+        h ^= (uint32_t)(i >> 8);      h *= 0x01000193u;
+        uint8_t r = (uint8_t)((h >> 16) & 0xFF); if (r < 0x40) r |= 0x80;
+        uint8_t g = (uint8_t)((h >>  8) & 0xFF); if (g < 0x40) g |= 0x80;
+        uint8_t b = (uint8_t)( h        & 0xFF); if (b < 0x40) b |= 0x80;
+        pat_color[i] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                                 | ((uint32_t)g << 8) | b);
+    }
+}
+int   evoca_get_n_ent(void)        { return g_n_ent; }
+void  evoca_set_pat_act_ymax(int y){ pat_act_ymax = y > 1 ? y : 1; }
+int   evoca_get_pat_act_ymax(void) { return pat_act_ymax; }
+
+/* Extract local pattern key for cell (row,col).
+ * Bit 0 = center; bits 1–4 = N,S,E,W; bits 5–8 = NE,NW,SE,SW;
+ * bits 9–12 = (row-2,col),(row+2,col),(row,col+2),(row,col-2).
+ * All accesses use periodic boundary. */
+static uint16_t extract_pattern(int row, int col)
+{
+    int N = gN;
+    uint16_t key = 0;
+    int bit = 0;
+
+    /* Center */
+    key |= (uint16_t)(v_curr[row * N + col]) << bit++;
+
+    /* Ring 1: N, S, E, W */
+    int rN = (row - 1 + N) % N, rS = (row + 1) % N;
+    int cE = (col + 1) % N,     cW = (col - 1 + N) % N;
+    key |= (uint16_t)(v_curr[rN * N + col]) << bit++;
+    key |= (uint16_t)(v_curr[rS * N + col]) << bit++;
+    key |= (uint16_t)(v_curr[row * N + cE]) << bit++;
+    key |= (uint16_t)(v_curr[row * N + cW]) << bit++;
+
+    if (g_n_ent == 1) return key;
+
+    /* Ring 2 diagonals: NE, NW, SE, SW */
+    key |= (uint16_t)(v_curr[rN * N + cE]) << bit++;
+    key |= (uint16_t)(v_curr[rN * N + cW]) << bit++;
+    key |= (uint16_t)(v_curr[rS * N + cE]) << bit++;
+    key |= (uint16_t)(v_curr[rS * N + cW]) << bit++;
+
+    if (g_n_ent == 2) return key;
+
+    /* Ring 3: (row±2,col) and (row,col±2) */
+    int rN2 = (row - 2 + N) % N, rS2 = (row + 2) % N;
+    int cE2 = (col + 2) % N,     cW2 = (col - 2 + N) % N;
+    key |= (uint16_t)(v_curr[rN2 * N + col]) << bit++;
+    key |= (uint16_t)(v_curr[rS2 * N + col]) << bit++;
+    key |= (uint16_t)(v_curr[row * N + cE2]) << bit++;
+    key |= (uint16_t)(v_curr[row * N + cW2]) << bit++;
+
+    return key;
+}
+
+void evoca_pat_update(void)
+{
+    if (!v_curr) return;
+    int N = gN;
+    int sz = g_pat_size;
+
+    /* Clear current-step counts */
+    memset(pat_pop, 0, (size_t)sz * sizeof(uint32_t));
+
+    /* Scan every site */
+    for (int row = 0; row < N; row++)
+        for (int col = 0; col < N; col++) {
+            uint16_t key = extract_pattern(row, col);
+            pat_pop[key]++;
+            pat_act[key]++;
+        }
+
+    /* Shannon entropy H = -Σ p·log₂(p) */
+    double H = 0.0;
+    double total = (double)(N * N);
+    for (int i = 0; i < sz; i++) {
+        if (pat_pop[i] == 0) continue;
+        double p = pat_pop[i] / total;
+        H -= p * log2(p);
+    }
+    g_entropy = (float)H;
+}
+
+float evoca_get_entropy(void) { return g_entropy; }
+
+void evoca_pat_activity_render_col(int32_t *col, int height)
+{
+    for (int y = 0; y < height; y++)
+        col[y] = (int32_t)0xFF111111u;
+
+    int sz = g_pat_size;
+    uint64_t ymax = (uint64_t)pat_act_ymax;
+
+    uint32_t ypop[height];
+    memset(ypop, 0, (size_t)height * sizeof(uint32_t));
+
+    /* Pass 1: extinct patterns — dimmed */
+    for (int i = 0; i < sz; i++) {
+        if (pat_act[i] == 0 || pat_pop[i] > 0) continue;
+        uint64_t act = pat_act[i];
+        int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
+        if (y < 0) y = 0; if (y >= height) y = height - 1;
+        uint32_t c = (uint32_t)pat_color[i];
+        uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
+        uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
+        uint8_t b = (uint8_t)(( c        & 0xFF) * 15 / 100);
+        col[y] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                           | ((uint32_t)g << 8) | b);
+    }
+
+    /* Pass 2: alive patterns — full color, higher pop wins */
+    for (int i = 0; i < sz; i++) {
+        if (pat_pop[i] == 0) continue;
+        uint64_t act = pat_act[i];
+        int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
+        if (y < 0) y = 0; if (y >= height) y = height - 1;
+        if (pat_pop[i] >= ypop[y]) {
+            col[y] = pat_color[i];
+            ypop[y] = pat_pop[i];
+        }
+    }
+}
+
 /* ── Activity hash table ───────────────────────────────────────── */
 
 #define ACT_INIT_CAP 4096
@@ -303,6 +452,7 @@ void evoca_init(int N, float food_inc, float m_scale, float food_repro)
     evoca_activity_init();
     memset(cg_act, 0, sizeof(cg_act));
     memset(cg_pop, 0, sizeof(cg_pop));
+    evoca_set_n_ent(g_n_ent);   /* reset pattern arrays, keep current n_ent */
 }
 
 void evoca_free(void)
@@ -319,8 +469,10 @@ void evoca_free(void)
     free(lut_hash_cache); lut_hash_cache = NULL;
     free(last_event_step); last_event_step = NULL;
     evoca_activity_free();
-    memset(cg_act, 0, sizeof(cg_act));
-    memset(cg_pop, 0, sizeof(cg_pop));
+    memset(cg_act,  0, sizeof(cg_act));
+    memset(cg_pop,  0, sizeof(cg_pop));
+    memset(pat_act, 0, sizeof(pat_act));
+    memset(pat_pop, 0, sizeof(pat_pop));
     gN = 0;
 }
 
