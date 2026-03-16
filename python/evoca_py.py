@@ -255,6 +255,16 @@ class EvoCA:
         self._lib.evoca_set_tax(self.tax)
         self._lib.evoca_set_restricted_mu(self.restricted_mu)
         self._lib.evoca_set_n_ent(self._n_ent)
+        self._recipe = {}
+        self._init_metaparams = {
+            'food_inc': self.food_inc,
+            'm_scale': self.m_scale,
+            'gdiff': self.gdiff,
+            'mu_lut': self.mu_lut,
+            'mu_egenome': self.mu_egenome,
+            'tax': self.tax,
+            'restricted_mu': self.restricted_mu,
+        }
 
     def free(self):
         stop = getattr(self, '_stop_display', None)
@@ -612,11 +622,12 @@ class EvoCA:
         filepath = os.path.join(runs_dir, filename)
 
         recipe = {
-            'version': 1,
+            'version': 2,
             'created': datetime.now().isoformat(timespec='seconds'),
             'descriptor': descriptor,
             'N': self._N,
-            'metaparams': {
+            'metaparams_init': dict(self._init_metaparams),
+            'metaparams_final': {
                 'food_inc': self.food_inc,
                 'm_scale': self.m_scale,
                 'gdiff': self.gdiff,
@@ -651,8 +662,11 @@ class EvoCA:
 
 # ── Recipe import ─────────────────────────────────────────────────────
 
-def import_run(filepath, lib_path=None):
+def import_run(filepath, recipe='init', lib_path=None):
     """Load a .evoca recipe file and return (sim, display_kwargs).
+
+    recipe: 'init' uses the initial metaparams, 'final' uses the
+            metaparams at export time (after any slider adjustments).
 
     Usage:
         sim, kw = import_run('Runs/2026-03-15_my_run.evoca')
@@ -661,13 +675,18 @@ def import_run(filepath, lib_path=None):
     import json
 
     with open(filepath) as f:
-        recipe = json.load(f)
+        data = json.load(f)
+
+    # version 1 had a single 'metaparams' key; version 2 has init/final
+    if 'metaparams_init' in data:
+        mp = data['metaparams_init'] if recipe == 'init' else data['metaparams_final']
+    else:
+        mp = data['metaparams']  # v1 fallback
 
     sim = EvoCA(lib_path=lib_path)
-    mp = recipe['metaparams']
-    sim.init(recipe['N'], **mp)
+    sim.init(data['N'], **mp)
 
-    init = recipe.get('initialization', {})
+    init = data.get('initialization', {})
 
     # LUT
     lut_method = init.get('lut_method', 'gol')
@@ -685,7 +704,7 @@ def import_run(filepath, lib_path=None):
 
     # v(x) — random with given density
     v_density = init.get('v_density', 0.5)
-    N = recipe['N']
+    N = data['N']
     sim.set_v(np.random.default_rng().integers(
         0, 2, (N, N), dtype=np.uint8), density=v_density)
 
@@ -711,7 +730,7 @@ def import_run(filepath, lib_path=None):
     # 'all' is the default — no call needed
 
     # Build display kwargs
-    disp = recipe.get('display', {})
+    disp = data.get('display', {})
     display_kwargs = {}
     if disp.get('colormode', 0) != 0:
         display_kwargs['colormode'] = disp['colormode']

@@ -525,17 +525,23 @@ sim.params_str()  -> str          # copy-pasteable sim.init(...) call
 
 ```python
 sim.export_recipe(descriptor, probes=None, colormode=0)
-    # Export initialization recipe to Runs/<date>_<descriptor>.evoca (JSON).
+    # Export recipe to Runs/<date>_<descriptor>.evoca (JSON).
+    # Records both initial metaparams (from init()) and final metaparams
+    # (current values at export time, after any slider adjustments).
     # Returns the filepath written.
 
 from python.evoca_py import import_run
-sim, display_kwargs = import_run('Runs/2026-03-15_my_run.evoca')
-    # Reconstruct simulation from recipe. Returns (sim, kwargs).
-    # Usage:  run_with_controls(sim, **display_kwargs)
+sim, kw = import_run('Runs/2026-03-15_my_run.evoca', recipe='init')
+    # recipe='init' (default): use the metaparams from sim.init()
+    # recipe='final': use the metaparams at export time (after slider tweaks)
+    # Returns (sim, display_kwargs).
+    # Usage:  run_with_controls(sim, **kw)
 ```
 
 The recipe records initialization *methods* (not raw grid data), so each
-import produces a new random realization with the same parameters.
+import produces a new random realization with the same parameters. The
+`.evoca` file stores both `metaparams_init` and `metaparams_final` so
+either the original or the tweaked configuration can be reproduced.
 
 #### Stored Attributes
 
