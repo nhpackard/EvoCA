@@ -38,7 +38,7 @@ import numpy as np
 import ipywidgets as widgets
 import matplotlib.pyplot as plt
 from IPython.display import display as ipy_display
-from .evoca_py import cgenom_to_pattern
+from .evoca_py import egenome_to_pattern
 from multiprocessing.shared_memory import SharedMemory
 
 import ctypes
@@ -126,24 +126,24 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                                      buffer=activity_shm.buf, offset=4)
         activity_col = np.zeros(ACT_H, dtype=np.int32)
 
-    # ── Cgenom activity probe setup ──────────────────────────────────
-    cg_activity_enabled = bool((probes or {}).get('cg_activity'))
-    cg_activity_shm     = None
-    cg_activity_cursor  = None
-    cg_activity_pixels  = None
-    cg_activity_col     = None
+    # ── Egenome activity probe setup ─────────────────────────────────
+    eg_activity_enabled = bool((probes or {}).get('eg_activity'))
+    eg_activity_shm     = None
+    eg_activity_cursor  = None
+    eg_activity_pixels  = None
+    eg_activity_col     = None
 
-    if cg_activity_enabled:
-        cga_shm_size = 4 + PROBE_W * ACT_H * 4
-        cg_activity_shm = SharedMemory(create=True, size=cga_shm_size)
-        _cgabuf = np.ndarray((cga_shm_size,), dtype=np.uint8,
-                             buffer=cg_activity_shm.buf)
-        _cgabuf[:] = 0
-        cg_activity_cursor = np.ndarray((1,), dtype=np.int32,
-                                        buffer=cg_activity_shm.buf)
-        cg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
-                                        buffer=cg_activity_shm.buf, offset=4)
-        cg_activity_col = np.zeros(ACT_H, dtype=np.int32)
+    if eg_activity_enabled:
+        ega_shm_size = 4 + PROBE_W * ACT_H * 4
+        eg_activity_shm = SharedMemory(create=True, size=ega_shm_size)
+        _egabuf = np.ndarray((ega_shm_size,), dtype=np.uint8,
+                             buffer=eg_activity_shm.buf)
+        _egabuf[:] = 0
+        eg_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                        buffer=eg_activity_shm.buf)
+        eg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                        buffer=eg_activity_shm.buf, offset=4)
+        eg_activity_col = np.zeros(ACT_H, dtype=np.int32)
 
     # ── Entropy probe setup ──────────────────────────────────────────
     entropy_enabled      = bool((probes or {}).get('entropy'))
@@ -246,8 +246,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         cmd += [probe_shm.name, ",".join(probe_names)]
     if activity_enabled:
         cmd += ["--activity=" + activity_shm.name]
-    if cg_activity_enabled:
-        cmd += ["--cg-activity=" + cg_activity_shm.name]
+    if eg_activity_enabled:
+        cmd += ["--eg-activity=" + eg_activity_shm.name]
     if lut_complexity_enabled:
         cmd += ["--lut-complexity=" + lut_complexity_shm.name]
     if entropy_enabled:
@@ -289,8 +289,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             all_shm.append(probe_shm)
         if activity_shm is not None:
             all_shm.append(activity_shm)
-        if cg_activity_shm is not None:
-            all_shm.append(cg_activity_shm)
+        if eg_activity_shm is not None:
+            all_shm.append(eg_activity_shm)
         if lut_complexity_shm is not None:
             all_shm.append(lut_complexity_shm)
         if entropy_shm is not None:
@@ -334,8 +334,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         layout=widgets.Layout(width="70px"))
     btn_save  = widgets.Button(
         description="Save Plots", layout=widgets.Layout(width="100px"))
+    txt_descriptor = widgets.Text(
+        placeholder='run descriptor', layout=widgets.Layout(width="200px"))
     btn_export = widgets.Button(
-        description="Export Params", layout=widgets.Layout(width="110px"))
+        description="Export", layout=widgets.Layout(width="70px"))
 
     sl_kw = dict(continuous_update=True,
                  style={"description_width": "90px"},
@@ -346,9 +348,6 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     sl_m_scale = widgets.FloatSlider(
         value=sim.m_scale,    min=0.0, max=10.0, step=0.1,
         description="m_scale:",    readout_format=".2f", **sl_kw)
-    sl_food_repro = widgets.FloatSlider(
-        value=sim.food_repro, min=0.0, max=2.0,  step=0.05,
-        description="food_repro:", readout_format=".2f", **sl_kw)
     sl_gdiff = widgets.IntSlider(
         value=sim.gdiff, min=0, max=10, step=1,
         description="gdiff:",
@@ -357,9 +356,9 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     sl_mu_lut = widgets.FloatSlider(
         value=sim.mu_lut, min=0.0, max=0.001, step=0.00001,
         description="mu_lut:",    readout_format=".5f", **sl_kw)
-    sl_mu_cgenom = widgets.FloatSlider(
-        value=sim.mu_cgenom, min=0.0, max=0.05, step=0.001,
-        description="mu_cgenom:", readout_format=".3f", **sl_kw)
+    sl_mu_egenome = widgets.FloatSlider(
+        value=sim.mu_egenome, min=0.0, max=0.05, step=0.001,
+        description="mu_egenome:", readout_format=".3f", **sl_kw)
     sl_tax = widgets.FloatSlider(
         value=sim.tax, min=0.0, max=0.1, step=0.001,
         description="tax:", readout_format=".3f", **sl_kw)
@@ -372,11 +371,11 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             style={"description_width": "90px"},
             layout=widgets.Layout(width="440px"))
 
-    sl_cg_act_ymax = None
-    if cg_activity_enabled:
-        sl_cg_act_ymax = widgets.IntSlider(
+    sl_eg_act_ymax = None
+    if eg_activity_enabled:
+        sl_eg_act_ymax = widgets.IntSlider(
             value=2000, min=100, max=100000, step=100,
-            description="cg_act_ymax:",
+            description="eg_act_ymax:",
             style={"description_width": "90px"},
             layout=widgets.Layout(width="440px"))
 
@@ -399,7 +398,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     status_lbl = widgets.Label(value="Starting…")
 
     # ── Fiducial pattern display ─────────────────────────────────────
-    pat = cgenom_to_pattern(sim.cgenom)
+    pat = egenome_to_pattern(sim.egenome)
     fig, ax = plt.subplots(figsize=(2, 2))
     ax.imshow(pat, cmap='Greys', vmin=0, vmax=1, interpolation='nearest')
     for edge in range(6):
@@ -407,20 +406,21 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         ax.axvline(edge - 0.5, color='gray', linewidth=0.5)
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_title(f'fiducial c(x)   cg=0b{sim.cgenom:06b}', fontsize=9)
+    ax.set_title(f'fiducial c(x)   eg=0b{sim.egenome:06b}', fontsize=9)
     plt.tight_layout()
     plt.show()
 
-    _slider_list = [sl_food_inc, sl_m_scale, sl_food_repro, sl_gdiff,
-                    sl_mu_lut, sl_mu_cgenom, sl_tax]
+    _slider_list = [sl_food_inc, sl_m_scale, sl_gdiff,
+                    sl_mu_lut, sl_mu_egenome, sl_tax]
     if sl_act_ymax is not None:
         _slider_list.append(sl_act_ymax)
-    if sl_cg_act_ymax is not None:
-        _slider_list.append(sl_cg_act_ymax)
+    if sl_eg_act_ymax is not None:
+        _slider_list.append(sl_eg_act_ymax)
     if sl_pat_act_ymax is not None:
         _slider_list.append(sl_pat_act_ymax)
     ipy_display(widgets.VBox([
-        widgets.HBox([btn_pause, btn_step, btn_quit, btn_save, btn_export]),
+        widgets.HBox([btn_pause, btn_step, btn_quit, btn_save,
+                      txt_descriptor, btn_export]),
         *_slider_list,
         widgets.HBox([color_dd, cb_restricted_mu, status_lbl]),
     ]))
@@ -466,14 +466,14 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 sim._lib.evoca_activity_render_col(act_col_ptr, ACT_H)
                 activity_pixels[:, act_cur] = activity_col
                 activity_cursor[0] = (act_cur + 1) % PROBE_W
-            if cg_activity_enabled:
-                sim._lib.evoca_cg_activity_update()
-                cga_cur = int(cg_activity_cursor[0])
-                cga_col_ptr = cg_activity_col.ctypes.data_as(
+            if eg_activity_enabled:
+                sim._lib.evoca_eg_activity_update()
+                ega_cur = int(eg_activity_cursor[0])
+                ega_col_ptr = eg_activity_col.ctypes.data_as(
                     ctypes.POINTER(ctypes.c_int32))
-                sim._lib.evoca_cg_activity_render_col(cga_col_ptr, ACT_H)
-                cg_activity_pixels[:, cga_cur] = cg_activity_col
-                cg_activity_cursor[0] = (cga_cur + 1) % PROBE_W
+                sim._lib.evoca_eg_activity_render_col(ega_col_ptr, ACT_H)
+                eg_activity_pixels[:, ega_cur] = eg_activity_col
+                eg_activity_cursor[0] = (ega_cur + 1) % PROBE_W
             if lut_complexity_enabled:
                 lc_cur = int(lut_complexity_cursor[0])
                 lc_col_ptr = lut_complexity_col.ctypes.data_as(
@@ -530,7 +530,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         status_lbl.value = f"Saved {n_probes} probe plot(s)"
 
     def on_export(_):
-        print(sim.params_str())
+        desc = txt_descriptor.value.strip() or 'unnamed'
+        cm = COLOR_MODES.index(color_dd.value) if color_dd.value in COLOR_MODES else 0
+        path = sim.export_recipe(desc, probes=probes, colormode=cm)
+        status_lbl.value = f"Exported: {path}"
 
     def on_restricted_mu(change):
         if not _alive[0]:
@@ -577,15 +580,14 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
 
     _make_slider_cb("food_inc",   sl_food_inc)
     _make_slider_cb("m_scale",    sl_m_scale)
-    _make_slider_cb("food_repro", sl_food_repro)
     _make_slider_cb("gdiff",      sl_gdiff)
     _make_slider_cb("mu_lut",     sl_mu_lut)
-    _make_slider_cb("mu_cgenom",  sl_mu_cgenom)
+    _make_slider_cb("mu_egenome",  sl_mu_egenome)
     _make_slider_cb("tax",        sl_tax)
     if sl_act_ymax is not None:
         _make_slider_cb("act_ymax", sl_act_ymax)
-    if sl_cg_act_ymax is not None:
-        _make_slider_cb("cg_act_ymax", sl_cg_act_ymax)
+    if sl_eg_act_ymax is not None:
+        _make_slider_cb("eg_act_ymax", sl_eg_act_ymax)
     if sl_pat_act_ymax is not None:
         _make_slider_cb("pat_act_ymax", sl_pat_act_ymax)
 
@@ -649,15 +651,15 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
 
             _t3 = time.perf_counter() if diag else 0
 
-            # Record cgenom activity data
-            if cg_activity_enabled:
-                sim._lib.evoca_cg_activity_update()
-                cga_cur = int(cg_activity_cursor[0])
-                cga_col_ptr = cg_activity_col.ctypes.data_as(
+            # Record egenome activity
+            if eg_activity_enabled:
+                sim._lib.evoca_eg_activity_update()
+                ega_cur = int(eg_activity_cursor[0])
+                ega_col_ptr = eg_activity_col.ctypes.data_as(
                     ctypes.POINTER(ctypes.c_int32))
-                sim._lib.evoca_cg_activity_render_col(cga_col_ptr, ACT_H)
-                cg_activity_pixels[:, cga_cur] = cg_activity_col
-                cg_activity_cursor[0] = (cga_cur + 1) % PROBE_W
+                sim._lib.evoca_eg_activity_render_col(ega_col_ptr, ACT_H)
+                eg_activity_pixels[:, ega_cur] = eg_activity_col
+                eg_activity_cursor[0] = (ega_cur + 1) % PROBE_W
 
             # Record LUT complexity data
             if lut_complexity_enabled:

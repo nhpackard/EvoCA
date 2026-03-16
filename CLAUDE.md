@@ -27,15 +27,19 @@ The SDL2 display (`python/display.py`) follows the genelife pattern: C fills an 
 
 **SDL2 controls** (interactive window):
 `SPACE` pause/unpause · `C` cycle color mode · `S` single step (paused) · `Q`/`Esc` quit
-Mouse click widget row: left `-` / right `+` to adjust food_inc / m_scale / food_repro.
+Mouse click widget row: left `-` / right `+` to adjust food_inc / m_scale.
 
 ## Model Architecture
 
 **CA lattice**: Binary 2D grid (periodic boundaries). Every cell carries:
-- `v(x)` — binary cell state (0 or 1)
+- `alive(x)` — 1=alive organism, 0=dead (empty) slot
+- `v(x)` — binary CA state (0 or 1), not life/death
 - Rule LUT (bit-packed, 32 bytes/cell) — maps `(v_x, n1, n2, n3)` to new state
 - `c(x)` — fiducial configuration pattern (6-bit D4-symmetric genome for eating)
 - `f(x)` — private food store (float)
+
+Dead cells have zeroed LUT, v=0, f=0; they don't eat or reproduce.
+Reproduction is the only way dead cells become alive.
 
 **LUT indexing — per-ring counts**:
 The LUT is indexed by `(v_x, n1, n2, n3)` where `nk` = count of active cells in distance-ring k:
@@ -55,14 +59,14 @@ The fiducial pattern for eating still uses the full 5×5 neighbourhood.
 **GoL initialization** (`make_gol_lut()`): sets new_state = 1 iff Moore count `n1+n2` == 3 (dead cell) or ∈ {2,3} (alive cell), regardless of n3. With mutation=0 (all cells keep the same LUT), the simulation runs exact Conway's Game of Life.
 
 **Food dynamics** each time step:
-1. `F(x) += food_inc` (uniform regeneration)
-2. Tax: `f(x) -= tax`; if `f(x)` reaches 0, cell's LUT is zeroed (death)
-3. Each cell eats: `M(x) = (m/25) · matches · F(x)` (proportional to available food)
-4. Reproduction: when `f(x) >= food_repro`, copy genome to the Moore-neighbor with lowest `f(x')`; split food 50/50
+1. `F(x) += food_inc` (uniform regeneration, where `env_mask(x)=1`)
+2. Tax (alive cells only): `f(x) -= tax`; if `f(x)` reaches 0, cell dies (`alive=0`, LUT zeroed)
+3. Each alive cell eats: `M(x) = (m/25) · matches · F(x)` (proportional to available food)
+4. Reproduction (alive cells only): when `f(x) >= 1.0`, copy genome to Moore-neighbor with lowest `f(x')`, set child alive, split food 50/50
 
 **Mutation** (applied to child's genome during reproduction):
 - `mu_lut`: per-bit flip probability for the 250-bit LUT. n_flips drawn from Poisson(mu_lut * 250).
-- `mu_cgenom`: per-bit flip probability for the 6-bit cgenom. n_flips drawn from Poisson(mu_cgenom * 6).
+- `mu_egenome`: per-bit flip probability for the 6-bit egenome. n_flips drawn from Poisson(mu_egenome * 6).
 - `restricted_mu` (toggle, default off): when enabled, LUT mutations are restricted
   to bit positions that were actually queried during the current CA step. A 250-bit
   mask `lut_active` is built during Phase 1; only the `n_active` set bits are
@@ -74,9 +78,9 @@ The fiducial pattern for eating still uses the full 5×5 neighbourhood.
 - `set_lut_random(n_init)`: each cell gets an independent random LUT.
   `n_init` controls ring conditioning: 1 = (v_x, n1) only (10 bits),
   2 = (v_x, n1, n2) (50 bits, GoL-level), 3 = all 250 bits.
-- `set_cgenom_random()`: each cell gets a random cgenom in [0, 63].
+- `set_egenome_random()`: each cell gets a random egenome in [0, 63].
 
-**Global metaparameters**: `food_inc`, `m_scale`, `food_repro`, `gdiff`, `mu_lut`, `mu_cgenom`, `tax`, `restricted_mu`
+**Global metaparameters**: `food_inc`, `m_scale`, `gdiff`, `mu_lut`, `mu_egenome`, `tax`, `restricted_mu`
 
 **Fiducial pattern `c(x)`**: D4-symmetric 5×5 binary pattern. The 25 cells form 6 orbits under D4 (reflections about horizontal/vertical midlines and diagonals), requiring 6 independent bits. The orbit map:
 
@@ -89,7 +93,7 @@ The fiducial pattern for eating still uses the full 5×5 neighbourhood.
 ```
 
 **Colormode 3 (births)**: yellow = normal birth (genome copied exactly),
-magenta = mutant birth (LUT or cgenom mutated), dim grey = alive (no birth),
+magenta = mutant birth (LUT or egenome mutated), dim grey = alive (no birth),
 black = dead.
 
 **Activity tracking**: Cumulative presence of each distinct LUT genome.
@@ -109,13 +113,13 @@ compresses high-activity genomes toward the top without clipping, giving a natur
 logarithmic-like spread.  Lowering `ymax` makes waves rise faster; raising it
 spreads out low-activity genomes.
 
-**Cgenom activity tracking**: Mirrors LUT activity for the 6-bit cgenom (fiducial
-eating pattern). Since there are only 2^6 = 64 possible cgenoms, uses fixed-size
-arrays (`cg_act[64]`, `cg_pop[64]`, `cg_color[64]`) instead of a hash table.
-Wild-type cgenom is colored white; mutants get FNV-1a hash colors.
-`evoca_cg_activity_update()` / `evoca_cg_activity_render_col()` parallel the LUT
-activity functions. Separate `cg_act_ymax` slider. Enable with
-`probes={'cg_activity': True}`.
+**Egenome activity tracking**: Mirrors LUT activity for the 6-bit egenome (fiducial
+eating pattern). Since there are only 2^6 = 64 possible egenomes, uses fixed-size
+arrays (`eg_act[64]`, `cg_pop[64]`, `cg_color[64]`) instead of a hash table.
+Wild-type egenome is colored white; mutants get FNV-1a hash colors.
+`evoca_eg_activity_update()` / `evoca_eg_activity_render_col()` parallel the LUT
+activity functions. Separate `eg_act_ymax` slider. Enable with
+`probes={'eg_activity': True}`.
 
 **Reproduction age histogram**: Tracks the distribution of time between successive
 reproduction events (or birth-to-first-reproduction). A per-cell timestamp

@@ -98,10 +98,10 @@ static int poisson_sample(float lambda)
 static int    gN          = 0;
 static float  gfood_inc   = 0.0f;
 static float  gm_scale    = 1.0f;
-static float  gfood_repro = 0.5f;
+/* food_repro removed — reproduction threshold hardcoded to 1.0 */
 static int    ggdiff      = 0;    /* diffusion passes per step */
 static float  gmu_lut     = 0.0f; /* per-bit LUT mutation rate */
-static float  gmu_cgenom  = 0.0f; /* per-bit cgenom mutation rate */
+static float  gmu_egenome  = 0.0f; /* per-bit egenome mutation rate */
 static float  gtax        = 0.0f; /* priv food decrement per step */
 static int    grestricted_mu = 0; /* 0=random mutation, 1=restricted to active bits */
 static int    g_diag        = 0; /* diagnostic prints */
@@ -114,7 +114,7 @@ static int     n_active = 0;
 static uint8_t *v_curr = NULL;   /* [N*N]            */
 static uint8_t *v_next = NULL;   /* [N*N]            */
 static uint8_t *lut    = NULL;   /* [N*N * LUT_BYTES] */
-static uint8_t *cgenom = NULL;   /* [N*N]            */
+static uint8_t *egenome = NULL;   /* [N*N]            */
 static float   *f_priv = NULL;   /* [N*N]            */
 static float   *F_food = NULL;   /* [N*N]            */
 static float   *F_temp = NULL;   /* [N*N] scratch for diffusion */
@@ -123,6 +123,8 @@ static uint32_t *lut_color = NULL;   /* [N*N] cached ARGB per cell */
 static uint32_t *lut_hash_cache = NULL; /* [N*N] cached FNV-1a hash */
 static uint32_t  wt_hash   = 0;     /* hash of wild-type LUT */
 static uint32_t  g_step    = 0;     /* global step counter */
+static uint8_t  *env_mask  = NULL;  /* [N*N] food regen mask; 1=regen, 0=no */
+static uint8_t  *alive     = NULL;  /* [N*N] 1=alive organism, 0=dead slot */
 
 /* ── Reproduction age histogram ────────────────────────────────── */
 
@@ -132,24 +134,24 @@ static uint32_t *last_event_step = NULL;  /* [N*N] step of birth or repro */
 static uint32_t  repro_age_hist[REPRO_AGE_MAX]; /* cumulative histogram */
 static uint32_t  repro_age_t0 = 0;        /* start accumulating after this step */
 
-/* ── Cgenom activity (fixed-size, 64 entries) ──────────────────── */
+/* ── Egenome activity (fixed-size, 64 entries) ──────────────────── */
 
-#define CGENOM_COUNT 64
+#define EGENOME_COUNT 64
 
-static uint64_t cg_act[CGENOM_COUNT];        /* cumulative activity */
-static uint32_t cg_pop[CGENOM_COUNT];        /* current population */
-static int32_t  cg_color[CGENOM_COUNT];      /* ARGB color per cgenom */
-static uint8_t  wt_cgenom_val = 0;           /* wild-type cgenom */
-static int      cg_act_ymax = 2000;          /* Y-scale for cgenom activity */
+static uint64_t eg_act[EGENOME_COUNT];        /* cumulative activity */
+static uint32_t eg_pop[EGENOME_COUNT];        /* current population */
+static int32_t  eg_color[EGENOME_COUNT];      /* ARGB color per egenome */
+static uint8_t  wt_egenome_val = 0;           /* wild-type egenome */
+static int      eg_act_ymax = 2000;          /* Y-scale for egenome activity */
 
-/* Precompute colors for all 64 cgenoms.  Wild-type = white;
+/* Precompute colors for all 64 egenomes.  Wild-type = white;
  * others = FNV-1a hash of the byte value → ARGB. */
-static void cg_init_colors(uint8_t wt)
+static void eg_init_colors(uint8_t wt)
 {
-    wt_cgenom_val = wt;
-    for (int i = 0; i < CGENOM_COUNT; i++) {
+    wt_egenome_val = wt;
+    for (int i = 0; i < EGENOME_COUNT; i++) {
         if ((uint8_t)i == wt) {
-            cg_color[i] = (int32_t)0xFFFFFFFFu;
+            eg_color[i] = (int32_t)0xFFFFFFFFu;
         } else {
             uint32_t h = 0x811c9dc5u ^ (uint32_t)i;
             h *= 0x01000193u;
@@ -157,7 +159,7 @@ static void cg_init_colors(uint8_t wt)
             uint8_t r = (uint8_t)((h >> 16) & 0xFF); if (r < 0x40) r |= 0x80;
             uint8_t g = (uint8_t)((h >>  8) & 0xFF); if (g < 0x40) g |= 0x80;
             uint8_t b = (uint8_t)( h        & 0xFF); if (b < 0x40) b |= 0x80;
-            cg_color[i] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+            eg_color[i] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
                                     | ((uint32_t)g << 8) | b);
         }
     }
@@ -427,19 +429,18 @@ static void evoca_activity_free(void)
 
 /* ── Lifecycle ──────────────────────────────────────────────────── */
 
-void evoca_init(int N, float food_inc, float m_scale, float food_repro)
+void evoca_init(int N, float food_inc, float m_scale)
 {
     evoca_free();
     gN          = N;
     gfood_inc   = food_inc;
     gm_scale    = m_scale;
-    gfood_repro = food_repro;
 
     size_t cells = (size_t)N * N;
     v_curr = calloc(cells,               sizeof(uint8_t));
     v_next = calloc(cells,               sizeof(uint8_t));
     lut    = calloc(cells * LUT_BYTES,   sizeof(uint8_t));
-    cgenom = calloc(cells,               sizeof(uint8_t));
+    egenome = calloc(cells,               sizeof(uint8_t));
     f_priv = calloc(cells,               sizeof(float));
     F_food = calloc(cells,               sizeof(float));
     F_temp = calloc(cells,               sizeof(float));
@@ -447,11 +448,15 @@ void evoca_init(int N, float food_inc, float m_scale, float food_repro)
     lut_color = calloc(cells,               sizeof(uint32_t));
     lut_hash_cache = calloc(cells,          sizeof(uint32_t));
     last_event_step = calloc(cells,         sizeof(uint32_t));
+    env_mask = malloc(cells * sizeof(uint8_t));
+    memset(env_mask, 1, cells);   /* default: all sites regenerate */
+    alive = malloc(cells * sizeof(uint8_t));
+    memset(alive, 1, cells);      /* default: all cells alive */
     memset(repro_age_hist, 0, sizeof(repro_age_hist));
     g_step = 0;
     evoca_activity_init();
-    memset(cg_act, 0, sizeof(cg_act));
-    memset(cg_pop, 0, sizeof(cg_pop));
+    memset(eg_act, 0, sizeof(eg_act));
+    memset(eg_pop, 0, sizeof(eg_pop));
     evoca_set_n_ent(g_n_ent);   /* reset pattern arrays, keep current n_ent */
 }
 
@@ -460,7 +465,7 @@ void evoca_free(void)
     free(v_curr); v_curr = NULL;
     free(v_next); v_next = NULL;
     free(lut);    lut    = NULL;
-    free(cgenom); cgenom = NULL;
+    free(egenome); egenome = NULL;
     free(f_priv); f_priv = NULL;
     free(F_food); F_food = NULL;
     free(F_temp); F_temp = NULL;
@@ -468,9 +473,11 @@ void evoca_free(void)
     free(lut_color); lut_color = NULL;
     free(lut_hash_cache); lut_hash_cache = NULL;
     free(last_event_step); last_event_step = NULL;
+    free(env_mask);  env_mask  = NULL;
+    free(alive);     alive     = NULL;
     evoca_activity_free();
-    memset(cg_act,  0, sizeof(cg_act));
-    memset(cg_pop,  0, sizeof(cg_pop));
+    memset(eg_act,  0, sizeof(eg_act));
+    memset(eg_pop,  0, sizeof(eg_pop));
     memset(pat_act, 0, sizeof(pat_act));
     memset(pat_pop, 0, sizeof(pat_pop));
     gN = 0;
@@ -480,13 +487,12 @@ void evoca_free(void)
 
 void evoca_set_food_inc(float f)   { gfood_inc   = f; }
 void evoca_set_m_scale(float m)    { gm_scale    = m; }
-void evoca_set_food_repro(float r) { gfood_repro = r; }
 void evoca_set_gdiff(int d)        { ggdiff      = d; }
 int  evoca_get_gdiff(void)         { return ggdiff;   }
 void  evoca_set_mu_lut(float m)    { gmu_lut     = m; }
-void  evoca_set_mu_cgenom(float m) { gmu_cgenom  = m; }
+void  evoca_set_mu_egenome(float m) { gmu_egenome  = m; }
 float evoca_get_mu_lut(void)       { return gmu_lut;    }
-float evoca_get_mu_cgenom(void)    { return gmu_cgenom;  }
+float evoca_get_mu_egenome(void)    { return gmu_egenome;  }
 void  evoca_set_restricted_mu(int r) { grestricted_mu = r; }
 int   evoca_get_restricted_mu(void)  { return grestricted_mu; }
 void  evoca_set_tax(float t)      { gtax       = t; }
@@ -522,9 +528,9 @@ void evoca_set_lut(int idx, const uint8_t *lb)
     lut_hash_cache[idx] = h;
 }
 
-void evoca_set_cgenom_all(uint8_t cg) {
-    memset(cgenom, cg, (size_t)gN * gN);
-    cg_init_colors(cg);
+void evoca_set_egenome_all(uint8_t eg) {
+    memset(egenome, eg, (size_t)gN * gN);
+    eg_init_colors(eg);
 }
 
 void evoca_set_f_all(float f)
@@ -536,6 +542,13 @@ void evoca_set_F_all(float F)
 {
     for (size_t i = 0; i < (size_t)gN * gN; i++) F_food[i] = F;
 }
+
+void evoca_set_env_mask(const uint8_t *mask)
+{
+    memcpy(env_mask, mask, (size_t)gN * gN);
+}
+
+uint8_t *evoca_get_env_mask(void) { return env_mask; }
 
 /* ── Internal helpers ───────────────────────────────────────────── */
 
@@ -563,7 +576,7 @@ static int compute_lut_bit(int row, int col)
 }
 
 /* Count matches between actual 5×5 config and fiducial pattern. */
-static int fiducial_matches(int row, int col, uint8_t cg)
+static int fiducial_matches(int row, int col, uint8_t eg)
 {
     int N = gN, matches = 0;
     for (int di = -2; di <= 2; di++) {
@@ -571,7 +584,7 @@ static int fiducial_matches(int row, int col, uint8_t cg)
         for (int dj = -2; dj <= 2; dj++) {
             int c      = ((col + dj) % N + N) % N;
             int orbit  = orbit_map[di+2][dj+2];
-            int fid    = (cg >> orbit) & 1;
+            int fid    = (eg >> orbit) & 1;
             if (v_curr[r * N + c] == fid) matches++;
         }
     }
@@ -614,7 +627,8 @@ void evoca_step(void)
         for (int col = 0; col < N; col++) {
             int idx = row * N + col;
             int bit = compute_lut_bit(row, col);
-            lut_active[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+            if (alive[idx])
+                lut_active[bit >> 3] |= (uint8_t)(1u << (bit & 7));
             v_next[idx] = lut_get(lut + (size_t)idx * LUT_BYTES, bit);
         }
     }
@@ -628,8 +642,9 @@ void evoca_step(void)
                 active_bits[n_active++] = i;
     }
 
-    /* Phase 2: Environmental food regeneration */
+    /* Phase 2: Environmental food regeneration (respects env_mask) */
     for (size_t i = 0; i < cells; i++) {
+        if (!env_mask[i]) continue;
         F_food[i] += gfood_inc;
         if (F_food[i] > 1.0f) F_food[i] = 1.0f;
     }
@@ -641,9 +656,11 @@ void evoca_step(void)
     /* Phase 2c: Tax — decrement private food; death if depleted */
     if (gtax > 0.0f) {
         for (size_t i = 0; i < cells; i++) {
+            if (!alive[i]) continue;
             f_priv[i] -= gtax;
             if (f_priv[i] <= 0.0f) {
                 f_priv[i] = 0.0f;
+                alive[i] = 0;
                 /* Death: zero out LUT genome */
                 memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
                 uint32_t dh = lut_hash_fn(lut + i * LUT_BYTES);
@@ -653,11 +670,12 @@ void evoca_step(void)
         }
     }
 
-    /* Phase 3: Eating */
+    /* Phase 3: Eating (alive cells only) */
     for (int row = 0; row < N; row++) {
         for (int col = 0; col < N; col++) {
             int   idx      = row * N + col;
-            int   matches  = fiducial_matches(row, col, cgenom[idx]);
+            if (!alive[idx]) continue;
+            int   matches  = fiducial_matches(row, col, egenome[idx]);
             float mouthful = (gm_scale / 25.0f) * matches * F_food[idx];
             float headroom = 1.0f - f_priv[idx];
             if (mouthful > headroom) mouthful = headroom;
@@ -666,12 +684,13 @@ void evoca_step(void)
         }
     }
 
-    /* Phase 4: Reproduction */
+    /* Phase 4: Reproduction (alive parents only) */
     memset(births, 0, cells);
     for (int row = 0; row < N; row++) {
         for (int col = 0; col < N; col++) {
             int idx = row * N + col;
-            if (f_priv[idx] < gfood_repro) continue;
+            if (!alive[idx]) continue;
+            if (f_priv[idx] < 1.0f) continue;
 
             /* Reservoir-sample the neighbour with minimum f_priv.
              * Tie-breaking is uniformly random to avoid directional drift. */
@@ -694,6 +713,7 @@ void evoca_step(void)
                 }
             }
             int child = best_r * N + best_c;
+            alive[child] = 1;
 
             /* Record reproduction age and reset timestamps */
             last_event_step[child] = g_step;  /* child just born */
@@ -706,7 +726,7 @@ void evoca_step(void)
 
             memcpy(lut + (size_t)child * LUT_BYTES,
                    lut + (size_t)idx   * LUT_BYTES, LUT_BYTES);
-            cgenom[child] = cgenom[idx];
+            egenome[child] = egenome[idx];
             /* Mutate child's LUT */
             uint8_t *child_lut = lut + (size_t)child * LUT_BYTES;
             int nf;
@@ -720,10 +740,10 @@ void evoca_step(void)
                     lut_flip(child_lut, rng_next() % LUT_BITS);
             }
 
-            /* Mutate child's cgenom */
-            int nc = poisson_sample(gmu_cgenom * 6);
+            /* Mutate child's egenome */
+            int nc = poisson_sample(gmu_egenome * 6);
             for (int f = 0; f < nc; f++)
-                cgenom[child] ^= (uint8_t)(1u << (rng_next() % 6));
+                egenome[child] ^= (uint8_t)(1u << (rng_next() % 6));
 
             /* births: 1 = normal, 2 = mutant */
             births[child] = (nf > 0 || nc > 0) ? 2 : 1;
@@ -760,7 +780,7 @@ void evoca_activity_update(void)
 
     /* Tally alive cells */
     for (size_t i = 0; i < cells; i++) {
-        if (!v_curr[i]) continue;
+        if (!alive[i]) continue;
         act_entry_t *e = act_find_or_insert(lut_hash_cache[i],
                                             (int32_t)lut_color[i]);
         e->pop_count++;
@@ -839,38 +859,38 @@ int evoca_activity_get(uint32_t *keys, uint64_t *activities,
     return n;
 }
 
-/* ── Cgenom activity tracking ──────────────────────────────────── */
+/* ── Egenome activity tracking ──────────────────────────────────── */
 
-void evoca_cg_activity_update(void)
+void evoca_eg_activity_update(void)
 {
     size_t cells = (size_t)gN * gN;
-    memset(cg_pop, 0, sizeof(cg_pop));
+    memset(eg_pop, 0, sizeof(eg_pop));
     for (size_t i = 0; i < cells; i++) {
-        if (!v_curr[i]) continue;
-        uint8_t cg = cgenom[i] & 0x3F;
-        cg_pop[cg]++;
-        cg_act[cg]++;
+        if (!alive[i]) continue;
+        uint8_t eg = egenome[i] & 0x3F;
+        eg_pop[eg]++;
+        eg_act[eg]++;
     }
 }
 
-void evoca_cg_activity_render_col(int32_t *col, int height)
+void evoca_eg_activity_render_col(int32_t *col, int height)
 {
     for (int y = 0; y < height; y++)
         col[y] = (int32_t)0xFF111111u;
 
-    uint64_t ymax = (uint64_t)cg_act_ymax;
+    uint64_t ymax = (uint64_t)eg_act_ymax;
 
     uint32_t ypop[height];
     memset(ypop, 0, (size_t)height * sizeof(uint32_t));
 
-    /* Pass 1: extinct cgenoms — dimmed */
-    for (int i = 0; i < CGENOM_COUNT; i++) {
-        if (cg_act[i] == 0 || cg_pop[i] > 0) continue;
-        uint64_t act = cg_act[i];
+    /* Pass 1: extinct egenomes — dimmed */
+    for (int i = 0; i < EGENOME_COUNT; i++) {
+        if (eg_act[i] == 0 || eg_pop[i] > 0) continue;
+        uint64_t act = eg_act[i];
         int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
         if (y < 0) y = 0;
         if (y >= height) y = height - 1;
-        uint32_t c = (uint32_t)cg_color[i];
+        uint32_t c = (uint32_t)eg_color[i];
         uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
         uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
         uint8_t b = (uint8_t)(( c        & 0xFF) * 15 / 100);
@@ -878,33 +898,33 @@ void evoca_cg_activity_render_col(int32_t *col, int height)
                            | ((uint32_t)g << 8) | b);
     }
 
-    /* Pass 2: alive cgenoms — full color, higher pop wins */
-    for (int i = 0; i < CGENOM_COUNT; i++) {
-        if (cg_pop[i] == 0) continue;
-        uint64_t act = cg_act[i];
+    /* Pass 2: alive egenomes — full color, higher pop wins */
+    for (int i = 0; i < EGENOME_COUNT; i++) {
+        if (eg_pop[i] == 0) continue;
+        uint64_t act = eg_act[i];
         int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
         if (y < 0) y = 0;
         if (y >= height) y = height - 1;
-        if (cg_pop[i] >= ypop[y]) {
-            col[y] = cg_color[i];
-            ypop[y] = cg_pop[i];
+        if (eg_pop[i] >= ypop[y]) {
+            col[y] = eg_color[i];
+            ypop[y] = eg_pop[i];
         }
     }
 }
 
-int evoca_cg_activity_get(uint64_t *activities, uint32_t *pop_counts,
+int evoca_eg_activity_get(uint64_t *activities, uint32_t *pop_counts,
                           int32_t *colors)
 {
-    for (int i = 0; i < CGENOM_COUNT; i++) {
-        activities[i] = cg_act[i];
-        pop_counts[i] = cg_pop[i];
-        colors[i]     = cg_color[i];
+    for (int i = 0; i < EGENOME_COUNT; i++) {
+        activities[i] = eg_act[i];
+        pop_counts[i] = eg_pop[i];
+        colors[i]     = eg_color[i];
     }
-    return CGENOM_COUNT;
+    return EGENOME_COUNT;
 }
 
-void evoca_set_cg_act_ymax(int y) { cg_act_ymax = y > 1 ? y : 1; }
-int  evoca_get_cg_act_ymax(void)  { return cg_act_ymax; }
+void evoca_set_eg_act_ymax(int y) { eg_act_ymax = y > 1 ? y : 1; }
+int  evoca_get_eg_act_ymax(void)  { return eg_act_ymax; }
 
 /* ── LUT complexity classification ─────────────────────────────── */
 
@@ -939,7 +959,7 @@ void evoca_lut_complexity_counts(uint32_t *counts)
     counts[0] = counts[1] = counts[2] = 0;
     size_t cells = (size_t)gN * gN;
     for (size_t i = 0; i < cells; i++) {
-        if (!v_curr[i]) continue;
+        if (!alive[i]) continue;
         int lvl = lut_complexity(lut + i * LUT_BYTES);
         counts[lvl - 1]++;
     }
@@ -978,39 +998,51 @@ void evoca_colorize(int32_t *pixels, int colormode)
     size_t cells = (size_t)gN * gN;
     switch (colormode) {
         case 0:
-            for (size_t i = 0; i < cells; i++)
-                pixels[i] = v_curr[i] ? (int32_t)lut_color[i]
-                                      : (int32_t)0xFF000000;
+            for (size_t i = 0; i < cells; i++) {
+                if (!alive[i])
+                    pixels[i] = (int32_t)0xFF000000;
+                else if (v_curr[i])
+                    pixels[i] = (int32_t)lut_color[i];
+                else
+                    pixels[i] = (int32_t)0xFF111111;  /* alive, v=0: very dark grey */
+            }
             break;
         case 1:
             for (size_t i = 0; i < cells; i++) {
                 float fv = F_food[i]; if (fv > 1.0f) fv = 1.0f;
                 uint8_t g = (uint8_t)(fv * 255.0f);
-                uint8_t r = v_curr[i] ? 180 : 0;
+                uint8_t r = alive[i] ? 180 : 0;
                 pixels[i] = (int32_t)(0xFF000000u
                              | ((uint32_t)r << 16) | ((uint32_t)g << 8));
             }
             break;
         case 2:
             for (size_t i = 0; i < cells; i++) {
-                float fv = f_priv[i]; if (fv > 1.0f) fv = 1.0f;
-                uint8_t b = (uint8_t)(fv * 255.0f);
-                uint8_t r = v_curr[i] ? 180 : 0;
-                pixels[i] = (int32_t)(0xFF000000u
-                             | ((uint32_t)r << 16) | (uint32_t)b);
+                if (!alive[i]) {
+                    pixels[i] = (int32_t)0xFF000000;
+                } else {
+                    float fv = f_priv[i]; if (fv > 1.0f) fv = 1.0f;
+                    uint8_t b = (uint8_t)(fv * 255.0f);
+                    uint8_t r = v_curr[i] ? 180 : 0;
+                    pixels[i] = (int32_t)(0xFF000000u
+                                 | ((uint32_t)r << 16) | (uint32_t)b);
+                }
             }
             break;
         case 3:
             for (size_t i = 0; i < cells; i++) {
-                if (births[i] == 2)       /* mutant birth: bright magenta */
+                if (!alive[i]) {
+                    pixels[i] = (int32_t)0xFF000000;
+                } else if (births[i] == 2) {   /* mutant birth: bright magenta */
                     pixels[i] = v_curr[i] ? (int32_t)0xFFFF00FFu
                                           : (int32_t)0xFF800080u;
-                else if (births[i] == 1)  /* normal birth: yellow */
+                } else if (births[i] == 1) {   /* normal birth: yellow */
                     pixels[i] = v_curr[i] ? (int32_t)0xFFFFFF00u
                                           : (int32_t)0xFF808000u;
-                else
+                } else {
                     pixels[i] = v_curr[i] ? (int32_t)0xFF444444u
-                                          : (int32_t)0xFF000000u;
+                                          : (int32_t)0xFF222222u;
+                }
             }
             break;
         default:
@@ -1024,9 +1056,10 @@ void evoca_colorize(int32_t *pixels, int colormode)
 uint8_t *evoca_get_v(void)      { return v_curr; }
 float   *evoca_get_F(void)      { return F_food; }
 float   *evoca_get_f(void)      { return f_priv; }
-uint8_t *evoca_get_cgenom(void) { return cgenom; }
+uint8_t *evoca_get_egenome(void) { return egenome; }
 uint8_t *evoca_get_lut(void)    { return lut;    }
 uint8_t *evoca_get_births(void) { return births; }
+uint8_t *evoca_get_alive(void)  { return alive;  }
 int      evoca_get_N(void)      { return gN;     }
 int      evoca_get_cell_px(void) { return CELL_PX; }
 void     evoca_set_act_ymax(int y) { act_ymax = y > 1 ? y : 1; }
@@ -1037,3 +1070,95 @@ uint32_t evoca_get_step(void)            { return g_step; }
 void     evoca_set_repro_age_t0(uint32_t t) { repro_age_t0 = t; }
 uint32_t evoca_get_repro_age_t0(void)       { return repro_age_t0; }
 void     evoca_reset_repro_age_hist(void)   { memset(repro_age_hist, 0, sizeof(repro_age_hist)); }
+
+/* ── Alive data plane ──────────────────────────────────────────── */
+
+void evoca_set_alive(const uint8_t *arr)
+{
+    size_t cells = (size_t)gN * gN;
+    memcpy(alive, arr, cells);
+    /* Zero dead cells' data */
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) {
+            v_curr[i] = 0;
+            f_priv[i] = 0.0f;
+            memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
+            uint32_t dh = lut_hash_fn(lut + i * LUT_BYTES);
+            lut_color[i] = (uint32_t)hash_to_color(dh, wt_hash);
+            lut_hash_cache[i] = dh;
+        }
+    }
+}
+
+void evoca_set_alive_all(void)
+{
+    memset(alive, 1, (size_t)gN * gN);
+}
+
+void evoca_set_alive_fraction(float frac)
+{
+    size_t cells = (size_t)gN * gN;
+    for (size_t i = 0; i < cells; i++)
+        alive[i] = (rng_next() < (uint32_t)(frac * 4294967295.0f)) ? 1 : 0;
+    /* Zero dead cells' data */
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) {
+            v_curr[i] = 0;
+            f_priv[i] = 0.0f;
+            memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
+            uint32_t dh = lut_hash_fn(lut + i * LUT_BYTES);
+            lut_color[i] = (uint32_t)hash_to_color(dh, wt_hash);
+            lut_hash_cache[i] = dh;
+        }
+    }
+}
+
+void evoca_set_alive_patch(int radius)
+{
+    int N = gN;
+    int cx = N / 2, cy = N / 2;
+    size_t cells = (size_t)N * N;
+    memset(alive, 0, cells);
+    for (int r = cy - radius; r < cy + radius; r++) {
+        int rr = ((r % N) + N) % N;
+        for (int c = cx - radius; c < cx + radius; c++) {
+            int cc = ((c % N) + N) % N;
+            alive[rr * N + cc] = 1;
+        }
+    }
+    /* Zero dead cells' data */
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) {
+            v_curr[i] = 0;
+            f_priv[i] = 0.0f;
+            memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
+            uint32_t dh = lut_hash_fn(lut + i * LUT_BYTES);
+            lut_color[i] = (uint32_t)hash_to_color(dh, wt_hash);
+            lut_hash_cache[i] = dh;
+        }
+    }
+}
+
+void evoca_set_alive_halfplane(int axis)
+{
+    int N = gN;
+    size_t cells = (size_t)N * N;
+    memset(alive, 0, cells);
+    for (int r = 0; r < N; r++) {
+        for (int c = 0; c < N; c++) {
+            int keep = (axis == 0) ? (c < N / 2) : (r < N / 2);
+            if (keep) alive[r * N + c] = 1;
+        }
+    }
+    /* Zero dead cells' data */
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) {
+            v_curr[i] = 0;
+            f_priv[i] = 0.0f;
+            memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
+            uint32_t dh = lut_hash_fn(lut + i * LUT_BYTES);
+            lut_color[i] = (uint32_t)hash_to_color(dh, wt_hash);
+            lut_hash_cache[i] = dh;
+        }
+    }
+}

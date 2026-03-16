@@ -33,7 +33,7 @@ def lut_bit_index(v_x, n1, n2, n3):
 
 
 # D4-symmetric orbit map for the 5×5 fiducial pattern.
-# 6 independent orbits (bits 0–5 of cgenom).
+# 6 independent orbits (bits 0-5 of egenome).
 ORBIT_MAP = np.array([
     [4, 5, 2, 5, 4],
     [5, 3, 1, 3, 5],
@@ -43,9 +43,9 @@ ORBIT_MAP = np.array([
 ], dtype=np.uint8)
 
 
-def cgenom_to_pattern(cg):
-    """Expand a 6-bit cgenom value to a 5×5 binary numpy array."""
-    return ((cg >> ORBIT_MAP) & 1).astype(np.uint8)
+def egenome_to_pattern(eg):
+    """Expand a 6-bit egenome value to a 5×5 binary numpy array."""
+    return ((eg >> ORBIT_MAP) & 1).astype(np.uint8)
 
 
 def _find_lib():
@@ -67,20 +67,20 @@ class EvoCA:
         self._N          = 0
         self.food_inc    = 0.0
         self.m_scale     = 0.0
-        self.food_repro  = 0.5
         self.gdiff       = 0
         self.mu_lut      = 0.0
-        self.mu_cgenom   = 0.0
+        self.mu_egenome   = 0.0
         self.tax         = 0.0
         self.restricted_mu = 0
         self._n_ent      = 2
-        self.cgenom      = 0
+        self.egenome      = 0
+        self._recipe     = {}
         self._setup_signatures()
 
     def _setup_signatures(self):
         L = self._lib
         L.evoca_init.argtypes           = [ctypes.c_int, ctypes.c_float,
-                                            ctypes.c_float, ctypes.c_float]
+                                            ctypes.c_float]
         L.evoca_init.restype            = None
         L.evoca_free.argtypes           = []
         L.evoca_free.restype            = None
@@ -88,20 +88,18 @@ class EvoCA:
         L.evoca_set_food_inc.restype    = None
         L.evoca_set_m_scale.argtypes    = [ctypes.c_float]
         L.evoca_set_m_scale.restype     = None
-        L.evoca_set_food_repro.argtypes = [ctypes.c_float]
-        L.evoca_set_food_repro.restype  = None
         L.evoca_set_gdiff.argtypes      = [ctypes.c_int]
         L.evoca_set_gdiff.restype       = None
         L.evoca_get_gdiff.argtypes      = []
         L.evoca_get_gdiff.restype       = ctypes.c_int
         L.evoca_set_mu_lut.argtypes     = [ctypes.c_float]
         L.evoca_set_mu_lut.restype      = None
-        L.evoca_set_mu_cgenom.argtypes  = [ctypes.c_float]
-        L.evoca_set_mu_cgenom.restype   = None
+        L.evoca_set_mu_egenome.argtypes  = [ctypes.c_float]
+        L.evoca_set_mu_egenome.restype   = None
         L.evoca_get_mu_lut.argtypes     = []
         L.evoca_get_mu_lut.restype      = ctypes.c_float
-        L.evoca_get_mu_cgenom.argtypes  = []
-        L.evoca_get_mu_cgenom.restype   = ctypes.c_float
+        L.evoca_get_mu_egenome.argtypes  = []
+        L.evoca_get_mu_egenome.restype   = ctypes.c_float
         L.evoca_set_tax.argtypes        = [ctypes.c_float]
         L.evoca_set_tax.restype         = None
         L.evoca_get_tax.argtypes        = []
@@ -122,12 +120,29 @@ class EvoCA:
         L.evoca_set_lut.argtypes        = [ctypes.c_int,
                                             ctypes.POINTER(ctypes.c_uint8)]
         L.evoca_set_lut.restype         = None
-        L.evoca_set_cgenom_all.argtypes = [ctypes.c_uint8]
-        L.evoca_set_cgenom_all.restype  = None
+        L.evoca_set_egenome_all.argtypes = [ctypes.c_uint8]
+        L.evoca_set_egenome_all.restype  = None
         L.evoca_set_f_all.argtypes      = [ctypes.c_float]
         L.evoca_set_f_all.restype       = None
         L.evoca_set_F_all.argtypes      = [ctypes.c_float]
         L.evoca_set_F_all.restype       = None
+        L.evoca_set_env_mask.argtypes   = [ctypes.POINTER(ctypes.c_uint8)]
+        L.evoca_set_env_mask.restype    = None
+        L.evoca_get_env_mask.argtypes   = []
+        L.evoca_get_env_mask.restype    = ctypes.POINTER(ctypes.c_uint8)
+        # Alive data plane
+        L.evoca_set_alive.argtypes      = [ctypes.POINTER(ctypes.c_uint8)]
+        L.evoca_set_alive.restype       = None
+        L.evoca_get_alive.argtypes      = []
+        L.evoca_get_alive.restype       = ctypes.POINTER(ctypes.c_uint8)
+        L.evoca_set_alive_all.argtypes  = []
+        L.evoca_set_alive_all.restype   = None
+        L.evoca_set_alive_fraction.argtypes = [ctypes.c_float]
+        L.evoca_set_alive_fraction.restype  = None
+        L.evoca_set_alive_patch.argtypes    = [ctypes.c_int]
+        L.evoca_set_alive_patch.restype     = None
+        L.evoca_set_alive_halfplane.argtypes = [ctypes.c_int]
+        L.evoca_set_alive_halfplane.restype  = None
         L.evoca_step.argtypes           = []
         L.evoca_step.restype            = None
         L.evoca_colorize.argtypes       = [ctypes.POINTER(ctypes.c_int32),
@@ -139,8 +154,8 @@ class EvoCA:
         L.evoca_get_F.restype           = ctypes.POINTER(ctypes.c_float)
         L.evoca_get_f.argtypes          = []
         L.evoca_get_f.restype           = ctypes.POINTER(ctypes.c_float)
-        L.evoca_get_cgenom.argtypes     = []
-        L.evoca_get_cgenom.restype      = ctypes.POINTER(ctypes.c_uint8)
+        L.evoca_get_egenome.argtypes     = []
+        L.evoca_get_egenome.restype      = ctypes.POINTER(ctypes.c_uint8)
         L.evoca_get_lut.argtypes        = []
         L.evoca_get_lut.restype         = ctypes.POINTER(ctypes.c_uint8)
         L.evoca_get_births.argtypes     = []
@@ -177,21 +192,21 @@ class EvoCA:
             ctypes.POINTER(ctypes.c_int32),
             ctypes.c_int]
         L.evoca_activity_get.restype    = ctypes.c_int
-        # Cgenom activity
-        L.evoca_cg_activity_update.argtypes  = []
-        L.evoca_cg_activity_update.restype   = None
-        L.evoca_cg_activity_render_col.argtypes = [
+        # Egenome activity
+        L.evoca_eg_activity_update.argtypes  = []
+        L.evoca_eg_activity_update.restype   = None
+        L.evoca_eg_activity_render_col.argtypes = [
             ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
-        L.evoca_cg_activity_render_col.restype  = None
-        L.evoca_cg_activity_get.argtypes = [
+        L.evoca_eg_activity_render_col.restype  = None
+        L.evoca_eg_activity_get.argtypes = [
             ctypes.POINTER(ctypes.c_uint64),
             ctypes.POINTER(ctypes.c_uint32),
             ctypes.POINTER(ctypes.c_int32)]
-        L.evoca_cg_activity_get.restype  = ctypes.c_int
-        L.evoca_set_cg_act_ymax.argtypes = [ctypes.c_int]
-        L.evoca_set_cg_act_ymax.restype  = None
-        L.evoca_get_cg_act_ymax.argtypes = []
-        L.evoca_get_cg_act_ymax.restype  = ctypes.c_int
+        L.evoca_eg_activity_get.restype  = ctypes.c_int
+        L.evoca_set_eg_act_ymax.argtypes = [ctypes.c_int]
+        L.evoca_set_eg_act_ymax.restype  = None
+        L.evoca_get_eg_act_ymax.argtypes = []
+        L.evoca_get_eg_act_ymax.restype  = ctypes.c_int
         # LUT complexity
         L.evoca_lut_complexity_counts.argtypes = [
             ctypes.POINTER(ctypes.c_uint32)]
@@ -218,8 +233,8 @@ class EvoCA:
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 
-    def init(self, N, food_inc=0.0, m_scale=1.0, food_repro=0.5, gdiff=0,
-             mu_lut=0.0, mu_cgenom=0.0, tax=0.0, restricted_mu=0, n_ent=2):
+    def init(self, N, food_inc=0.0, m_scale=1.0, gdiff=0,
+             mu_lut=0.0, mu_egenome=0.0, tax=0.0, restricted_mu=0, n_ent=2):
         stop = getattr(self, '_stop_display', None)
         if stop is not None:
             stop()
@@ -227,17 +242,16 @@ class EvoCA:
         self._N         = N
         self.food_inc   = float(food_inc)
         self.m_scale    = float(m_scale)
-        self.food_repro = float(food_repro)
         self.gdiff      = int(gdiff)
         self.mu_lut     = float(mu_lut)
-        self.mu_cgenom  = float(mu_cgenom)
+        self.mu_egenome  = float(mu_egenome)
         self.tax        = float(tax)
         self.restricted_mu = int(restricted_mu)
         self._n_ent     = int(n_ent)
-        self._lib.evoca_init(N, self.food_inc, self.m_scale, self.food_repro)
+        self._lib.evoca_init(N, self.food_inc, self.m_scale)
         self._lib.evoca_set_gdiff(self.gdiff)
         self._lib.evoca_set_mu_lut(self.mu_lut)
-        self._lib.evoca_set_mu_cgenom(self.mu_cgenom)
+        self._lib.evoca_set_mu_egenome(self.mu_egenome)
         self._lib.evoca_set_tax(self.tax)
         self._lib.evoca_set_restricted_mu(self.restricted_mu)
         self._lib.evoca_set_n_ent(self._n_ent)
@@ -267,10 +281,6 @@ class EvoCA:
         self.m_scale = float(m)
         self._lib.evoca_set_m_scale(self.m_scale)
 
-    def update_food_repro(self, r):
-        self.food_repro = float(r)
-        self._lib.evoca_set_food_repro(self.food_repro)
-
     def update_gdiff(self, d):
         self.gdiff = int(d)
         self._lib.evoca_set_gdiff(self.gdiff)
@@ -279,9 +289,9 @@ class EvoCA:
         self.mu_lut = float(m)
         self._lib.evoca_set_mu_lut(self.mu_lut)
 
-    def update_mu_cgenom(self, m):
-        self.mu_cgenom = float(m)
-        self._lib.evoca_set_mu_cgenom(self.mu_cgenom)
+    def update_mu_egenome(self, m):
+        self.mu_egenome = float(m)
+        self._lib.evoca_set_mu_egenome(self.mu_egenome)
 
     def update_tax(self, t):
         self.tax = float(t)
@@ -294,24 +304,24 @@ class EvoCA:
     def update_act_ymax(self, y):
         self._lib.evoca_set_act_ymax(int(y))
 
-    def update_cg_act_ymax(self, y):
-        self._lib.evoca_set_cg_act_ymax(int(y))
+    def update_eg_act_ymax(self, y):
+        self._lib.evoca_set_eg_act_ymax(int(y))
 
     def update_pat_act_ymax(self, y):
         self._lib.evoca_set_pat_act_ymax(int(y))
 
     # ── Params export ─────────────────────────────────────────────────
 
-    _DEFAULTS = dict(food_inc=0.0, m_scale=1.0, food_repro=0.5,
-                      gdiff=0, mu_lut=0.0, mu_cgenom=0.0, tax=0.0,
+    _DEFAULTS = dict(food_inc=0.0, m_scale=1.0,
+                      gdiff=0, mu_lut=0.0, mu_egenome=0.0, tax=0.0,
                       restricted_mu=0)
 
     def params(self):
         """Return current metaparameters as a dict suitable for init(**d)."""
         return dict(N=self._N, food_inc=self.food_inc, m_scale=self.m_scale,
-                    food_repro=self.food_repro, gdiff=self.gdiff,
-                    mu_lut=self.mu_lut, mu_cgenom=self.mu_cgenom,
-                    tax=self.tax, restricted_mu=self.restricted_mu)
+                    gdiff=self.gdiff, mu_lut=self.mu_lut,
+                    mu_egenome=self.mu_egenome, tax=self.tax,
+                    restricted_mu=self.restricted_mu)
 
     def params_str(self):
         """Return a copy-pasteable sim.init(...) call with defaults annotated."""
@@ -328,16 +338,20 @@ class EvoCA:
 
     # ── Grid setters ──────────────────────────────────────────────────
 
-    def set_v(self, v_array):
+    def set_v(self, v_array, density=None):
         arr = np.ascontiguousarray(v_array.ravel(), dtype=np.uint8)
         self._lib.evoca_set_v_all(
             arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)), len(arr))
+        self._recipe['v_method'] = 'random'
+        self._recipe['v_density'] = float(density) if density is not None else float(arr.mean())
 
     def set_lut_all(self, lut_bytes):
         arr = np.ascontiguousarray(lut_bytes, dtype=np.uint8)
         assert len(arr) == LUT_BYTES, f"need {LUT_BYTES} bytes, got {len(arr)}"
         self._lib.evoca_set_lut_all(
             arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+        self._recipe['lut_method'] = 'gol'
+        self._recipe['lut_n_init'] = None
 
     def set_lut(self, idx, lut_bytes):
         arr = np.ascontiguousarray(lut_bytes, dtype=np.uint8)
@@ -345,17 +359,21 @@ class EvoCA:
         self._lib.evoca_set_lut(
             int(idx), arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
 
-    def set_cgenom_all(self, cg):
-        self.cgenom = int(cg) & 0x3F
-        self._lib.evoca_set_cgenom_all(self.cgenom)
+    def set_egenome_all(self, eg):
+        self.egenome = int(eg) & 0x3F
+        self._lib.evoca_set_egenome_all(self.egenome)
+        self._recipe['egenome_method'] = 'uniform'
+        self._recipe['egenome_value'] = self.egenome
 
-    def set_cgenom_random(self):
-        """Set each cell's cgenom to a random value in [0, 63].
-        No wild-type: all 64 cgenoms get distinct hash-based colors."""
-        self._lib.evoca_set_cgenom_all(0xFF)   # wt=0xFF → no match → all colored
-        ptr = self._lib.evoca_get_cgenom()
+    def set_egenome_random(self):
+        """Set each cell's egenome to a random value in [0, 63].
+        No wild-type: all 64 egenomes get distinct hash-based colors."""
+        self._lib.evoca_set_egenome_all(0xFF)   # wt=0xFF → no match → all colored
+        ptr = self._lib.evoca_get_egenome()
         arr = np.ctypeslib.as_array(ptr, shape=(self._N * self._N,))
         arr[:] = np.random.randint(0, 64, self._N * self._N, dtype=np.uint8)
+        self._recipe['egenome_method'] = 'random'
+        self._recipe['egenome_value'] = None
 
     def set_lut_random(self, n_init=3):
         """Set each cell's LUT to an independent random rule.
@@ -389,18 +407,87 @@ class EvoCA:
         packed = np.ascontiguousarray(packed)
         for i in range(N2):
             self.set_lut(i, packed[i])
+        self._recipe['lut_method'] = 'random'
+        self._recipe['lut_n_init'] = n_init
 
     def set_f_all(self, f):
         self._lib.evoca_set_f_all(float(f))
+        self._recipe['f_init'] = float(f)
 
     def set_F_all(self, F):
         self._lib.evoca_set_F_all(float(F))
+        self._recipe['F_method'] = 'uniform'
+        self._recipe['F_init'] = float(F)
+        self._recipe.pop('F_range', None)
 
     def set_F_random(self, lo=0.0, hi=1.0):
         """Set env food F(x) to uniform random values in [lo, hi]."""
         ptr = self._lib.evoca_get_F()
         arr = np.ctypeslib.as_array(ptr, shape=(self._N * self._N,))
         arr[:] = np.random.uniform(lo, hi, self._N * self._N).astype(np.float32)
+        self._recipe['F_method'] = 'random'
+        self._recipe['F_init'] = None
+        self._recipe['F_range'] = [float(lo), float(hi)]
+
+    def set_env_mask(self, mask):
+        """Set the environment food-regeneration mask.
+        mask: (N,N) or flat uint8 array. 1=regenerate, 0=no regen."""
+        arr = np.ascontiguousarray(np.asarray(mask, dtype=np.uint8).ravel())
+        assert len(arr) == self._N * self._N
+        self._lib.evoca_set_env_mask(
+            arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+
+    def get_env_mask(self):
+        """Return (N, N) uint8 array of environment mask (copy)."""
+        ptr = self._lib.evoca_get_env_mask()
+        return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)) \
+                 .copy().reshape(self._N, self._N)
+
+    # ── Alive data plane ──────────────────────────────────────────────
+
+    def set_alive(self, arr):
+        """Set alive array. arr: (N,N) or flat uint8. Dead cells' data is zeroed."""
+        a = np.ascontiguousarray(np.asarray(arr, dtype=np.uint8).ravel())
+        assert len(a) == self._N * self._N
+        self._lib.evoca_set_alive(
+            a.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+
+    def get_alive(self):
+        """Return (N, N) uint8 copy of alive array."""
+        ptr = self._lib.evoca_get_alive()
+        return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)) \
+                 .copy().reshape(self._N, self._N)
+
+    def set_alive_all(self):
+        """Set all cells alive."""
+        self._lib.evoca_set_alive_all()
+        self._recipe['alive_method'] = 'all'
+        for k in ('alive_fraction', 'alive_radius', 'alive_axis'):
+            self._recipe.pop(k, None)
+
+    def set_alive_fraction(self, frac):
+        """Set a random fraction of cells alive; dead cells' data is zeroed."""
+        self._lib.evoca_set_alive_fraction(float(frac))
+        self._recipe['alive_method'] = 'fraction'
+        self._recipe['alive_fraction'] = float(frac)
+        for k in ('alive_radius', 'alive_axis'):
+            self._recipe.pop(k, None)
+
+    def set_alive_patch(self, radius):
+        """Set a square patch of radius cells at center alive; rest dead."""
+        self._lib.evoca_set_alive_patch(int(radius))
+        self._recipe['alive_method'] = 'patch'
+        self._recipe['alive_radius'] = int(radius)
+        for k in ('alive_fraction', 'alive_axis'):
+            self._recipe.pop(k, None)
+
+    def set_alive_halfplane(self, axis=0):
+        """Set half the grid alive. axis=0: left half, axis=1: top half."""
+        self._lib.evoca_set_alive_halfplane(int(axis))
+        self._recipe['alive_method'] = 'halfplane'
+        self._recipe['alive_axis'] = int(axis)
+        for k in ('alive_fraction', 'alive_radius'):
+            self._recipe.pop(k, None)
 
     # ── Step and colorize ─────────────────────────────────────────────
 
@@ -432,9 +519,9 @@ class EvoCA:
         return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)) \
                  .copy().reshape(self._N, self._N)
 
-    def get_cgenom(self):
+    def get_egenome(self):
         """Return (N, N) uint8 array of fiducial genomes (6-bit values)."""
-        ptr = self._lib.evoca_get_cgenom()
+        ptr = self._lib.evoca_get_egenome()
         return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)) \
                  .copy().reshape(self._N, self._N)
 
@@ -476,12 +563,12 @@ class EvoCA:
         """Return the current global step counter."""
         return int(self._lib.evoca_get_step())
 
-    def get_cg_activity(self):
-        """Return cgenom activity table as dict of arrays (64 entries)."""
+    def get_eg_activity(self):
+        """Return egenome activity table as dict of arrays (64 entries)."""
         acts = np.zeros(64, dtype=np.uint64)
         pops = np.zeros(64, dtype=np.uint32)
         cols = np.zeros(64, dtype=np.int32)
-        self._lib.evoca_cg_activity_get(
+        self._lib.evoca_eg_activity_get(
             acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
             pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
             cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
@@ -506,6 +593,49 @@ class EvoCA:
         return {'hash': keys[:n], 'activity': acts[:n],
                 'pop_count': pops[:n], 'color': cols[:n]}
 
+    # ── Recipe export ────────────────────────────────────────────────
+
+    def export_recipe(self, descriptor, probes=None, colormode=0):
+        """Export current initialization recipe to Runs/<date>_<descriptor>.evoca.
+
+        Returns the filepath written.
+        """
+        import json, os
+        from datetime import datetime
+
+        runs_dir = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), 'Runs')
+        os.makedirs(runs_dir, exist_ok=True)
+
+        safe_desc = descriptor.replace(' ', '_')
+        filename = f"{datetime.now().strftime('%Y-%m-%d')}_{safe_desc}.evoca"
+        filepath = os.path.join(runs_dir, filename)
+
+        recipe = {
+            'version': 1,
+            'created': datetime.now().isoformat(timespec='seconds'),
+            'descriptor': descriptor,
+            'N': self._N,
+            'metaparams': {
+                'food_inc': self.food_inc,
+                'm_scale': self.m_scale,
+                'gdiff': self.gdiff,
+                'mu_lut': self.mu_lut,
+                'mu_egenome': self.mu_egenome,
+                'tax': self.tax,
+                'restricted_mu': self.restricted_mu,
+            },
+            'initialization': dict(self._recipe),
+            'display': {
+                'colormode': colormode,
+                'probes': probes or {},
+            },
+        }
+
+        with open(filepath, 'w') as f:
+            json.dump(recipe, f, indent=2)
+        return filepath
+
     @property
     def N(self):
         return self._N
@@ -517,6 +647,78 @@ class EvoCA:
     @property
     def cell_px(self):
         return self._lib.evoca_get_cell_px()
+
+
+# ── Recipe import ─────────────────────────────────────────────────────
+
+def import_run(filepath, lib_path=None):
+    """Load a .evoca recipe file and return (sim, display_kwargs).
+
+    Usage:
+        sim, kw = import_run('Runs/2026-03-15_my_run.evoca')
+        run_with_controls(sim, **kw)
+    """
+    import json
+
+    with open(filepath) as f:
+        recipe = json.load(f)
+
+    sim = EvoCA(lib_path=lib_path)
+    mp = recipe['metaparams']
+    sim.init(recipe['N'], **mp)
+
+    init = recipe.get('initialization', {})
+
+    # LUT
+    lut_method = init.get('lut_method', 'gol')
+    if lut_method == 'random':
+        sim.set_lut_random(n_init=init.get('lut_n_init', 3))
+    else:
+        sim.set_lut_all(make_gol_lut())
+
+    # Egenome
+    eg_method = init.get('egenome_method', 'uniform')
+    if eg_method == 'random':
+        sim.set_egenome_random()
+    else:
+        sim.set_egenome_all(init.get('egenome_value', 0))
+
+    # v(x) — random with given density
+    v_density = init.get('v_density', 0.5)
+    N = recipe['N']
+    sim.set_v(np.random.default_rng().integers(
+        0, 2, (N, N), dtype=np.uint8), density=v_density)
+
+    # Private food
+    sim.set_f_all(init.get('f_init', 0.0))
+
+    # Environmental food
+    F_method = init.get('F_method', 'uniform')
+    if F_method == 'random':
+        lo, hi = init.get('F_range', [0.0, 1.0])
+        sim.set_F_random(lo, hi)
+    else:
+        sim.set_F_all(init.get('F_init', 0.0))
+
+    # Alive (must come after LUT/egenome setters)
+    alive_method = init.get('alive_method', 'all')
+    if alive_method == 'fraction':
+        sim.set_alive_fraction(init.get('alive_fraction', 0.5))
+    elif alive_method == 'patch':
+        sim.set_alive_patch(init.get('alive_radius', 64))
+    elif alive_method == 'halfplane':
+        sim.set_alive_halfplane(init.get('alive_axis', 0))
+    # 'all' is the default — no call needed
+
+    # Build display kwargs
+    disp = recipe.get('display', {})
+    display_kwargs = {}
+    if disp.get('colormode', 0) != 0:
+        display_kwargs['colormode'] = disp['colormode']
+    if disp.get('probes'):
+        display_kwargs['probes'] = disp['probes']
+
+    return sim, display_kwargs
 
 
 # ── LUT construction helpers ───────────────────────────────────────────

@@ -1,8 +1,6 @@
 # EvoCA Model Reference
 
-Evolutionary Cellular Automata: a binary 2D CA where every cell carries a
-genome governing its local rule and eating behavior, with continuous food
-resources and reproduction.
+Evolutionary Cellular Automata: a spatially inhomogeneous binary 2D CA where every cell is regarded as an organism, carrying a genome governing its local rule.  There is a resource field (food) modeled as a spatial field over a lattice the same size as the CA lattice.  Each organism at each lattice site can interact with the food field by eating a mouthful of food, transferring a bit of food from the food field to the organism's private stash of food.  The eating algorithm is controlled by a local pattern match using an additional piece of genetic data carried by each organism.  Every time step, the organism is taxed; its private food stash is diminished by a fixed amount.  The survival of an organism is a competition between the tax and the ability of the organism to evolve a rule genome and an eating genome to get more food than is lost by the tax.  If an organism's food stash reaches 1.0, it reproduces with genetic mutation; the offspring replaces the neighbor with the least food.
 
 ## Table of Contents
 
@@ -10,7 +8,7 @@ resources and reproduction.
 - [Global Metaparameters](#global-metaparameters)
 - [Restricted Mutation](#restricted-mutation)
 - [LUT Indexing (Per-Ring Counts)](#lut-indexing-per-ring-counts)
-- [Fiducial Pattern c(x) and cgenom](#fiducial-pattern-cx-and-cgenom)
+- [Fiducial Pattern c(x) and egenome](#fiducial-pattern-cx-and-egenome)
 - [Time Step Phases](#time-step-phases)
 - [Visualization (Color Modes)](#visualization-color-modes)
 - [Python API](#python-api)
@@ -31,11 +29,17 @@ Every cell at position **x** carries:
 
 | Field       | Type    | Description                                     |
 |-------------|---------|-------------------------------------------------|
-| `v(x)`      | uint8   | Binary cell state: 0 (dead) or 1 (alive)        |
+| `alive(x)`  | uint8   | 1 = alive organism, 0 = dead (empty) slot        |
+| `v(x)`      | uint8   | Binary CA state (0 or 1) — not life/death        |
 | `lut(x)`    | 32 B    | Bit-packed rule LUT (250 bits)                   |
-| `cgenom(x)` | uint8   | 6-bit fiducial configuration genome (D4-symmetric) |
+| `egenome(x)` | uint8   | 6-bit fiducial configuration genome (D4-symmetric) |
 | `f(x)`      | float   | Private food store, clamped to [0, 1]            |
 | `F(x)`      | float   | Environmental food at this location, clamped to [0, 1] |
+
+**Alive vs. CA state**: `alive(x)` tracks whether an organism occupies the
+cell. `v(x)` is the binary CA state used by the LUT rule — it is *not*
+life/death. Dead cells (`alive=0`) have zeroed LUT, `v=0`, `f=0`, and do
+not eat or reproduce. Reproduction is the only way a dead cell becomes alive.
 
 ---
 
@@ -47,10 +51,9 @@ All metaparameters can be set at init or adjusted at runtime via sliders.
 |-----------------|-------|---------|----------------|------------------------------------------------------|
 | `food_inc`      | float | 0.0     | [0, 0.5]       | Environmental food added per cell per step            |
 | `m_scale`       | float | 1.0     | [0, 10]        | Mouthful scale factor for eating                      |
-| `food_repro`    | float | 0.5     | [0, 2]         | Private food threshold triggering reproduction        |
 | `gdiff`         | int   | 0       | [0, 10]        | Food diffusion passes (3x3 box blur) per step         |
 | `mu_lut`        | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction      |
-| `mu_cgenom`     | float | 0.0     | [0, 0.05]      | Per-bit cgenom mutation probability on reproduction   |
+| `mu_egenome`     | float | 0.0     | [0, 0.05]      | Per-bit egenome mutation probability on reproduction   |
 | `tax`           | float | 0.0     | [0, 0.1]       | Private food decrement per step; death if depleted    |
 | `restricted_mu` | int   | 0       | checkbox       | If 1, restrict LUT mutations to dynamically active bits |
 
@@ -102,13 +105,21 @@ active (v=1) cells in distance-ring k:
 
 GoL (B3/S23) is exactly encodable: it conditions on n1+n2 and ignores n3.
 
+**GoL initialization**: The function `make_gol_lut()` in `python/evoca_py.py`
+constructs a LUT implementing exact Conway's Game of Life (B3/S23).  For a
+dead cell (v_x=0), the new state is 1 iff Moore count n1+n2 == 3.  For an
+alive cell (v_x=1), the new state is 1 iff n1+n2 in {2, 3}.  The n3 value
+is a don't-care: all five n3 entries for each (v_x, n1, n2) combination are
+set identically.  With mutation=0 (all cells share this LUT), the simulation
+runs exact GoL.
+
 Note: the fiducial pattern for eating still uses the full 5x5
 neighbourhood (all 6 D4 orbits).  Only the CA rule LUT is restricted
 to 3 rings.
 
 ---
 
-## Fiducial Pattern c(x) and cgenom
+## Fiducial Pattern c(x) and egenome
 
 Each cell's eating behavior is governed by a **fiducial configuration
 pattern** — a D4-symmetric 5x5 binary pattern encoded in 6 bits.
@@ -117,7 +128,7 @@ pattern** — a D4-symmetric 5x5 binary pattern encoded in 6 bits.
 
 The 25 positions of the 5x5 neighborhood fall into 6 orbits under the
 D4 symmetry group (reflections about horizontal, vertical, and both
-diagonal axes).  Each orbit is controlled by one bit of `cgenom`:
+diagonal axes).  Each orbit is controlled by one bit of `egenome`:
 
 ```
  4   5   2   5   4        bit 0: centre               (1 cell)
@@ -128,14 +139,14 @@ diagonal axes).  Each orbit is controlled by one bit of `cgenom`:
                            bit 5: knight-move positions (8 cells)
 ```
 
-The number at each position is the **orbit index** = the cgenom bit
+The number at each position is the **orbit index** = the egenome bit
 that controls it.  The pattern value at position (i,j) is:
 
-    pattern[i][j] = (cgenom >> orbit_map[i][j]) & 1
+    pattern[i][j] = (egenome >> orbit_map[i][j]) & 1
 
-### cgenom Examples
+### egenome Examples
 
-| cgenom     | Binary   | Pattern description                      |
+| egenome     | Binary   | Pattern description                      |
 |------------|----------|------------------------------------------|
 | `0b000000` | 000000   | All zeros (matches dead cells everywhere) |
 | `0b111111` | 111111   | All ones (matches alive cells everywhere) |
@@ -144,11 +155,11 @@ that controls it.  The pattern value at position (i,j) is:
 | `0b000001` | 000001   | Only centre = 1                           |
 | `0b010100` | 010100   | Corners + axis-2 (ring pattern)           |
 
-To visualize any cgenom value:
+To visualize any egenome value:
 
 ```python
-from python.evoca_py import cgenom_to_pattern
-pat = cgenom_to_pattern(0b001010)
+from python.evoca_py import egenome_to_pattern
+pat = egenome_to_pattern(0b001010)
 print(pat)
 # [[0 0 0 0 0]
 #  [0 1 1 1 0]
@@ -157,7 +168,7 @@ print(pat)
 #  [0 0 0 0 0]]
 ```
 
-### How cgenom affects eating
+### How egenome affects eating
 
 The **fiducial match count** compares the actual cell states in the 5x5
 neighborhood against the fiducial pattern:
@@ -168,8 +179,8 @@ The cell's **mouthful** is then:
 
     M(x) = (m_scale / 25) * matches
 
-With cgenom=0 (all-zero fiducial), matches counts **dead** neighbors.
-With cgenom=0b111111 (all-one), matches counts **alive** neighbors.
+With egenome=0 (all-zero fiducial), matches counts **dead** neighbors.
+With egenome=0b111111 (all-one), matches counts **alive** neighbors.
 
 ---
 
@@ -181,8 +192,10 @@ Each call to `evoca_step()` executes five phases in order:
 
 Double-buffered.  For each cell, count active neighbors per ring,
 compute the LUT bit index, look up the new state from the cell's
-private LUT.  The queried bit index is OR'd into the `lut_active`
-mask (for restricted mutation).  Then swap `v_curr` and `v_next`.
+private LUT.  For alive cells only, the queried bit index is OR'd into
+the `lut_active` mask (for restricted mutation).  Dead cells still
+participate in neighbor counting (their zeroed LUT produces v=0).
+Then swap `v_curr` and `v_next`.
 
 If `restricted_mu` is enabled, the active bit indices are extracted
 into `active_bits[]` for use in Phase 4.
@@ -202,19 +215,19 @@ Periodic boundary conditions.
 
 ### Phase 2c: Tax and Death
 
-If `tax > 0`:
+If `tax > 0`, for each alive cell:
 
     f(x) -= tax,   clamped to 0
 
-If `f(x)` reaches 0, the cell's LUT is zeroed out (all-zero genome:
-every neighborhood maps to state 0, so the cell always dies on the
-next CA step).  This creates survival pressure: cells must eat enough
-to offset the tax or lose their evolved rule.
+If `f(x)` reaches 0, the cell dies: `alive(x)` is set to 0, its LUT is
+zeroed, and `f(x)` is cleared.  Dead cells are skipped by subsequent
+phases.  This creates survival pressure: cells must eat enough to offset
+the tax or die.
 
 ### Phase 3: Eating
 
-For each cell:
-1. Compute fiducial matches (0-25) between 5x5 neighborhood and cgenom
+For each alive cell:
+1. Compute fiducial matches (0-25) between 5x5 neighborhood and egenome
 2. `mouthful = (m_scale / 25) * matches * F(x)` (proportional to available food)
 3. Clamp to headroom: `mouthful = min(mouthful, 1.0 - f(x))`
 4. Transfer: `F(x) -= mouthful`,  `f(x) += mouthful`
@@ -223,16 +236,16 @@ Private food f(x) is hard-capped at 1.0.
 
 ### Phase 4: Reproduction and Mutation
 
-For each cell where `f(x) >= food_repro`:
+For each alive cell where `f(x) >= 1.0`:
 1. Find the Moore neighbor (8 cells) with the lowest f(x').
    Ties broken by uniform random (xorshift32 PRNG).
-2. Copy parent genome to child: LUT, cgenom.
+2. Set `alive(child) = 1`. Copy parent genome to child: LUT, egenome.
    (v_curr is dynamical state, NOT copied.)
 3. **Mutate child's LUT**: if `restricted_mu`, draw n_flips ~
    Poisson(mu_lut * n_active) and flip only active bits; otherwise
    draw n_flips ~ Poisson(mu_lut * 250) and flip random bits.
-4. **Mutate child's cgenom**: draw n_flips ~ Poisson(mu_cgenom * 6),
-   flip that many random bits in the child's cgenom.
+4. **Mutate child's egenome**: draw n_flips ~ Poisson(mu_egenome * 6),
+   flip that many random bits in the child's egenome.
 5. Update child's cached genome color (FNV-1a hash of LUT).
 6. Split food: `f(parent) = f(child) = f(parent) / 2`
 
@@ -246,10 +259,10 @@ Five modes, selectable via dropdown or the `colormode` parameter:
 
 | Mode | Name       | Channel mapping (ARGB)                                        |
 |------|------------|---------------------------------------------------------------|
-| 0    | `state`    | alive = LUT-hashed genome color (wild-type = white), dead = black |
+| 0    | `state`    | alive+v=1: genome color, alive+v=0: dark grey (#111111), dead: black |
 | 1    | `env-food` | Green = F(x)*255, Red = 180 if alive else 0                   |
-| 2    | `priv-food`| Blue = f(x)*255, Red = 180 if alive else 0                    |
-| 3    | `births`   | birth+alive = bright yellow, birth+dead = dim yellow, alive = dim grey, dead = black |
+| 2    | `priv-food`| Dead: black. Alive: Blue = f(x)*255, Red = 180 if v=1         |
+| 3    | `births`   | Dead: black. Alive: birth events colored, no-birth v=1: dim grey, v=0: dark grey |
 
 All food values are clamped to [0, 1] before the float-to-uint8 cast.
 
@@ -284,14 +297,14 @@ slider (default 2000).
 
 Enable with `probes={'activity': True}`.
 
-### Cgenom Activity
+### Egenome Activity
 
-Mirrors LUT activity for the 6-bit cgenom (fiducial eating pattern).  Since
-there are only 2^6 = 64 possible cgenoms, uses fixed-size arrays instead of
-a hash table.  Wild-type cgenom is colored white; mutants get FNV-1a hash
-colors.  Separate `cg_act_ymax` slider.
+Mirrors LUT activity for the 6-bit egenome (fiducial eating pattern).  Since
+there are only 2^6 = 64 possible egenomes, uses fixed-size arrays instead of
+a hash table.  Wild-type egenome is colored white; mutants get FNV-1a hash
+colors.  Separate `eg_act_ymax` slider.
 
-Enable with `probes={'cg_activity': True}`.
+Enable with `probes={'eg_activity': True}`.
 
 ---
 
@@ -307,7 +320,7 @@ window, stacked to the left of the main window.
 | `priv_food`      | 512 x 128     | Mean +/- std of private food f(x) over time            |
 | `births`         | 512 x 128     | Mean +/- std of births array over time                 |
 | `activity`       | 512 x 256     | LUT genome activity (scrolling hash-colored strip)     |
-| `cg_activity`    | 512 x 256     | Cgenom activity (scrolling hash-colored strip)         |
+| `eg_activity`    | 512 x 256     | Egenome activity (scrolling hash-colored strip)         |
 | `lut_complexity` | 512 x 128     | Stacked area: green=n1 only, yellow=n1+n2, red=n1+n2+n3 |
 
 Example enabling multiple probes:
@@ -315,7 +328,7 @@ Example enabling multiple probes:
 ```python
 run_with_controls(sim, probes={
     'activity': True,
-    'cg_activity': True,
+    'eg_activity': True,
     'lut_complexity': True,
     'env_food': True,
 })
@@ -363,8 +376,8 @@ hist = sim.get_repro_age_hist() # numpy array, 1024 bins
 sim = EvoCA(lib_path=None)
     # Load the shared library (auto-finds C/libevoca.dylib or .so)
 
-sim.init(N, food_inc=0.0, m_scale=1.0, food_repro=0.5, gdiff=0,
-         mu_lut=0.0, mu_cgenom=0.0, tax=0.0, restricted_mu=0)
+sim.init(N, food_inc=0.0, m_scale=1.0, gdiff=0,
+         mu_lut=0.0, mu_egenome=0.0, tax=0.0, restricted_mu=0)
     # Allocate N x N lattice, set metaparameters.
     # All grids initialized to zero.
 
@@ -377,14 +390,13 @@ sim.free()
 ```python
 sim.update_food_inc(f)       # float
 sim.update_m_scale(m)        # float
-sim.update_food_repro(r)     # float
 sim.update_gdiff(d)          # int
 sim.update_mu_lut(m)         # float, per-bit LUT mutation rate
-sim.update_mu_cgenom(m)      # float, per-bit cgenom mutation rate
+sim.update_mu_egenome(m)      # float, per-bit egenome mutation rate
 sim.update_tax(t)            # float, priv food decrement per step
 sim.update_restricted_mu(r)  # int (0 or 1)
 sim.update_act_ymax(y)       # int, Y-scale for LUT activity chart
-sim.update_cg_act_ymax(y)    # int, Y-scale for cgenom activity chart
+sim.update_eg_act_ymax(y)    # int, Y-scale for egenome activity chart
 ```
 
 Each setter updates both the Python attribute (`sim.food_inc`, etc.)
@@ -402,12 +414,12 @@ sim.set_lut_all(lut_bytes)
 sim.set_lut(idx, lut_bytes)
     # Set one cell's LUT (idx = flat cell index).
 
-sim.set_cgenom_all(cg)
+sim.set_egenome_all(eg)
     # Set all cells' fiducial genome (6-bit value, masked to 0x3F).
 
-sim.set_cgenom_random()
-    # Set each cell's cgenom to a random value in [0, 63].
-    # No wild-type: all 64 cgenoms get distinct hash-based colors.
+sim.set_egenome_random()
+    # Set each cell's egenome to a random value in [0, 63].
+    # No wild-type: all 64 egenomes get distinct hash-based colors.
 
 sim.set_lut_random(n_init=3)
     # Set each cell's LUT to an independent random rule.
@@ -424,6 +436,51 @@ sim.set_F_all(F)
 
 sim.set_F_random(lo=0.0, hi=1.0)
     # Set env food to uniform random floats in [lo, hi].
+
+sim.set_env_mask(mask)
+    # Set environment food-regeneration mask. mask: (N,N) or flat uint8.
+    # 1 = regenerate, 0 = no regen. Default: all 1s.
+
+sim.get_env_mask() -> np.ndarray
+    # (N, N) uint8 copy of the environment mask.
+```
+
+#### Alive Data Plane
+
+```python
+sim.set_alive(arr)
+    # Set alive array from (N,N) or flat uint8. Dead cells' v, f, LUT are zeroed.
+    # Call LUT/egenome setters BEFORE this (alive setter zeroes dead cells' data).
+
+sim.get_alive() -> np.ndarray
+    # (N, N) uint8 copy of alive array.
+
+sim.set_alive_all()
+    # Set all cells alive (default after init).
+
+sim.set_alive_fraction(frac)
+    # Random fraction of cells alive; dead cells' data zeroed.
+
+sim.set_alive_patch(radius)
+    # Square patch of side 2*radius centered on grid; outside is dead.
+
+sim.set_alive_halfplane(axis=0)
+    # Half the grid alive. axis=0: left half, axis=1: top half.
+```
+
+**Initialization sequencing**: LUT and egenome setters must be called
+*before* alive setters, because alive setters zero dead cells' LUT/v/f:
+
+```python
+# GoL in a central patch
+sim.set_lut_all(make_gol_lut())
+sim.set_egenome_all(0b000011)
+sim.set_alive_patch(64)            # outside patch: alive=0, LUT/v/f zeroed
+
+# Random rules on left half only
+sim.set_lut_random(n_init=2)
+sim.set_egenome_random()
+sim.set_alive_halfplane(0)         # right half: dead
 ```
 
 #### Step and Colorize
@@ -440,10 +497,11 @@ sim.colorize(pixels, colormode=0)
 #### Getters
 
 ```python
-sim.get_v()       -> np.ndarray   # (N, N) uint8, cell states (copy)
+sim.get_v()       -> np.ndarray   # (N, N) uint8, CA states (copy)
+sim.get_alive()   -> np.ndarray   # (N, N) uint8, alive flags (copy)
 sim.get_F()       -> np.ndarray   # (N, N) float32, env food (copy)
 sim.get_f()       -> np.ndarray   # (N, N) float32, private food (copy)
-sim.get_cgenom()  -> np.ndarray   # (N, N) uint8, fiducial genomes (copy)
+sim.get_egenome()  -> np.ndarray   # (N, N) uint8, fiducial genomes (copy)
 sim.get_births()  -> np.ndarray   # (N, N) uint8, birth events last step (copy)
 sim.get_lut(idx)  -> np.ndarray   # (LUT_BYTES,) uint8, one cell's LUT (copy)
 sim.get_step()    -> int           # current global step counter
@@ -452,7 +510,7 @@ sim.cell_px       -> int           # CELL_PX compile-time constant
 
 # Activity and diagnostics
 sim.get_activity(max_n=4096) -> dict   # {'hash', 'activity', 'pop_count', 'color'}
-sim.get_cg_activity()        -> dict   # {'activity', 'pop_count', 'color'} (64 entries)
+sim.get_eg_activity()        -> dict   # {'activity', 'pop_count', 'color'} (64 entries)
 sim.get_lut_complexity()     -> dict   # {'n1': count, 'n2': count, 'n3': count}
 sim.get_repro_age_hist()     -> np.ndarray  # (1024,) uint32 histogram
 sim.set_repro_age_t0(t)                # set step threshold for histogram accumulation
@@ -463,13 +521,29 @@ sim.params()      -> dict         # current metaparameters as dict
 sim.params_str()  -> str          # copy-pasteable sim.init(...) call
 ```
 
+#### Recipe Export/Import
+
+```python
+sim.export_recipe(descriptor, probes=None, colormode=0)
+    # Export initialization recipe to Runs/<date>_<descriptor>.evoca (JSON).
+    # Returns the filepath written.
+
+from python.evoca_py import import_run
+sim, display_kwargs = import_run('Runs/2026-03-15_my_run.evoca')
+    # Reconstruct simulation from recipe. Returns (sim, kwargs).
+    # Usage:  run_with_controls(sim, **display_kwargs)
+```
+
+The recipe records initialization *methods* (not raw grid data), so each
+import produces a new random realization with the same parameters.
+
 #### Stored Attributes
 
 After `init()` or the corresponding setter, these Python attributes
 reflect current values:
 
-    sim.food_inc, sim.m_scale, sim.food_repro, sim.gdiff,
-    sim.mu_lut, sim.mu_cgenom, sim.tax, sim.restricted_mu, sim.cgenom
+    sim.food_inc, sim.m_scale, sim.gdiff,
+    sim.mu_lut, sim.mu_egenome, sim.tax, sim.restricted_mu, sim.egenome
 
 ---
 
@@ -499,15 +573,16 @@ notebook cell.  Returns immediately (non-blocking).
 - **Pause/Run** toggle button
 - **Step** button (advances one step when paused)
 - **Quit** button (closes SDL window and stops simulation)
+- **Save Plots** button (saves probe strip chart images)
+- **Export** text field + button: enter a descriptor and click Export to save a `.evoca` recipe
 - **food_inc** slider: [0, 0.5], step 0.001
 - **m_scale** slider: [0, 10], step 0.1
-- **food_repro** slider: [0, 2], step 0.05
 - **gdiff** slider: [0, 10], step 1
 - **mu_lut** slider: [0, 0.001], step 0.00001
-- **mu_cgenom** slider: [0, 0.05], step 0.001
+- **mu_egenome** slider: [0, 0.05], step 0.001
 - **tax** slider: [0, 0.1], step 0.001
 - **act_ymax** slider: [100, 100000] (when activity probe enabled)
-- **cg_act_ymax** slider: [100, 100000] (when cg_activity probe enabled)
+- **eg_act_ymax** slider: [100, 100000] (when eg_activity probe enabled)
 - **restricted_mu** checkbox: toggle restricted mutation
 - **Color** dropdown: state / env-food / priv-food / births
 - **Save Plots** button: saves probe strip charts to PNG (when paused)
@@ -575,11 +650,11 @@ unpack_lut(packed) -> np.ndarray
     # Unpack LUT_BYTES bytes into LUT_BITS-length uint8 0/1 array.
 ```
 
-### cgenom_to_pattern
+### egenome_to_pattern
 
 ```python
-cgenom_to_pattern(cg) -> np.ndarray   # (5, 5) uint8
-    # Expand a 6-bit cgenom value to a 5x5 binary array.
+egenome_to_pattern(eg) -> np.ndarray   # (5, 5) uint8
+    # Expand a 6-bit egenome value to a 5x5 binary array.
 ```
 
 ### lut_bit_index
@@ -626,7 +701,7 @@ display scaling.  Change it and recompile.
 
 ### Memory
 
-Per cell: 32 (LUT) + 1 (cgenom) + 1 (v_curr) + 1 (v_next) + 4 (f_priv)
+Per cell: 32 (LUT) + 1 (egenome) + 1 (v_curr) + 1 (v_next) + 4 (f_priv)
 + 4 (F_food) + 4 (F_temp) + 1 (births) + 4 (lut_color) + 4 (lut_hash_cache)
 + 4 (last_event_step) = **60 bytes**.
 

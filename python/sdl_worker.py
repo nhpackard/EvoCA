@@ -120,15 +120,15 @@ def main():
 
     # Optional activity probe (--activity=<shm_name>)
     activity_shm_name = None
-    cg_activity_shm_name = None
+    eg_activity_shm_name = None
     lut_complexity_shm_name = None
     entropy_shm_name = None
     pat_activity_shm_name = None
     for arg in sys.argv:
         if arg.startswith("--activity="):
             activity_shm_name = arg[len("--activity="):]
-        elif arg.startswith("--cg-activity="):
-            cg_activity_shm_name = arg[len("--cg-activity="):]
+        elif arg.startswith("--eg-activity="):
+            eg_activity_shm_name = arg[len("--eg-activity="):]
         elif arg.startswith("--lut-complexity="):
             lut_complexity_shm_name = arg[len("--lut-complexity="):]
         elif arg.startswith("--entropy="):
@@ -196,23 +196,23 @@ def main():
                   flush=True)
             activity_shm_name = None
 
-    # Open cgenom activity shared memory
-    cg_activity_shm     = None
-    cg_activity_cursor  = None
-    cg_activity_pixels  = None
-    if cg_activity_shm_name:
+    # Open egenome activity shared memory
+    eg_activity_shm     = None
+    eg_activity_cursor  = None
+    eg_activity_pixels  = None
+    if eg_activity_shm_name:
         try:
-            cg_activity_shm = SharedMemory(name=cg_activity_shm_name)
-            cg_activity_cursor = np.ndarray((1,), dtype=np.int32,
-                                            buffer=cg_activity_shm.buf)
-            cg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
-                                            buffer=cg_activity_shm.buf, offset=4)
-            print(f"EvoCA SDL: cg_activity shm opened ({ACT_H}x{PROBE_W})",
+            eg_activity_shm = SharedMemory(name=eg_activity_shm_name)
+            eg_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                            buffer=eg_activity_shm.buf)
+            eg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                            buffer=eg_activity_shm.buf, offset=4)
+            print(f"EvoCA SDL: eg_activity shm opened ({ACT_H}x{PROBE_W})",
                   flush=True)
         except Exception as e:
-            print(f"EvoCA SDL: cg_activity SharedMemory open failed: {e}",
+            print(f"EvoCA SDL: eg_activity SharedMemory open failed: {e}",
                   flush=True)
-            cg_activity_shm_name = None
+            eg_activity_shm_name = None
 
     # Open LUT complexity shared memory
     lut_complexity_shm     = None
@@ -382,14 +382,14 @@ def main():
         else:
             print("EvoCA SDL: activity window creation failed", flush=True)
 
-    # ── Cgenom activity window ──────────────────────────────────
-    cg_act_window_p  = None
-    cg_act_surface_p = None
-    cg_act_dst       = None
-    if cg_activity_shm is not None:
+    # ── Egenome activity window ─────────────────────────────────
+    eg_act_window_p  = None
+    eg_act_surface_p = None
+    eg_act_dst       = None
+    if eg_activity_shm is not None:
         caw_x = main_x - PROBE_W
         caw = sdl2.SDL_CreateWindow(
-            b"cg_activity",
+            b"eg_activity",
             caw_x, next_probe_y,
             PROBE_W, ACT_H,
             sdl2.SDL_WINDOW_SHOWN,
@@ -407,14 +407,14 @@ def main():
                                        ctypes.POINTER(ctypes.c_int32))
                 cad_flat = np.ctypeslib.as_array(cap_ptr,
                                                  shape=(ACT_H * cap_i32,))
-                cg_act_dst       = cad_flat.reshape(ACT_H, cap_i32)
-                cg_act_window_p  = caw
-                cg_act_surface_p = caps
-                print("EvoCA SDL: cg_activity window created", flush=True)
+                eg_act_dst       = cad_flat.reshape(ACT_H, cap_i32)
+                eg_act_window_p  = caw
+                eg_act_surface_p = caps
+                print("EvoCA SDL: eg_activity window created", flush=True)
             else:
                 sdl2.SDL_DestroyWindow(caw)
         else:
-            print("EvoCA SDL: cg_activity window creation failed", flush=True)
+            print("EvoCA SDL: eg_activity window creation failed", flush=True)
 
     # ── LUT complexity window ──────────────────────────────────
     lc_window_p  = None
@@ -589,14 +589,14 @@ def main():
             sdl2.SDL_UnlockSurface(act_surface_p)
             sdl2.SDL_UpdateWindowSurface(act_window_p)
 
-        # Render cgenom activity window
-        if cg_act_window_p is not None and cg_activity_pixels is not None:
-            sdl2.SDL_LockSurface(cg_act_surface_p)
-            cur_cga = int(cg_activity_cursor[0])
-            cg_act_dst[:ACT_H, :PROBE_W] = np.roll(cg_activity_pixels,
-                                                     -cur_cga, axis=1)
-            sdl2.SDL_UnlockSurface(cg_act_surface_p)
-            sdl2.SDL_UpdateWindowSurface(cg_act_window_p)
+        # Render egenome activity window
+        if eg_act_window_p is not None and eg_activity_pixels is not None:
+            sdl2.SDL_LockSurface(eg_act_surface_p)
+            cur_ega = int(eg_activity_cursor[0])
+            eg_act_dst[:ACT_H, :PROBE_W] = np.roll(eg_activity_pixels,
+                                                     -cur_ega, axis=1)
+            sdl2.SDL_UnlockSurface(eg_act_surface_p)
+            sdl2.SDL_UpdateWindowSurface(eg_act_window_p)
 
         # Render LUT complexity window
         if lc_window_p is not None and lut_complexity_pixels is not None:
@@ -646,8 +646,8 @@ def main():
         sdl2.SDL_DestroyWindow(ent_window_p)
     if lc_window_p is not None:
         sdl2.SDL_DestroyWindow(lc_window_p)
-    if cg_act_window_p is not None:
-        sdl2.SDL_DestroyWindow(cg_act_window_p)
+    if eg_act_window_p is not None:
+        sdl2.SDL_DestroyWindow(eg_act_window_p)
     if act_window_p is not None:
         sdl2.SDL_DestroyWindow(act_window_p)
     for pw in probe_windows:
@@ -660,8 +660,8 @@ def main():
         probe_shm.close()
     if activity_shm is not None:
         activity_shm.close()
-    if cg_activity_shm is not None:
-        cg_activity_shm.close()
+    if eg_activity_shm is not None:
+        eg_activity_shm.close()
     if lut_complexity_shm is not None:
         lut_complexity_shm.close()
     if entropy_shm is not None:
