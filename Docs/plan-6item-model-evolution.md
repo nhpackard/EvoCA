@@ -278,7 +278,11 @@ New `uint8 alive[N*N]` array separating organism existence from CA state `v(x)`:
 
 ### Item 6 — Recipe export/import
 - `self._recipe = {}` in `EvoCA.__init__`. Each setter (`set_lut_all`, `set_lut_random`, `set_egenome_all`, `set_egenome_random`, `set_v`, `set_f_all`, `set_F_all`, `set_F_random`, `set_alive_*`) records its method/args.
-- `sim.export_recipe(descriptor, probes, colormode)` writes JSON to `Runs/YYYY-MM-DD_descriptor.evoca`.
-- Module-level `import_run(filepath)` reads JSON, constructs EvoCA, calls init + setters, returns `(sim, display_kwargs)`.
+- `sim.export_recipe(descriptor, probes, colormode)` writes JSON (version 2) to `Runs/YYYY-MM-DD_descriptor.evoca`.
+- Recipe captures two metaparam snapshots:
+  - `metaparams_init`: frozen at `sim.init()` time — the original configuration.
+  - `metaparams_final`: current values at export time — reflects all slider tweaks.
+- `self._init_metaparams` is set in `init()` and never modified by slider callbacks.
+- Module-level `import_run(filepath, recipe='init')` reads JSON, constructs EvoCA, calls init + setters, returns `(sim, display_kwargs)`. The `recipe` arg selects which metaparams to use: `'init'` (default) for the original configuration, `'final'` for the tweaked values. Version 1 files (single `metaparams` key) load via fallback.
 - Controls widget: replaced "Export Params" button with text field + "Export" button. On click, calls `sim.export_recipe()` and shows filepath in status label.
-- Tested round-trip: GoL recipe and random-LUT + alive_patch recipe both export and import correctly.
+- Tested round-trip: GoL recipe and random-LUT + alive_patch recipe both export and import correctly. Init vs final metaparam distinction verified.
