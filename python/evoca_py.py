@@ -662,17 +662,34 @@ class EvoCA:
 
 # ── Recipe import ─────────────────────────────────────────────────────
 
-def import_run(filepath, recipe='init', lib_path=None):
+def import_run(filepath=None, recipe='init', lib_path=None):
     """Load a .evoca recipe file and return (sim, display_kwargs).
+
+    If called with no arguments, lists available recipes in Runs/.
 
     recipe: 'init' uses the initial metaparams, 'final' uses the
             metaparams at export time (after any slider adjustments).
 
     Usage:
+        import_run()                    # list available recipes
         sim, kw = import_run('Runs/2026-03-15_my_run.evoca')
         run_with_controls(sim, **kw)
     """
     import json
+    from pathlib import Path
+
+    if filepath is None:
+        runs_dir = Path(__file__).resolve().parent.parent / 'Runs'
+        if not runs_dir.is_dir():
+            print("No Runs/ directory found.")
+            return []
+        recipes = sorted(runs_dir.glob('*.evoca'))
+        if not recipes:
+            print("No .evoca files in Runs/.")
+            return []
+        for r in recipes:
+            print(r.name)
+        return [str(r) for r in recipes]
 
     with open(filepath) as f:
         data = json.load(f)
