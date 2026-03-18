@@ -26,6 +26,13 @@ PROBE_W = 512
 PROBE_H = 128
 TITLE_BAR_H = 28   # macOS title bar estimate
 
+# Magnifier window
+MAG_CELLS = 25      # cells shown in magnifier
+MAG_PX    = 8       # pixels per cell in magnifier
+MAG_W     = MAG_CELLS * MAG_PX   # 200
+MAG_H     = MAG_CELLS * MAG_PX   # 200
+MAG_HALF  = MAG_CELLS // 2       # 12
+
 def _c(argb):
     """Convert ARGB uint32 to np.int32 (avoids numpy deprecation warning)."""
     import numpy as np
@@ -264,7 +271,13 @@ def main():
         sys.exit(1)
 
     sdl2.SDL_RaiseWindow(window_p)
+    main_window_id = sdl2.SDL_GetWindowID(window_p)
     print("EvoCA SDL: window created and raised", flush=True)
+
+    # Magnifier state (center computed dynamically from window position)
+    mag_window_p  = None
+    mag_surface_p = None
+    mag_dst       = None
 
     surface_p = sdl2.SDL_GetWindowSurface(window_p)
     if not surface_p:
@@ -554,6 +567,48 @@ def main():
                 k = event.key.keysym.sym
                 if k in (sdl2.SDLK_q, sdl2.SDLK_ESCAPE):
                     ctrl[0] = 1
+            elif event.type == sdl2.SDL_MOUSEBUTTONDOWN:
+                if event.button.windowID == main_window_id:
+                    # Position magnifier centered on click point
+                    wx_c, wy_c = ctypes.c_int(0), ctypes.c_int(0)
+                    sdl2.SDL_GetWindowPosition(window_p,
+                        ctypes.byref(wx_c), ctypes.byref(wy_c))
+                    mag_x = wx_c.value + event.button.x - MAG_W // 2
+                    mag_y = wy_c.value + event.button.y - MAG_H // 2
+                    if mag_window_p is None:
+                        mw = sdl2.SDL_CreateWindow(
+                            b"mag", mag_x, mag_y, MAG_W, MAG_H,
+                            sdl2.SDL_WINDOW_SHOWN)
+                        if mw:
+                            ms = sdl2.SDL_GetWindowSurface(mw)
+                            if ms:
+                                sdl2.SDL_SetSurfaceBlendMode(
+                                    ms, sdl2.SDL_BLENDMODE_NONE)
+                                msurf  = ms.contents
+                                mp_i32 = msurf.pitch // 4
+                                mp_ptr = ctypes.cast(msurf.pixels,
+                                    ctypes.POINTER(ctypes.c_int32))
+                                md_flat = np.ctypeslib.as_array(
+                                    mp_ptr, shape=(MAG_H * mp_i32,))
+                                mag_dst       = md_flat.reshape(MAG_H, mp_i32)
+                                mag_window_p  = mw
+                                mag_surface_p = ms
+                            else:
+                                sdl2.SDL_DestroyWindow(mw)
+                    else:
+                        sdl2.SDL_SetWindowPosition(mag_window_p,
+                            mag_x, mag_y)
+            elif event.type == sdl2.SDL_WINDOWEVENT:
+                if event.window.event == sdl2.SDL_WINDOWEVENT_CLOSE:
+                    if (mag_window_p is not None and
+                            event.window.windowID == sdl2.SDL_GetWindowID(
+                                mag_window_p)):
+                        sdl2.SDL_DestroyWindow(mag_window_p)
+                        mag_window_p  = None
+                        mag_surface_p = None
+                        mag_dst       = None
+                    elif event.window.windowID == main_window_id:
+                        ctrl[0] = 1
 
         if ctrl[0]:
             break
@@ -567,6 +622,30 @@ def main():
             dst[:H, :W] = np.repeat(np.repeat(src, px, axis=0), px, axis=1)
         sdl2.SDL_UnlockSurface(surface_p)
         sdl2.SDL_UpdateWindowSurface(window_p)
+
+        # Render magnifier — center computed from window position
+        if mag_window_p is not None:
+            wx_m, wy_m = ctypes.c_int(0), ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(mag_window_p,
+                ctypes.byref(wx_m), ctypes.byref(wy_m))
+            wx_main, wy_main = ctypes.c_int(0), ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(window_p,
+                ctypes.byref(wx_main), ctypes.byref(wy_main))
+            # Center of magnifier in main-window pixel coords
+            cx_px = wx_m.value + MAG_W // 2 - wx_main.value
+            cy_px = wy_m.value + MAG_H // 2 - wy_main.value
+            cell_col = max(MAG_HALF, min(N - 1 - MAG_HALF, cx_px // px))
+            cell_row = max(MAG_HALF, min(N - 1 - MAG_HALF, cy_px // px))
+            r0 = cell_row - MAG_HALF
+            c0 = cell_col - MAG_HALF
+            region = src[r0:r0+MAG_CELLS, c0:c0+MAG_CELLS]
+            sdl2.SDL_LockSurface(mag_surface_p)
+            mag_dst[:MAG_H, :MAG_W] = np.repeat(
+                np.repeat(region, MAG_PX, axis=0), MAG_PX, axis=1)
+            sdl2.SDL_UnlockSurface(mag_surface_p)
+            sdl2.SDL_UpdateWindowSurface(mag_window_p)
+            sdl2.SDL_SetWindowTitle(mag_window_p,
+                f"mag ({cell_row},{cell_col})".encode())
 
         # Render probe windows
         if probe_cursor is not None:
@@ -640,6 +719,8 @@ def main():
         sdl2.SDL_SetWindowTitle(window_p, title.encode())
 
     print("EvoCA SDL: exiting cleanly", flush=True)
+    if mag_window_p is not None:
+        sdl2.SDL_DestroyWindow(mag_window_p)
     if pa_window_p is not None:
         sdl2.SDL_DestroyWindow(pa_window_p)
     if ent_window_p is not None:

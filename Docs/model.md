@@ -609,6 +609,15 @@ PAUSED indicator.
 
 **Keyboard** (SDL2 window): Q or Esc to quit.
 
+**Magnifier**: clicking on the main lattice window opens a 200×200 pixel
+magnifier showing a 25×25 cell region at 8× zoom.  The magnifier acts as
+a magnifying glass — dragging it over the lattice updates the displayed
+region in real time.  Clicking elsewhere on the lattice jumps the
+magnifier to that point.  The title bar shows the current center cell
+coordinates `mag (row,col)`.  Close the magnifier via its title-bar close
+button.  Near grid edges, the center is clamped so the 25×25 region
+always fits without wrapping.
+
 **Slider behavior**: dragging any slider auto-pauses the simulation;
 200 ms after the last touch, it auto-resumes (unless already paused).
 
