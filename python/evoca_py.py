@@ -214,6 +214,10 @@ class EvoCA:
         L.evoca_lut_complexity_render_col.argtypes = [
             ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
         L.evoca_lut_complexity_render_col.restype  = None
+        # Egenome population banded chart
+        L.evoca_eg_pop_render_col.argtypes = [
+            ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
+        L.evoca_eg_pop_render_col.restype  = None
         # Local-pattern activity & entropy
         L.evoca_set_n_ent.argtypes = [ctypes.c_int]
         L.evoca_set_n_ent.restype  = None

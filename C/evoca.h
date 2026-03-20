@@ -92,6 +92,7 @@ int  evoca_get_eg_act_ymax(void);
 
 void evoca_lut_complexity_counts(uint32_t *counts);  /* counts[3]: n1, n1+n2, full */
 void evoca_lut_complexity_render_col(int32_t *col, int height);
+void evoca_eg_pop_render_col(int32_t *col, int height);  /* stacked egenome pop */
 
 /* ── Local-pattern activity & entropy ─────────────────────────────── */
 

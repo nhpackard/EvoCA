@@ -991,6 +991,49 @@ void evoca_lut_complexity_render_col(int32_t *col, int height)
         col[y] = (int32_t)0xFFCC3300u;   /* red: full */
 }
 
+/* ── Egenome population banded chart ──────────────────────────── */
+
+void evoca_eg_pop_render_col(int32_t *col, int height)
+{
+    /* Fill background */
+    for (int y = 0; y < height; y++)
+        col[y] = (int32_t)0xFF111111u;
+
+    /* Sum total alive population across all egenomes */
+    uint32_t total = 0;
+    for (int i = 0; i < EGENOME_COUNT; i++)
+        total += eg_pop[i];
+    if (total == 0) return;
+
+    /* Sort egenomes by population descending (largest bands at bottom) */
+    int idx[EGENOME_COUNT];
+    for (int i = 0; i < EGENOME_COUNT; i++) idx[i] = i;
+    for (int i = 0; i < EGENOME_COUNT - 1; i++)
+        for (int j = i + 1; j < EGENOME_COUNT; j++)
+            if (eg_pop[idx[j]] > eg_pop[idx[i]]) {
+                int tmp = idx[i]; idx[i] = idx[j]; idx[j] = tmp;
+            }
+
+    /* Stack bands from bottom */
+    int y = height - 1;
+    int assigned = 0;
+    for (int k = 0; k < EGENOME_COUNT && y >= 0; k++) {
+        int eg = idx[k];
+        if (eg_pop[eg] == 0) break;
+        int h;
+        if (k == EGENOME_COUNT - 1 || eg_pop[idx[k + 1]] == 0) {
+            /* Last populated egenome gets remainder */
+            h = height - assigned;
+        } else {
+            h = (int)((uint64_t)eg_pop[eg] * height / total);
+            if (h == 0) h = 1;  /* at least 1px if populated */
+        }
+        for (int i = 0; i < h && y >= 0; i++, y--)
+            col[y] = eg_color[eg];
+        assigned += h;
+    }
+}
+
 /* ── Visualisation ──────────────────────────────────────────────── */
 
 void evoca_colorize(int32_t *pixels, int colormode)

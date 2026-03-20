@@ -207,6 +207,25 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                                            buffer=lut_complexity_shm.buf, offset=4)
         lut_complexity_col = np.zeros(PROBE_H, dtype=np.int32)
 
+    # ── Egenome population banded chart setup ───────────────────────
+    eg_pop_enabled = bool((probes or {}).get('eg_pop'))
+    eg_pop_shm     = None
+    eg_pop_cursor  = None
+    eg_pop_pixels  = None
+    eg_pop_col     = None
+
+    if eg_pop_enabled:
+        ep_shm_size = 4 + PROBE_W * PROBE_H * 4
+        eg_pop_shm = SharedMemory(create=True, size=ep_shm_size)
+        _epbuf = np.ndarray((ep_shm_size,), dtype=np.uint8,
+                            buffer=eg_pop_shm.buf)
+        _epbuf[:] = 0
+        eg_pop_cursor = np.ndarray((1,), dtype=np.int32,
+                                    buffer=eg_pop_shm.buf)
+        eg_pop_pixels = np.ndarray((PROBE_H, PROBE_W), dtype=np.int32,
+                                    buffer=eg_pop_shm.buf, offset=4)
+        eg_pop_col = np.zeros(PROBE_H, dtype=np.int32)
+
     # ── Probe setup ─────────────────────────────────────────────────
     probe_names = [k for k, v in (probes or {}).items() if v and k in _PROBE_GETTER]
     n_probes    = len(probe_names)
@@ -254,6 +273,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         cmd += ["--entropy=" + entropy_shm.name]
     if pat_activity_enabled:
         cmd += ["--pat-activity=" + pat_activity_shm.name]
+    if eg_pop_enabled:
+        cmd += ["--eg-pop=" + eg_pop_shm.name]
     sdl_proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
@@ -297,6 +318,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             all_shm.append(entropy_shm)
         if pat_activity_shm is not None:
             all_shm.append(pat_activity_shm)
+        if eg_pop_shm is not None:
+            all_shm.append(eg_pop_shm)
         for shm in all_shm:
             try:
                 shm.unlink()
@@ -466,8 +489,9 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 sim._lib.evoca_activity_render_col(act_col_ptr, ACT_H)
                 activity_pixels[:, act_cur] = activity_col
                 activity_cursor[0] = (act_cur + 1) % PROBE_W
-            if eg_activity_enabled:
+            if eg_activity_enabled or eg_pop_enabled:
                 sim._lib.evoca_eg_activity_update()
+            if eg_activity_enabled:
                 ega_cur = int(eg_activity_cursor[0])
                 ega_col_ptr = eg_activity_col.ctypes.data_as(
                     ctypes.POINTER(ctypes.c_int32))
@@ -481,6 +505,13 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 sim._lib.evoca_lut_complexity_render_col(lc_col_ptr, PROBE_H)
                 lut_complexity_pixels[:, lc_cur] = lut_complexity_col
                 lut_complexity_cursor[0] = (lc_cur + 1) % PROBE_W
+            if eg_pop_enabled:
+                ep_cur = int(eg_pop_cursor[0])
+                ep_col_ptr = eg_pop_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_int32))
+                sim._lib.evoca_eg_pop_render_col(ep_col_ptr, PROBE_H)
+                eg_pop_pixels[:, ep_cur] = eg_pop_col
+                eg_pop_cursor[0] = (ep_cur + 1) % PROBE_W
             if pat_enabled:
                 sim._lib.evoca_pat_update()
                 if entropy_enabled:
@@ -651,9 +682,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
 
             _t3 = time.perf_counter() if diag else 0
 
-            # Record egenome activity
-            if eg_activity_enabled:
+            # Record egenome activity / population
+            if eg_activity_enabled or eg_pop_enabled:
                 sim._lib.evoca_eg_activity_update()
+            if eg_activity_enabled:
                 ega_cur = int(eg_activity_cursor[0])
                 ega_col_ptr = eg_activity_col.ctypes.data_as(
                     ctypes.POINTER(ctypes.c_int32))
@@ -669,6 +701,15 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 sim._lib.evoca_lut_complexity_render_col(lc_col_ptr, PROBE_H)
                 lut_complexity_pixels[:, lc_cur] = lut_complexity_col
                 lut_complexity_cursor[0] = (lc_cur + 1) % PROBE_W
+
+            # Record egenome population data
+            if eg_pop_enabled:
+                ep_cur = int(eg_pop_cursor[0])
+                ep_col_ptr = eg_pop_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_int32))
+                sim._lib.evoca_eg_pop_render_col(ep_col_ptr, PROBE_H)
+                eg_pop_pixels[:, ep_cur] = eg_pop_col
+                eg_pop_cursor[0] = (ep_cur + 1) % PROBE_W
 
             # Record pattern entropy / pattern activity data
             if pat_enabled:

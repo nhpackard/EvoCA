@@ -121,6 +121,15 @@ Wild-type egenome is colored white; mutants get FNV-1a hash colors.
 activity functions. Separate `eg_act_ymax` slider. Enable with
 `probes={'eg_activity': True}`.
 
+**Egenome population banded chart**: Stacked proportional bar chart showing the
+population fraction of each egenome value over time, modeled on the LUT complexity
+probe. Each time step renders one column: egenomes sorted by population (largest
+at bottom), band height proportional to population share, minimum 1px per
+populated egenome, last band absorbs rounding remainder. Uses `eg_color[]` from
+egenome activity tracking (white = wild-type, hash colors for mutants). Requires
+`evoca_eg_activity_update()` to populate `eg_pop[]`. Enable with
+`probes={'eg_pop': True}`.
+
 **Reproduction age histogram**: Tracks the distribution of time between successive
 reproduction events (or birth-to-first-reproduction). A per-cell timestamp
 `last_event_step[N*N]` records the step of each cell's most recent birth or

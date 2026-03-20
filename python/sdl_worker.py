@@ -131,6 +131,7 @@ def main():
     lut_complexity_shm_name = None
     entropy_shm_name = None
     pat_activity_shm_name = None
+    eg_pop_shm_name = None
     for arg in sys.argv:
         if arg.startswith("--activity="):
             activity_shm_name = arg[len("--activity="):]
@@ -142,6 +143,8 @@ def main():
             entropy_shm_name = arg[len("--entropy="):]
         elif arg.startswith("--pat-activity="):
             pat_activity_shm_name = arg[len("--pat-activity="):]
+        elif arg.startswith("--eg-pop="):
+            eg_pop_shm_name = arg[len("--eg-pop="):]
 
     ACT_H = 2 * PROBE_H  # 256
 
@@ -238,6 +241,24 @@ def main():
             print(f"EvoCA SDL: lut_complexity SharedMemory open failed: {e}",
                   flush=True)
             lut_complexity_shm_name = None
+
+    # Open egenome population shared memory
+    eg_pop_shm     = None
+    eg_pop_cursor  = None
+    eg_pop_pixels  = None
+    if eg_pop_shm_name:
+        try:
+            eg_pop_shm = SharedMemory(name=eg_pop_shm_name)
+            eg_pop_cursor = np.ndarray((1,), dtype=np.int32,
+                                        buffer=eg_pop_shm.buf)
+            eg_pop_pixels = np.ndarray((PROBE_H, PROBE_W), dtype=np.int32,
+                                        buffer=eg_pop_shm.buf, offset=4)
+            print(f"EvoCA SDL: eg_pop shm opened ({PROBE_H}x{PROBE_W})",
+                  flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: eg_pop SharedMemory open failed: {e}",
+                  flush=True)
+            eg_pop_shm_name = None
 
     COLOR_MODES = ["state", "env-food", "priv-food", "births"]
 
@@ -463,6 +484,40 @@ def main():
         else:
             print("EvoCA SDL: lut_complexity window creation failed", flush=True)
 
+    # ── Egenome population window ──────────────────────────────
+    ep_window_p  = None
+    ep_surface_p = None
+    ep_dst       = None
+    if eg_pop_shm is not None:
+        epw_x = main_x - PROBE_W
+        epw = sdl2.SDL_CreateWindow(
+            b"eg_pop",
+            epw_x, next_probe_y,
+            PROBE_W, PROBE_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if epw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(epw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + PROBE_H + real_title_h
+            eps = sdl2.SDL_GetWindowSurface(epw)
+            if eps:
+                sdl2.SDL_SetSurfaceBlendMode(eps, sdl2.SDL_BLENDMODE_NONE)
+                esurf   = eps.contents
+                ep_i32  = esurf.pitch // 4
+                ep_ptr  = ctypes.cast(esurf.pixels,
+                                      ctypes.POINTER(ctypes.c_int32))
+                ed_flat = np.ctypeslib.as_array(ep_ptr,
+                                                shape=(PROBE_H * ep_i32,))
+                ep_dst       = ed_flat.reshape(PROBE_H, ep_i32)
+                ep_window_p  = epw
+                ep_surface_p = eps
+                print("EvoCA SDL: eg_pop window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(epw)
+        else:
+            print("EvoCA SDL: eg_pop window creation failed", flush=True)
+
     # Open entropy shared memory + create window
     entropy_shm      = None
     entropy_cursor   = None
@@ -686,6 +741,15 @@ def main():
             sdl2.SDL_UnlockSurface(lc_surface_p)
             sdl2.SDL_UpdateWindowSurface(lc_window_p)
 
+        # Render egenome population window
+        if ep_window_p is not None and eg_pop_pixels is not None:
+            sdl2.SDL_LockSurface(ep_surface_p)
+            cur_ep = int(eg_pop_cursor[0])
+            ep_dst[:PROBE_H, :PROBE_W] = np.roll(eg_pop_pixels,
+                                                    -cur_ep, axis=1)
+            sdl2.SDL_UnlockSurface(ep_surface_p)
+            sdl2.SDL_UpdateWindowSurface(ep_window_p)
+
         # Render entropy window
         if ent_window_p is not None and entropy_buf is not None:
             sdl2.SDL_LockSurface(ent_surface_p)
@@ -749,6 +813,8 @@ def main():
         entropy_shm.close()
     if pat_activity_shm is not None:
         pat_activity_shm.close()
+    if eg_pop_shm is not None:
+        eg_pop_shm.close()
 
 
 if __name__ == "__main__":
