@@ -322,6 +322,7 @@ window, stacked to the left of the main window.
 | `activity`       | 512 x 256     | LUT genome activity (scrolling hash-colored strip)     |
 | `eg_activity`    | 512 x 256     | Egenome activity (scrolling hash-colored strip)         |
 | `lut_complexity` | 512 x 128     | Stacked area: green=n1 only, yellow=n1+n2, red=n1+n2+n3 |
+| `eg_pop`         | 512 x 128     | Stacked area: population fraction per egenome value      |
 
 Example enabling multiple probes:
 
@@ -330,6 +331,7 @@ run_with_controls(sim, probes={
     'activity': True,
     'eg_activity': True,
     'lut_complexity': True,
+    'eg_pop': True,
     'env_food': True,
 })
 ```
@@ -345,6 +347,19 @@ Classifies each alive cell's LUT by the minimum ring set it depends on:
 Dead cells are excluded from counts.  The stacked area chart shows population
 fractions at each complexity level over time.  Useful for studying whether
 evolution discovers higher-ring dependencies starting from simple n1-only rules.
+
+### Egenome Population Probe
+
+Stacked proportional bar chart showing the population fraction of each of the
+64 possible egenome values over time.  Each time step renders one column with
+bands sorted by population (largest at bottom).  Band height is proportional
+to population share; every populated egenome gets at least 1 pixel; the last
+band absorbs any rounding remainder.
+
+Colors match those used by the `eg_activity` probe (white = wild-type,
+FNV-1a hash colors for mutants).  Internally reads `eg_pop[]` which is
+populated by `evoca_eg_activity_update()` — the probe ensures this update
+runs even when `eg_activity` is not enabled.
 
 ---
 
