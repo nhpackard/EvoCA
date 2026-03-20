@@ -1047,7 +1047,7 @@ void evoca_colorize(int32_t *pixels, int colormode)
                 else if (v_curr[i])
                     pixels[i] = (int32_t)lut_color[i];
                 else
-                    pixels[i] = (int32_t)0xFF111111;  /* alive, v=0: very dark grey */
+                    pixels[i] = (int32_t)0xFF333333;  /* alive, v=0: dark grey */
             }
             break;
         case 1:

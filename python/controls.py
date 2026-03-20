@@ -61,6 +61,24 @@ _PROBE_GETTER = {
     'births':    ('evoca_get_births', ctypes.c_uint8),
 }
 
+_AVAILABLE_PROBES = {
+    'env_food':       'Mean +/- std of environmental food F(x)',
+    'priv_food':      'Mean +/- std of private food f(x)',
+    'births':         'Mean +/- std of births array',
+    'activity':       'LUT genome activity (scrolling hash-colored strip)',
+    'eg_activity':    'Egenome activity (scrolling hash-colored strip)',
+    'lut_complexity': 'Stacked area: LUT ring-dependency level',
+    'eg_pop':         'Stacked area: egenome population fractions',
+    'entropy':        'Local-pattern Shannon entropy',
+    'pat_activity':   'Local-pattern activity (scrolling hash-colored strip)',
+}
+
+
+def available_probes():
+    """Return a dict mapping probe names to short descriptions."""
+    return dict(_AVAILABLE_PROBES)
+
+
 # Module-level handle: stop any previous session before starting a new one.
 _active_stop = None
 
