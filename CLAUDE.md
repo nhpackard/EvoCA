@@ -10,7 +10,7 @@ EvoCA is an evolutionary cellular automata simulation. It extends the GeneLife m
 
 - `C/` — C core: CA lattice, genome data structures, and CA update functions (optimized for speed)
 - `python/` — Python layer: `evoca_py.py` (ctypes wrapper), `display.py` (SDL2 window + widgets)
-- `Docs/` — Reference papers on the GeneLife model
+- `Docs/` — Reference papers, `model.md` (full spec), `probes.md` (probe windows)
 - `EvoCA.md` — Full model specification (read this for implementation details)
 - `evoca_test.ipynb` — Test notebook: GoL verification, benchmarks, SDL2 display launch
 

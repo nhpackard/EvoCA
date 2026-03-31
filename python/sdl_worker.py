@@ -33,6 +33,11 @@ MAG_W     = MAG_CELLS * MAG_PX   # 200
 MAG_H     = MAG_CELLS * MAG_PX   # 200
 MAG_HALF  = MAG_CELLS // 2       # 12
 
+# Egenome overlay
+EG_CELL_PX = 5          # pixels per cell in overlay pattern
+EG_PAT_N   = 5          # 5x5 pattern
+EG_OVL_PX  = EG_PAT_N * EG_CELL_PX   # 25x25
+
 def _c(argb):
     """Convert ARGB uint32 to np.int32 (avoids numpy deprecation warning)."""
     import numpy as np
@@ -210,6 +215,10 @@ def main():
     eg_activity_shm     = None
     eg_activity_cursor  = None
     eg_activity_pixels  = None
+    ega_m_acts = None
+    ega_m_pops = None
+    ega_m_cols = None
+    ega_m_ymax = None
     if eg_activity_shm_name:
         try:
             eg_activity_shm = SharedMemory(name=eg_activity_shm_name)
@@ -217,6 +226,15 @@ def main():
                                             buffer=eg_activity_shm.buf)
             eg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
                                             buffer=eg_activity_shm.buf, offset=4)
+            ega_meta_off = 4 + PROBE_W * ACT_H * 4
+            ega_m_acts = np.ndarray((64,), dtype=np.uint64,
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off)
+            ega_m_pops = np.ndarray((64,), dtype=np.uint32,
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8)
+            ega_m_cols = np.ndarray((64,), dtype=np.int32,
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4)
+            ega_m_ymax = np.ndarray((1,), dtype=np.int32,
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4*2)
             print(f"EvoCA SDL: eg_activity shm opened ({ACT_H}x{PROBE_W})",
                   flush=True)
         except Exception as e:
@@ -420,6 +438,8 @@ def main():
     eg_act_window_p  = None
     eg_act_surface_p = None
     eg_act_dst       = None
+    eg_act_window_id = 0
+    eg_overlay_val   = -1       # -1 = no overlay
     if eg_activity_shm is not None:
         caw_x = main_x - PROBE_W
         caw = sdl2.SDL_CreateWindow(
@@ -444,6 +464,7 @@ def main():
                 eg_act_dst       = cad_flat.reshape(ACT_H, cap_i32)
                 eg_act_window_p  = caw
                 eg_act_surface_p = caps
+                eg_act_window_id = sdl2.SDL_GetWindowID(caw)
                 print("EvoCA SDL: eg_activity window created", flush=True)
             else:
                 sdl2.SDL_DestroyWindow(caw)
@@ -488,6 +509,8 @@ def main():
     ep_window_p  = None
     ep_surface_p = None
     ep_dst       = None
+    ep_window_id = 0
+    ep_overlay_val = -1         # -1 = no overlay
     if eg_pop_shm is not None:
         epw_x = main_x - PROBE_W
         epw = sdl2.SDL_CreateWindow(
@@ -512,6 +535,7 @@ def main():
                 ep_dst       = ed_flat.reshape(PROBE_H, ep_i32)
                 ep_window_p  = epw
                 ep_surface_p = eps
+                ep_window_id = sdl2.SDL_GetWindowID(epw)
                 print("EvoCA SDL: eg_pop window created", flush=True)
             else:
                 sdl2.SDL_DestroyWindow(epw)
@@ -611,6 +635,7 @@ def main():
     print("EvoCA SDL: entering main loop", flush=True)
 
     event = sdl2.SDL_Event()
+    pending_click = None          # deferred probe click: ('ega'|'ep', x, y)
 
     while ctrl[0] == 0:
 
@@ -623,13 +648,16 @@ def main():
                 if k in (sdl2.SDLK_q, sdl2.SDLK_ESCAPE):
                     ctrl[0] = 1
             elif event.type == sdl2.SDL_MOUSEBUTTONDOWN:
-                if event.button.windowID == main_window_id:
+                _wid = event.button.windowID
+                _mx  = event.button.x
+                _my  = event.button.y
+                if _wid == main_window_id:
                     # Position magnifier centered on click point
                     wx_c, wy_c = ctypes.c_int(0), ctypes.c_int(0)
                     sdl2.SDL_GetWindowPosition(window_p,
                         ctypes.byref(wx_c), ctypes.byref(wy_c))
-                    mag_x = wx_c.value + event.button.x - MAG_W // 2
-                    mag_y = wy_c.value + event.button.y - MAG_H // 2
+                    mag_x = wx_c.value + _mx - MAG_W // 2
+                    mag_y = wy_c.value + _my - MAG_H // 2
                     if mag_window_p is None:
                         mw = sdl2.SDL_CreateWindow(
                             b"mag", mag_x, mag_y, MAG_W, MAG_H,
@@ -653,6 +681,10 @@ def main():
                     else:
                         sdl2.SDL_SetWindowPosition(mag_window_p,
                             mag_x, mag_y)
+                elif (eg_act_window_id and _wid == eg_act_window_id):
+                    pending_click = ('ega', _mx, _my)
+                elif (ep_window_id and _wid == ep_window_id):
+                    pending_click = ('ep', _mx, _my)
             elif event.type == sdl2.SDL_WINDOWEVENT:
                 if event.window.event == sdl2.SDL_WINDOWEVENT_CLOSE:
                     if (mag_window_p is not None and
@@ -667,6 +699,69 @@ def main():
 
         if ctrl[0]:
             break
+
+        # ── Deferred probe click processing ──────────────────────
+        if pending_click is not None:
+            _kind, _cx, _cy = pending_click
+            pending_click = None
+            try:
+                if _kind == 'ega' and eg_activity_pixels is not None \
+                        and ega_m_cols is not None:
+                    cur = int(eg_activity_cursor[0])
+                    bx = (_cx + cur) % PROBE_W
+                    if 0 <= _cy < ACT_H and 0 <= bx < PROBE_W:
+                        col2eg = {}
+                        for i in range(64):
+                            cv = int(ega_m_cols[i])
+                            col2eg[cv] = i
+                            ru = (cv >> 16) & 0xFF
+                            gu = (cv >>  8) & 0xFF
+                            bu =  cv        & 0xFF
+                            dim = (0xFF000000 | ((ru*15//100) << 16)
+                                   | ((gu*15//100) << 8) | (bu*15//100))
+                            if dim >= 0x80000000:
+                                dim -= 0x100000000
+                            col2eg.setdefault(dim, i)
+                        best_eg = -1
+                        for sy in range(_cy, -1, -1):
+                            spx = int(eg_activity_pixels[sy, bx])
+                            if spx in col2eg:
+                                best_eg = col2eg[spx]
+                                break
+                        if best_eg >= 0:
+                            eg_overlay_val = best_eg
+                            total_pop = max(int(ega_m_pops.sum()), 1)
+                            frac = int(ega_m_pops[best_eg]) / total_pop
+                            alive = ("alive" if ega_m_pops[best_eg] > 0
+                                     else "extinct")
+                            print(f"eg_activity click: egenome "
+                                  f"{best_eg} (0b{best_eg:06b})  "
+                                  f"pop={frac:.3f}  {alive}",
+                                  flush=True)
+                elif _kind == 'ep' and eg_pop_pixels is not None \
+                        and ega_m_cols is not None:
+                    cur = int(eg_pop_cursor[0])
+                    bx = (_cx + cur) % PROBE_W
+                    if 0 <= _cy < PROBE_H and 0 <= bx < PROBE_W:
+                        col2eg = {}
+                        for i in range(64):
+                            col2eg[int(ega_m_cols[i])] = i
+                        best_eg = -1
+                        for sy in range(_cy, -1, -1):
+                            spx = int(eg_pop_pixels[sy, bx])
+                            if spx in col2eg:
+                                best_eg = col2eg[spx]
+                                break
+                        if best_eg >= 0:
+                            ep_overlay_val = best_eg
+                            total_pop = max(int(ega_m_pops.sum()), 1)
+                            frac = int(ega_m_pops[best_eg]) / total_pop
+                            print(f"eg_pop click: egenome {best_eg} "
+                                  f"(0b{best_eg:06b})  "
+                                  f"pop={frac:.3f}", flush=True)
+            except Exception:
+                with open("/tmp/evoca_click.log", "a") as _lf:
+                    traceback.print_exc(file=_lf)
 
         # Render main window
         sdl2.SDL_LockSurface(surface_p)
@@ -729,6 +824,24 @@ def main():
             cur_ega = int(eg_activity_cursor[0])
             eg_act_dst[:ACT_H, :PROBE_W] = np.roll(eg_activity_pixels,
                                                      -cur_ega, axis=1)
+            # Overlay: draw 5×5 egenome pattern in top-right corner
+            if eg_overlay_val >= 0:
+                _orbit = np.array([[4,5,2,5,4],[5,3,1,3,5],[2,1,0,1,2],
+                                   [5,3,1,3,5],[4,5,2,5,4]], dtype=np.uint8)
+                pat = ((eg_overlay_val >> _orbit) & 1).astype(np.uint8)
+                col = int(ega_m_cols[eg_overlay_val]) if ega_m_cols is not None \
+                    else _c(0xFFFFFFFF)
+                ox = PROBE_W - EG_OVL_PX - 3
+                oy = 3
+                # border (1px white)
+                eg_act_dst[oy-1:oy+EG_OVL_PX+1, ox-1:ox+EG_OVL_PX+1] = \
+                    _c(0xFFFFFFFF)
+                for r in range(EG_PAT_N):
+                    for c in range(EG_PAT_N):
+                        px_col = col if pat[r, c] else _c(0xFF000000)
+                        y0 = oy + r * EG_CELL_PX
+                        x0 = ox + c * EG_CELL_PX
+                        eg_act_dst[y0:y0+EG_CELL_PX, x0:x0+EG_CELL_PX] = px_col
             sdl2.SDL_UnlockSurface(eg_act_surface_p)
             sdl2.SDL_UpdateWindowSurface(eg_act_window_p)
 
@@ -747,6 +860,23 @@ def main():
             cur_ep = int(eg_pop_cursor[0])
             ep_dst[:PROBE_H, :PROBE_W] = np.roll(eg_pop_pixels,
                                                     -cur_ep, axis=1)
+            # Overlay: draw 5×5 egenome pattern in top-right corner
+            if ep_overlay_val >= 0:
+                _orbit = np.array([[4,5,2,5,4],[5,3,1,3,5],[2,1,0,1,2],
+                                   [5,3,1,3,5],[4,5,2,5,4]], dtype=np.uint8)
+                pat = ((ep_overlay_val >> _orbit) & 1).astype(np.uint8)
+                col = int(ega_m_cols[ep_overlay_val]) if ega_m_cols is not None \
+                    else _c(0xFFFFFFFF)
+                ox = PROBE_W - EG_OVL_PX - 3
+                oy = 3
+                ep_dst[oy-1:oy+EG_OVL_PX+1, ox-1:ox+EG_OVL_PX+1] = \
+                    _c(0xFFFFFFFF)
+                for r in range(EG_PAT_N):
+                    for c in range(EG_PAT_N):
+                        px_col = col if pat[r, c] else _c(0xFF000000)
+                        y0 = oy + r * EG_CELL_PX
+                        x0 = ox + c * EG_CELL_PX
+                        ep_dst[y0:y0+EG_CELL_PX, x0:x0+EG_CELL_PX] = px_col
             sdl2.SDL_UnlockSurface(ep_surface_p)
             sdl2.SDL_UpdateWindowSurface(ep_window_p)
 

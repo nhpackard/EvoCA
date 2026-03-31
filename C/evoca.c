@@ -1005,30 +1005,35 @@ void evoca_eg_pop_render_col(int32_t *col, int height)
         total += eg_pop[i];
     if (total == 0) return;
 
-    /* Sort egenomes by population descending (largest bands at bottom) */
-    int idx[EGENOME_COUNT];
-    for (int i = 0; i < EGENOME_COUNT; i++) idx[i] = i;
-    for (int i = 0; i < EGENOME_COUNT - 1; i++)
-        for (int j = i + 1; j < EGENOME_COUNT; j++)
-            if (eg_pop[idx[j]] > eg_pop[idx[i]]) {
-                int tmp = idx[i]; idx[i] = idx[j]; idx[j] = tmp;
-            }
+    /* Fixed centered order: odd indices descending, 0, even ascending.
+       Wild-type (index 0) sits in the vertical centre; order never changes. */
+    static const int order[EGENOME_COUNT] = {
+        63,61,59,57,55,53,51,49,47,45,43,41,39,37,35,33,
+        31,29,27,25,23,21,19,17,15,13,11, 9, 7, 5, 3, 1,
+         0, 2, 4, 6, 8,10,12,14,16,18,20,22,24,26,28,30,
+        32,34,36,38,40,42,44,46,48,50,52,54,56,58,60,62
+    };
 
-    /* Stack bands from bottom */
-    int y = height - 1;
+    /* Find last populated entry for remainder assignment */
+    int last_k = -1;
+    for (int k = EGENOME_COUNT - 1; k >= 0; k--)
+        if (eg_pop[order[k]] > 0) { last_k = k; break; }
+
+    /* Stack bands top to bottom in fixed order */
+    int y = 0;
     int assigned = 0;
-    for (int k = 0; k < EGENOME_COUNT && y >= 0; k++) {
-        int eg = idx[k];
-        if (eg_pop[eg] == 0) break;
+    for (int k = 0; k < EGENOME_COUNT && y < height; k++) {
+        int eg = order[k];
+        if (eg_pop[eg] == 0) continue;
         int h;
-        if (k == EGENOME_COUNT - 1 || eg_pop[idx[k + 1]] == 0) {
-            /* Last populated egenome gets remainder */
+        if (k == last_k) {
             h = height - assigned;
         } else {
             h = (int)((uint64_t)eg_pop[eg] * height / total);
             if (h == 0) h = 1;  /* at least 1px if populated */
         }
-        for (int i = 0; i < h && y >= 0; i++, y--)
+        if (h <= 0) continue;
+        for (int i = 0; i < h && y < height; i++, y++)
             col[y] = eg_color[eg];
         assigned += h;
     }

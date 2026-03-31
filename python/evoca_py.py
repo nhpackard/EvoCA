@@ -74,7 +74,7 @@ class EvoCA:
         self.restricted_mu = 0
         self._n_ent      = 2
         self.egenome      = 0
-        self._recipe     = {}
+        self._state_params = {}
         self._setup_signatures()
 
     def _setup_signatures(self):
@@ -259,7 +259,7 @@ class EvoCA:
         self._lib.evoca_set_tax(self.tax)
         self._lib.evoca_set_restricted_mu(self.restricted_mu)
         self._lib.evoca_set_n_ent(self._n_ent)
-        self._recipe = {}
+        self._state_params = {}
         self._init_metaparams = {
             'food_inc': self.food_inc,
             'm_scale': self.m_scale,
@@ -350,22 +350,73 @@ class EvoCA:
         lines.append(")")
         return "\n".join(lines)
 
+    # ── State initialization ─────────────────────────────────────────
+
+    @property
+    def state_params(self):
+        """Return a copy of the current state-initialization parameters."""
+        return dict(self._state_params)
+
+    def state(self, lut='gol', lut_n_init=3, egenome='uniform', egenome_value=0,
+              v_density=0.5, f_init=0.0, F='uniform', F_init=0.0, F_range=None,
+              alive='all', alive_fraction=0.5, alive_radius=64, alive_axis=0):
+        """Initialize lattice state from parameters.
+
+        See available_state_init() for parameter descriptions.
+        """
+        self._state_params = {}
+
+        # LUT
+        if lut == 'random':
+            self.set_lut_random(n_init=lut_n_init)
+        else:
+            self.set_lut_all(make_gol_lut())
+
+        # Egenome
+        if egenome == 'random':
+            self.set_egenome_random()
+        else:
+            self.set_egenome_all(egenome_value)
+
+        # v(x) — random binary with given density
+        self.set_v(np.random.default_rng().integers(
+            0, 2, (self._N, self._N), dtype=np.uint8), density=v_density)
+
+        # Private food
+        self.set_f_all(f_init)
+
+        # Environmental food
+        if F == 'random':
+            lo, hi = F_range or [0.0, 1.0]
+            self.set_F_random(lo, hi)
+        else:
+            self.set_F_all(F_init)
+
+        # Alive mask (must come after LUT/egenome — dead cells' data is zeroed)
+        if alive == 'fraction':
+            self.set_alive_fraction(alive_fraction)
+        elif alive == 'patch':
+            self.set_alive_patch(alive_radius)
+        elif alive == 'halfplane':
+            self.set_alive_halfplane(alive_axis)
+        else:
+            self.set_alive_all()
+
     # ── Grid setters ──────────────────────────────────────────────────
 
     def set_v(self, v_array, density=None):
         arr = np.ascontiguousarray(v_array.ravel(), dtype=np.uint8)
         self._lib.evoca_set_v_all(
             arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)), len(arr))
-        self._recipe['v_method'] = 'random'
-        self._recipe['v_density'] = float(density) if density is not None else float(arr.mean())
+        self._state_params['v_density'] = float(density) if density is not None else float(arr.mean())
 
     def set_lut_all(self, lut_bytes):
         arr = np.ascontiguousarray(lut_bytes, dtype=np.uint8)
         assert len(arr) == LUT_BYTES, f"need {LUT_BYTES} bytes, got {len(arr)}"
         self._lib.evoca_set_lut_all(
             arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
-        self._recipe['lut_method'] = 'gol'
-        self._recipe['lut_n_init'] = None
+        self._state_params['lut'] = 'gol'
+        self._state_params.pop('lut_n_init', None)
 
     def set_lut(self, idx, lut_bytes):
         arr = np.ascontiguousarray(lut_bytes, dtype=np.uint8)
@@ -376,8 +427,8 @@ class EvoCA:
     def set_egenome_all(self, eg):
         self.egenome = int(eg) & 0x3F
         self._lib.evoca_set_egenome_all(self.egenome)
-        self._recipe['egenome_method'] = 'uniform'
-        self._recipe['egenome_value'] = self.egenome
+        self._state_params['egenome'] = 'uniform'
+        self._state_params['egenome_value'] = self.egenome
 
     def set_egenome_random(self):
         """Set each cell's egenome to a random value in [0, 63].
@@ -386,8 +437,8 @@ class EvoCA:
         ptr = self._lib.evoca_get_egenome()
         arr = np.ctypeslib.as_array(ptr, shape=(self._N * self._N,))
         arr[:] = np.random.randint(0, 64, self._N * self._N, dtype=np.uint8)
-        self._recipe['egenome_method'] = 'random'
-        self._recipe['egenome_value'] = None
+        self._state_params['egenome'] = 'random'
+        self._state_params.pop('egenome_value', None)
 
     def set_lut_random(self, n_init=3):
         """Set each cell's LUT to an independent random rule.
@@ -421,27 +472,27 @@ class EvoCA:
         packed = np.ascontiguousarray(packed)
         for i in range(N2):
             self.set_lut(i, packed[i])
-        self._recipe['lut_method'] = 'random'
-        self._recipe['lut_n_init'] = n_init
+        self._state_params['lut'] = 'random'
+        self._state_params['lut_n_init'] = n_init
 
     def set_f_all(self, f):
         self._lib.evoca_set_f_all(float(f))
-        self._recipe['f_init'] = float(f)
+        self._state_params['f_init'] = float(f)
 
     def set_F_all(self, F):
         self._lib.evoca_set_F_all(float(F))
-        self._recipe['F_method'] = 'uniform'
-        self._recipe['F_init'] = float(F)
-        self._recipe.pop('F_range', None)
+        self._state_params['F'] = 'uniform'
+        self._state_params['F_init'] = float(F)
+        self._state_params.pop('F_range', None)
 
     def set_F_random(self, lo=0.0, hi=1.0):
         """Set env food F(x) to uniform random values in [lo, hi]."""
         ptr = self._lib.evoca_get_F()
         arr = np.ctypeslib.as_array(ptr, shape=(self._N * self._N,))
         arr[:] = np.random.uniform(lo, hi, self._N * self._N).astype(np.float32)
-        self._recipe['F_method'] = 'random'
-        self._recipe['F_init'] = None
-        self._recipe['F_range'] = [float(lo), float(hi)]
+        self._state_params['F'] = 'random'
+        self._state_params.pop('F_init', None)
+        self._state_params['F_range'] = [float(lo), float(hi)]
 
     def set_env_mask(self, mask):
         """Set the environment food-regeneration mask.
@@ -475,33 +526,33 @@ class EvoCA:
     def set_alive_all(self):
         """Set all cells alive."""
         self._lib.evoca_set_alive_all()
-        self._recipe['alive_method'] = 'all'
+        self._state_params['alive'] = 'all'
         for k in ('alive_fraction', 'alive_radius', 'alive_axis'):
-            self._recipe.pop(k, None)
+            self._state_params.pop(k, None)
 
     def set_alive_fraction(self, frac):
         """Set a random fraction of cells alive; dead cells' data is zeroed."""
         self._lib.evoca_set_alive_fraction(float(frac))
-        self._recipe['alive_method'] = 'fraction'
-        self._recipe['alive_fraction'] = float(frac)
+        self._state_params['alive'] = 'fraction'
+        self._state_params['alive_fraction'] = float(frac)
         for k in ('alive_radius', 'alive_axis'):
-            self._recipe.pop(k, None)
+            self._state_params.pop(k, None)
 
     def set_alive_patch(self, radius):
         """Set a square patch of radius cells at center alive; rest dead."""
         self._lib.evoca_set_alive_patch(int(radius))
-        self._recipe['alive_method'] = 'patch'
-        self._recipe['alive_radius'] = int(radius)
+        self._state_params['alive'] = 'patch'
+        self._state_params['alive_radius'] = int(radius)
         for k in ('alive_fraction', 'alive_axis'):
-            self._recipe.pop(k, None)
+            self._state_params.pop(k, None)
 
     def set_alive_halfplane(self, axis=0):
         """Set half the grid alive. axis=0: left half, axis=1: top half."""
         self._lib.evoca_set_alive_halfplane(int(axis))
-        self._recipe['alive_method'] = 'halfplane'
-        self._recipe['alive_axis'] = int(axis)
+        self._state_params['alive'] = 'halfplane'
+        self._state_params['alive_axis'] = int(axis)
         for k in ('alive_fraction', 'alive_radius'):
-            self._recipe.pop(k, None)
+            self._state_params.pop(k, None)
 
     # ── Step and colorize ─────────────────────────────────────────────
 
@@ -607,6 +658,55 @@ class EvoCA:
         return {'hash': keys[:n], 'activity': acts[:n],
                 'pop_count': pops[:n], 'color': cols[:n]}
 
+    def plot_eg(self, n=8):
+        """Plot the top-n egenomes by population fraction.
+
+        Each subplot shows the 5x5 fiducial pattern on a 0-1 grid.
+        Title: integer value (binary) and population fraction.
+        """
+        import matplotlib.pyplot as plt
+
+        eg = self.get_eg_activity()
+        pops = eg['pop_count']
+        total = pops.sum()
+        if total == 0:
+            print("No alive cells.")
+            return
+
+        fracs = pops.astype(np.float64) / total
+        top_idx = np.argsort(fracs)[::-1][:n]
+        # skip zero-population entries
+        top_idx = top_idx[pops[top_idx] > 0]
+        n_show = len(top_idx)
+        if n_show == 0:
+            print("No alive cells.")
+            return
+
+        cols = min(n_show, 8)
+        rows = (n_show + cols - 1) // cols
+        fig, axes = plt.subplots(rows, cols, figsize=(cols * 1.4, rows * 1.6))
+        if n_show == 1:
+            axes = np.array([axes])
+        axes = np.atleast_2d(axes)
+
+        for i, eg_val in enumerate(top_idx):
+            ax = axes[i // cols, i % cols]
+            pat = egenome_to_pattern(eg_val)
+            ax.imshow(pat, cmap='Greys', vmin=0, vmax=1, interpolation='nearest')
+            for edge in range(6):
+                ax.axhline(edge - 0.5, color='gray', linewidth=0.3)
+                ax.axvline(edge - 0.5, color='gray', linewidth=0.3)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_title(f"{eg_val} (0b{eg_val:06b})\n{fracs[eg_val]:.3f}", fontsize=7)
+
+        # hide unused axes
+        for i in range(n_show, rows * cols):
+            axes[i // cols, i % cols].set_visible(False)
+
+        fig.tight_layout()
+        plt.show()
+
     # ── Recipe export ────────────────────────────────────────────────
 
     def export_recipe(self, descriptor, probes=None, colormode=0):
@@ -626,7 +726,7 @@ class EvoCA:
         filepath = os.path.join(runs_dir, filename)
 
         recipe = {
-            'version': 2,
+            'version': 3,
             'created': datetime.now().isoformat(timespec='seconds'),
             'descriptor': descriptor,
             'N': self._N,
@@ -640,7 +740,7 @@ class EvoCA:
                 'tax': self.tax,
                 'restricted_mu': self.restricted_mu,
             },
-            'initialization': dict(self._recipe),
+            'initialization': dict(self._state_params),
             'display': {
                 'colormode': colormode,
                 'probes': probes or {},
@@ -662,6 +762,30 @@ class EvoCA:
     @property
     def cell_px(self):
         return self._lib.evoca_get_cell_px()
+
+
+# ── State initialization catalogue ────────────────────────────────────
+
+_AVAILABLE_STATE_INIT = {
+    'lut':            "'gol' (GoL rule for all) | 'random' (independent random LUT per cell)",
+    'lut_n_init':     "int 1-3: ring depth for random LUT (1=10 bits, 2=50, 3=all 250). Default 3",
+    'egenome':        "'uniform' (same value for all) | 'random' (random in 0..63)",
+    'egenome_value':  "int 0-63: egenome value when egenome='uniform'. Default 0",
+    'v_density':      "float 0-1: fraction of cells with v=1. Default 0.5",
+    'f_init':         "float: initial private food per cell. Default 0.0",
+    'F':              "'uniform' (constant) | 'random' (uniform in F_range)",
+    'F_init':         "float: env food level when F='uniform'. Default 0.0",
+    'F_range':        "[lo, hi]: range when F='random'. Default [0.0, 1.0]",
+    'alive':          "'all' | 'fraction' | 'patch' | 'halfplane'",
+    'alive_fraction': "float 0-1: fraction alive (alive='fraction'). Default 0.5",
+    'alive_radius':   "int: half-side of central square (alive='patch'). Default 64",
+    'alive_axis':     "int 0|1: 0=left half, 1=top half (alive='halfplane'). Default 0",
+}
+
+
+def available_state_init():
+    """Return a dict mapping state-init parameter names to descriptions."""
+    return dict(_AVAILABLE_STATE_INIT)
 
 
 # ── Recipe import ─────────────────────────────────────────────────────
@@ -707,48 +831,13 @@ def import_run(filepath=None, recipe='init', lib_path=None):
     sim = EvoCA(lib_path=lib_path)
     sim.init(data['N'], **mp)
 
-    init = data.get('initialization', {})
-
-    # LUT
-    lut_method = init.get('lut_method', 'gol')
-    if lut_method == 'random':
-        sim.set_lut_random(n_init=init.get('lut_n_init', 3))
-    else:
-        sim.set_lut_all(make_gol_lut())
-
-    # Egenome
-    eg_method = init.get('egenome_method', 'uniform')
-    if eg_method == 'random':
-        sim.set_egenome_random()
-    else:
-        sim.set_egenome_all(init.get('egenome_value', 0))
-
-    # v(x) — random with given density
-    v_density = init.get('v_density', 0.5)
-    N = data['N']
-    sim.set_v(np.random.default_rng().integers(
-        0, 2, (N, N), dtype=np.uint8), density=v_density)
-
-    # Private food
-    sim.set_f_all(init.get('f_init', 0.0))
-
-    # Environmental food
-    F_method = init.get('F_method', 'uniform')
-    if F_method == 'random':
-        lo, hi = init.get('F_range', [0.0, 1.0])
-        sim.set_F_random(lo, hi)
-    else:
-        sim.set_F_all(init.get('F_init', 0.0))
-
-    # Alive (must come after LUT/egenome setters)
-    alive_method = init.get('alive_method', 'all')
-    if alive_method == 'fraction':
-        sim.set_alive_fraction(init.get('alive_fraction', 0.5))
-    elif alive_method == 'patch':
-        sim.set_alive_patch(init.get('alive_radius', 64))
-    elif alive_method == 'halfplane':
-        sim.set_alive_halfplane(init.get('alive_axis', 0))
-    # 'all' is the default — no call needed
+    # Build state params — map v2 key names to v3 if needed
+    init_raw = data.get('initialization', {})
+    _v2_keys = {'lut_method': 'lut', 'egenome_method': 'egenome',
+                'F_method': 'F', 'alive_method': 'alive'}
+    state_kw = {_v2_keys.get(k, k): v for k, v in init_raw.items()}
+    state_kw.pop('v_method', None)   # removed in v3
+    sim.state(**state_kw)
 
     # Build display kwargs
     disp = data.get('display', {})

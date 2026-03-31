@@ -38,7 +38,6 @@ import numpy as np
 import ipywidgets as widgets
 import matplotlib.pyplot as plt
 from IPython.display import display as ipy_display
-from .evoca_py import egenome_to_pattern
 from multiprocessing.shared_memory import SharedMemory
 
 import ctypes
@@ -152,7 +151,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     eg_activity_col     = None
 
     if eg_activity_enabled:
-        ega_shm_size = 4 + PROBE_W * ACT_H * 4
+        ega_meta_off = 4 + PROBE_W * ACT_H * 4
+        ega_shm_size = ega_meta_off + 64*8 + 64*4 + 64*4 + 4  # +acts,pops,cols,ymax
         eg_activity_shm = SharedMemory(create=True, size=ega_shm_size)
         _egabuf = np.ndarray((ega_shm_size,), dtype=np.uint8,
                              buffer=eg_activity_shm.buf)
@@ -162,6 +162,15 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         eg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
                                         buffer=eg_activity_shm.buf, offset=4)
         eg_activity_col = np.zeros(ACT_H, dtype=np.int32)
+        # Metadata for click → egenome mapping (written by sim thread)
+        ega_m_acts = np.ndarray((64,), dtype=np.uint64,
+                                buffer=eg_activity_shm.buf, offset=ega_meta_off)
+        ega_m_pops = np.ndarray((64,), dtype=np.uint32,
+                                buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8)
+        ega_m_cols = np.ndarray((64,), dtype=np.int32,
+                                buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4)
+        ega_m_ymax = np.ndarray((1,), dtype=np.int32,
+                                buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4*2)
 
     # ── Entropy probe setup ──────────────────────────────────────────
     entropy_enabled      = bool((probes or {}).get('entropy'))
@@ -368,6 +377,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     btn_pause = widgets.ToggleButton(
         value=bool(paused), description="Run" if paused else "Pause",
         button_style="", layout=widgets.Layout(width="90px"))
+    btn_restart = widgets.Button(
+        description="Restart", layout=widgets.Layout(width="80px"))
     btn_step  = widgets.Button(
         description="Step",  layout=widgets.Layout(width="70px"))
     btn_quit  = widgets.Button(
@@ -404,29 +415,39 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         value=sim.tax, min=0.0, max=0.1, step=0.001,
         description="tax:", readout_format=".3f", **sl_kw)
 
-    sl_act_ymax = None
+    # ── ymax halve / double buttons ──────────────────────────────────
+    def _make_ymax_btns(name, initial, update_fn):
+        val = [initial]
+        lbl = widgets.Label(value=f"{name}: {initial}",
+                            layout=widgets.Layout(width="160px"))
+        btn_h = widgets.Button(description="<|",
+                               layout=widgets.Layout(width="35px"))
+        btn_d = widgets.Button(description="|>",
+                               layout=widgets.Layout(width="35px"))
+        def halve(_):
+            if not _alive[0]: return
+            val[0] = max(val[0] // 2, 100)
+            update_fn(val[0])
+            lbl.value = f"{name}: {val[0]}"
+        def double(_):
+            if not _alive[0]: return
+            val[0] *= 2
+            update_fn(val[0])
+            lbl.value = f"{name}: {val[0]}"
+        btn_h.on_click(halve)
+        btn_d.on_click(double)
+        return widgets.HBox([btn_h, lbl, btn_d])
+
+    _ymax_btns = []
     if activity_enabled:
-        sl_act_ymax = widgets.IntSlider(
-            value=2000, min=100, max=100000, step=100,
-            description="act_ymax:",
-            style={"description_width": "90px"},
-            layout=widgets.Layout(width="440px"))
-
-    sl_eg_act_ymax = None
+        _ymax_btns.append(_make_ymax_btns(
+            "act_ymax", 2000, sim.update_act_ymax))
     if eg_activity_enabled:
-        sl_eg_act_ymax = widgets.IntSlider(
-            value=2000, min=100, max=100000, step=100,
-            description="eg_act_ymax:",
-            style={"description_width": "90px"},
-            layout=widgets.Layout(width="440px"))
-
-    sl_pat_act_ymax = None
+        _ymax_btns.append(_make_ymax_btns(
+            "eg_act_ymax", 2000, sim.update_eg_act_ymax))
     if pat_activity_enabled:
-        sl_pat_act_ymax = widgets.IntSlider(
-            value=2000, min=100, max=100000, step=100,
-            description="pat_act_ymax:",
-            style={"description_width": "90px"},
-            layout=widgets.Layout(width="440px"))
+        _ymax_btns.append(_make_ymax_btns(
+            "pat_act_ymax", 2000, sim.update_pat_act_ymax))
 
     cb_restricted_mu = widgets.Checkbox(
         value=bool(sim.restricted_mu),
@@ -438,33 +459,16 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         layout=widgets.Layout(width="200px"))
     status_lbl = widgets.Label(value="Starting…")
 
-    # ── Fiducial pattern display ─────────────────────────────────────
-    pat = egenome_to_pattern(sim.egenome)
-    fig, ax = plt.subplots(figsize=(2, 2))
-    ax.imshow(pat, cmap='Greys', vmin=0, vmax=1, interpolation='nearest')
-    for edge in range(6):
-        ax.axhline(edge - 0.5, color='gray', linewidth=0.5)
-        ax.axvline(edge - 0.5, color='gray', linewidth=0.5)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_title(f'fiducial c(x)   eg=0b{sim.egenome:06b}', fontsize=9)
-    plt.tight_layout()
-    plt.show()
-
-    _slider_list = [sl_food_inc, sl_m_scale, sl_gdiff,
-                    sl_mu_lut, sl_mu_egenome, sl_tax]
-    if sl_act_ymax is not None:
-        _slider_list.append(sl_act_ymax)
-    if sl_eg_act_ymax is not None:
-        _slider_list.append(sl_eg_act_ymax)
-    if sl_pat_act_ymax is not None:
-        _slider_list.append(sl_pat_act_ymax)
-    ipy_display(widgets.VBox([
-        widgets.HBox([btn_pause, btn_step, btn_quit, btn_save,
+    _rows = [
+        widgets.HBox([btn_pause, btn_restart, btn_step, btn_quit, btn_save,
                       txt_descriptor, btn_export]),
-        *_slider_list,
-        widgets.HBox([color_dd, cb_restricted_mu, status_lbl]),
-    ]))
+        sl_food_inc, sl_m_scale, sl_gdiff,
+        sl_mu_lut, sl_mu_egenome, sl_tax,
+    ]
+    if _ymax_btns:
+        _rows.append(widgets.HBox(_ymax_btns))
+    _rows.append(widgets.HBox([color_dd, cb_restricted_mu, status_lbl]))
+    ipy_display(widgets.VBox(_rows))
 
     # ── Widget callbacks ──────────────────────────────────────────
     _guard = [False]
@@ -516,6 +520,11 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 sim._lib.evoca_eg_activity_render_col(ega_col_ptr, ACT_H)
                 eg_activity_pixels[:, ega_cur] = eg_activity_col
                 eg_activity_cursor[0] = (ega_cur + 1) % PROBE_W
+                sim._lib.evoca_eg_activity_get(
+                    ega_m_acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+                    ega_m_pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+                    ega_m_cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
+                ega_m_ymax[0] = sim._lib.evoca_get_eg_act_ymax()
             if lut_complexity_enabled:
                 lc_cur = int(lut_complexity_cursor[0])
                 lc_col_ptr = lut_complexity_col.ctypes.data_as(
@@ -589,7 +598,61 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             return
         sim.update_restricted_mu(int(change['new']))
 
+    def on_restart(_):
+        if not _alive[0]:
+            return
+        _set_paused(True)
+        time.sleep(0.02)   # let sim thread settle into paused state
+
+        saved_state = sim.state_params
+
+        # Re-initialize C library (realloc arrays, reset counters)
+        sim._lib.evoca_init(N, sim.food_inc, sim.m_scale)
+        sim._lib.evoca_set_gdiff(sim.gdiff)
+        sim._lib.evoca_set_mu_lut(sim.mu_lut)
+        sim._lib.evoca_set_mu_egenome(sim.mu_egenome)
+        sim._lib.evoca_set_tax(sim.tax)
+        sim._lib.evoca_set_restricted_mu(sim.restricted_mu)
+        if pat_enabled:
+            sim._lib.evoca_set_n_ent(sim.n_ent)
+
+        # Replay state initialization
+        sim.state(**saved_state)
+
+        # Reset step counter
+        st['step_cnt'] = 0
+        ctrl[_STEP] = 0
+
+        # Clear probe buffers
+        if n_probes > 0:
+            probe_cursor[0] = 0
+            for pi in range(n_probes):
+                probe_means[pi][:] = 0
+                probe_stds[pi][:] = 0
+        if activity_enabled:
+            activity_cursor[0] = 0
+            activity_pixels[:] = 0
+        if eg_activity_enabled:
+            eg_activity_cursor[0] = 0
+            eg_activity_pixels[:] = 0
+        if lut_complexity_enabled:
+            lut_complexity_cursor[0] = 0
+            lut_complexity_pixels[:] = 0
+        if eg_pop_enabled:
+            eg_pop_cursor[0] = 0
+            eg_pop_pixels[:] = 0
+        if entropy_enabled:
+            entropy_cursor[0] = 0
+            entropy_buf[:] = 0
+        if pat_activity_enabled:
+            pat_activity_cursor[0] = 0
+            pat_activity_pixels[:] = 0
+
+        sim.colorize(pixels, st['colormode'])
+        status_lbl.value = "Restarted — t=0  (paused)"
+
     btn_pause.observe(on_pause_toggle, names='value')
+    btn_restart.on_click(on_restart)
     btn_step.on_click(on_step)
     btn_quit.on_click(on_quit)
     btn_save.on_click(on_save)
@@ -633,12 +696,6 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     _make_slider_cb("mu_lut",     sl_mu_lut)
     _make_slider_cb("mu_egenome",  sl_mu_egenome)
     _make_slider_cb("tax",        sl_tax)
-    if sl_act_ymax is not None:
-        _make_slider_cb("act_ymax", sl_act_ymax)
-    if sl_eg_act_ymax is not None:
-        _make_slider_cb("eg_act_ymax", sl_eg_act_ymax)
-    if sl_pat_act_ymax is not None:
-        _make_slider_cb("pat_act_ymax", sl_pat_act_ymax)
 
     # ── Simulation thread ─────────────────────────────────────────
     def _sim_thread():
@@ -710,6 +767,11 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 sim._lib.evoca_eg_activity_render_col(ega_col_ptr, ACT_H)
                 eg_activity_pixels[:, ega_cur] = eg_activity_col
                 eg_activity_cursor[0] = (ega_cur + 1) % PROBE_W
+                sim._lib.evoca_eg_activity_get(
+                    ega_m_acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+                    ega_m_pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+                    ega_m_cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
+                ega_m_ymax[0] = sim._lib.evoca_get_eg_act_ymax()
 
             # Record LUT complexity data
             if lut_complexity_enabled:
