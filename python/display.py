@@ -107,7 +107,6 @@ def run(sim, cell_px=None, colormode=0, steps=-1):
             f"EvoCA  t={step_cnt}"
             f"  food_inc={sim.food_inc:.4f}"
             f"  m={sim.m_scale:.3f}"
-            f"  repro={sim.food_repro:.3f}"
             f"  color={COLOR_MODES[colormode]}"
             f"  {'PAUSED' if paused else f'fps={fps:.1f}'}"
         )

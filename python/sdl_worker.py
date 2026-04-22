@@ -26,6 +26,18 @@ PROBE_W = 512
 PROBE_H = 128
 TITLE_BAR_H = 28   # macOS title bar estimate
 
+# Magnifier window
+MAG_CELLS = 25      # cells shown in magnifier
+MAG_PX    = 8       # pixels per cell in magnifier
+MAG_W     = MAG_CELLS * MAG_PX   # 200
+MAG_H     = MAG_CELLS * MAG_PX   # 200
+MAG_HALF  = MAG_CELLS // 2       # 12
+
+# Egenome overlay
+EG_CELL_PX = 5          # pixels per cell in overlay pattern
+EG_PAT_N   = 5          # 5x5 pattern
+EG_OVL_PX  = EG_PAT_N * EG_CELL_PX   # 25x25
+
 def _c(argb):
     """Convert ARGB uint32 to np.int32 (avoids numpy deprecation warning)."""
     import numpy as np
@@ -113,10 +125,33 @@ def main():
     px = int(sys.argv[4])
     W, H = N * px, N * px
 
-    # Optional probe args
+    # Optional probe args (positional: argv[5]=probe_shm, argv[6]=names_csv)
     probe_shm_name = sys.argv[5] if len(sys.argv) > 6 else None
     probe_names    = sys.argv[6].split(",") if len(sys.argv) > 6 else []
     n_probes       = len(probe_names)
+
+    # Optional activity probe (--activity=<shm_name>)
+    activity_shm_name = None
+    eg_activity_shm_name = None
+    lut_complexity_shm_name = None
+    entropy_shm_name = None
+    pat_activity_shm_name = None
+    eg_pop_shm_name = None
+    for arg in sys.argv:
+        if arg.startswith("--activity="):
+            activity_shm_name = arg[len("--activity="):]
+        elif arg.startswith("--eg-activity="):
+            eg_activity_shm_name = arg[len("--eg-activity="):]
+        elif arg.startswith("--lut-complexity="):
+            lut_complexity_shm_name = arg[len("--lut-complexity="):]
+        elif arg.startswith("--entropy="):
+            entropy_shm_name = arg[len("--entropy="):]
+        elif arg.startswith("--pat-activity="):
+            pat_activity_shm_name = arg[len("--pat-activity="):]
+        elif arg.startswith("--eg-pop="):
+            eg_pop_shm_name = arg[len("--eg-pop="):]
+
+    ACT_H = 2 * PROBE_H  # 256
 
     print(f"EvoCA SDL: starting  N={N} px={px}  probes={probe_names}", flush=True)
 
@@ -158,6 +193,91 @@ def main():
                                              buffer=probe_shm.buf, offset=off))
                 off += PROBE_W * 4
 
+    # Open activity shared memory
+    activity_shm     = None
+    activity_cursor  = None
+    activity_pixels  = None
+    if activity_shm_name:
+        try:
+            activity_shm = SharedMemory(name=activity_shm_name)
+            activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                         buffer=activity_shm.buf)
+            activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                         buffer=activity_shm.buf, offset=4)
+            print(f"EvoCA SDL: activity shm opened ({ACT_H}x{PROBE_W})",
+                  flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: activity SharedMemory open failed: {e}",
+                  flush=True)
+            activity_shm_name = None
+
+    # Open egenome activity shared memory
+    eg_activity_shm     = None
+    eg_activity_cursor  = None
+    eg_activity_pixels  = None
+    ega_m_acts = None
+    ega_m_pops = None
+    ega_m_cols = None
+    ega_m_ymax = None
+    if eg_activity_shm_name:
+        try:
+            eg_activity_shm = SharedMemory(name=eg_activity_shm_name)
+            eg_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                            buffer=eg_activity_shm.buf)
+            eg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                            buffer=eg_activity_shm.buf, offset=4)
+            ega_meta_off = 4 + PROBE_W * ACT_H * 4
+            ega_m_acts = np.ndarray((64,), dtype=np.uint64,
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off)
+            ega_m_pops = np.ndarray((64,), dtype=np.uint32,
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8)
+            ega_m_cols = np.ndarray((64,), dtype=np.int32,
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4)
+            ega_m_ymax = np.ndarray((1,), dtype=np.int32,
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4*2)
+            print(f"EvoCA SDL: eg_activity shm opened ({ACT_H}x{PROBE_W})",
+                  flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: eg_activity SharedMemory open failed: {e}",
+                  flush=True)
+            eg_activity_shm_name = None
+
+    # Open LUT complexity shared memory
+    lut_complexity_shm     = None
+    lut_complexity_cursor  = None
+    lut_complexity_pixels  = None
+    if lut_complexity_shm_name:
+        try:
+            lut_complexity_shm = SharedMemory(name=lut_complexity_shm_name)
+            lut_complexity_cursor = np.ndarray((1,), dtype=np.int32,
+                                               buffer=lut_complexity_shm.buf)
+            lut_complexity_pixels = np.ndarray((PROBE_H, PROBE_W), dtype=np.int32,
+                                               buffer=lut_complexity_shm.buf, offset=4)
+            print(f"EvoCA SDL: lut_complexity shm opened ({PROBE_H}x{PROBE_W})",
+                  flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: lut_complexity SharedMemory open failed: {e}",
+                  flush=True)
+            lut_complexity_shm_name = None
+
+    # Open egenome population shared memory
+    eg_pop_shm     = None
+    eg_pop_cursor  = None
+    eg_pop_pixels  = None
+    if eg_pop_shm_name:
+        try:
+            eg_pop_shm = SharedMemory(name=eg_pop_shm_name)
+            eg_pop_cursor = np.ndarray((1,), dtype=np.int32,
+                                        buffer=eg_pop_shm.buf)
+            eg_pop_pixels = np.ndarray((PROBE_H, PROBE_W), dtype=np.int32,
+                                        buffer=eg_pop_shm.buf, offset=4)
+            print(f"EvoCA SDL: eg_pop shm opened ({PROBE_H}x{PROBE_W})",
+                  flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: eg_pop SharedMemory open failed: {e}",
+                  flush=True)
+            eg_pop_shm_name = None
+
     COLOR_MODES = ["state", "env-food", "priv-food", "births"]
 
     # ── SDL2 init ─────────────────────────────────────────────────
@@ -190,7 +310,13 @@ def main():
         sys.exit(1)
 
     sdl2.SDL_RaiseWindow(window_p)
+    main_window_id = sdl2.SDL_GetWindowID(window_p)
     print("EvoCA SDL: window created and raised", flush=True)
+
+    # Magnifier state (center computed dynamically from window position)
+    mag_window_p  = None
+    mag_surface_p = None
+    mag_dst       = None
 
     surface_p = sdl2.SDL_GetWindowSurface(window_p)
     if not surface_p:
@@ -273,9 +399,243 @@ def main():
         probe_yfix.append(_Y_FIXED.get(pname))
 
     print(f"EvoCA SDL: {len(probe_windows)} probe window(s) created", flush=True)
+
+    # ── Activity window ──────────────────────────────────────────
+    act_window_p  = None
+    act_surface_p = None
+    act_dst       = None
+    if activity_shm is not None:
+        aw_x = main_x - PROBE_W
+        aw = sdl2.SDL_CreateWindow(
+            b"activity",
+            aw_x, next_probe_y,
+            PROBE_W, ACT_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if aw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(aw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + ACT_H + real_title_h
+            aps = sdl2.SDL_GetWindowSurface(aw)
+            if aps:
+                sdl2.SDL_SetSurfaceBlendMode(aps, sdl2.SDL_BLENDMODE_NONE)
+                asurf   = aps.contents
+                ap_i32  = asurf.pitch // 4
+                ap_ptr  = ctypes.cast(asurf.pixels,
+                                      ctypes.POINTER(ctypes.c_int32))
+                ad_flat = np.ctypeslib.as_array(ap_ptr,
+                                                shape=(ACT_H * ap_i32,))
+                act_dst       = ad_flat.reshape(ACT_H, ap_i32)
+                act_window_p  = aw
+                act_surface_p = aps
+                print("EvoCA SDL: activity window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(aw)
+        else:
+            print("EvoCA SDL: activity window creation failed", flush=True)
+
+    # ── Egenome activity window ─────────────────────────────────
+    eg_act_window_p  = None
+    eg_act_surface_p = None
+    eg_act_dst       = None
+    eg_act_window_id = 0
+    eg_overlay_val   = -1       # -1 = no overlay
+    if eg_activity_shm is not None:
+        caw_x = main_x - PROBE_W
+        caw = sdl2.SDL_CreateWindow(
+            b"eg_activity",
+            caw_x, next_probe_y,
+            PROBE_W, ACT_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if caw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(caw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + ACT_H + real_title_h
+            caps = sdl2.SDL_GetWindowSurface(caw)
+            if caps:
+                sdl2.SDL_SetSurfaceBlendMode(caps, sdl2.SDL_BLENDMODE_NONE)
+                casurf   = caps.contents
+                cap_i32  = casurf.pitch // 4
+                cap_ptr  = ctypes.cast(casurf.pixels,
+                                       ctypes.POINTER(ctypes.c_int32))
+                cad_flat = np.ctypeslib.as_array(cap_ptr,
+                                                 shape=(ACT_H * cap_i32,))
+                eg_act_dst       = cad_flat.reshape(ACT_H, cap_i32)
+                eg_act_window_p  = caw
+                eg_act_surface_p = caps
+                eg_act_window_id = sdl2.SDL_GetWindowID(caw)
+                print("EvoCA SDL: eg_activity window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(caw)
+        else:
+            print("EvoCA SDL: eg_activity window creation failed", flush=True)
+
+    # ── LUT complexity window ──────────────────────────────────
+    lc_window_p  = None
+    lc_surface_p = None
+    lc_dst       = None
+    if lut_complexity_shm is not None:
+        lcw_x = main_x - PROBE_W
+        lcw = sdl2.SDL_CreateWindow(
+            b"lut_complexity",
+            lcw_x, next_probe_y,
+            PROBE_W, PROBE_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if lcw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(lcw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + PROBE_H + real_title_h
+            lps = sdl2.SDL_GetWindowSurface(lcw)
+            if lps:
+                sdl2.SDL_SetSurfaceBlendMode(lps, sdl2.SDL_BLENDMODE_NONE)
+                lsurf   = lps.contents
+                lp_i32  = lsurf.pitch // 4
+                lp_ptr  = ctypes.cast(lsurf.pixels,
+                                      ctypes.POINTER(ctypes.c_int32))
+                ld_flat = np.ctypeslib.as_array(lp_ptr,
+                                                shape=(PROBE_H * lp_i32,))
+                lc_dst       = ld_flat.reshape(PROBE_H, lp_i32)
+                lc_window_p  = lcw
+                lc_surface_p = lps
+                print("EvoCA SDL: lut_complexity window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(lcw)
+        else:
+            print("EvoCA SDL: lut_complexity window creation failed", flush=True)
+
+    # ── Egenome population window ──────────────────────────────
+    ep_window_p  = None
+    ep_surface_p = None
+    ep_dst       = None
+    ep_window_id = 0
+    ep_overlay_val = -1         # -1 = no overlay
+    if eg_pop_shm is not None:
+        epw_x = main_x - PROBE_W
+        epw = sdl2.SDL_CreateWindow(
+            b"eg_pop",
+            epw_x, next_probe_y,
+            PROBE_W, PROBE_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if epw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(epw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + PROBE_H + real_title_h
+            eps = sdl2.SDL_GetWindowSurface(epw)
+            if eps:
+                sdl2.SDL_SetSurfaceBlendMode(eps, sdl2.SDL_BLENDMODE_NONE)
+                esurf   = eps.contents
+                ep_i32  = esurf.pitch // 4
+                ep_ptr  = ctypes.cast(esurf.pixels,
+                                      ctypes.POINTER(ctypes.c_int32))
+                ed_flat = np.ctypeslib.as_array(ep_ptr,
+                                                shape=(PROBE_H * ep_i32,))
+                ep_dst       = ed_flat.reshape(PROBE_H, ep_i32)
+                ep_window_p  = epw
+                ep_surface_p = eps
+                ep_window_id = sdl2.SDL_GetWindowID(epw)
+                print("EvoCA SDL: eg_pop window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(epw)
+        else:
+            print("EvoCA SDL: eg_pop window creation failed", flush=True)
+
+    # Open entropy shared memory + create window
+    entropy_shm      = None
+    entropy_cursor   = None
+    entropy_buf      = None
+    entropy_std_buf  = None
+    ent_window_p     = None
+    ent_surface_p    = None
+    ent_dst          = None
+    if entropy_shm_name:
+        try:
+            entropy_shm = SharedMemory(name=entropy_shm_name)
+            entropy_cursor = np.ndarray((1,), dtype=np.int32,
+                                        buffer=entropy_shm.buf)
+            entropy_buf = np.ndarray((PROBE_W,), dtype=np.float32,
+                                     buffer=entropy_shm.buf, offset=4)
+            entropy_std_buf = np.zeros(PROBE_W, dtype=np.float32)
+            print(f"EvoCA SDL: entropy shm opened", flush=True)
+            ew_x = main_x - PROBE_W
+            ew = sdl2.SDL_CreateWindow(
+                b"entropy", ew_x, next_probe_y, PROBE_W, PROBE_H,
+                sdl2.SDL_WINDOW_SHOWN)
+            if ew:
+                actual_y = ctypes.c_int(0)
+                sdl2.SDL_GetWindowPosition(ew, None, ctypes.byref(actual_y))
+                next_probe_y = actual_y.value + PROBE_H + real_title_h
+                eps = sdl2.SDL_GetWindowSurface(ew)
+                if eps:
+                    sdl2.SDL_SetSurfaceBlendMode(eps, sdl2.SDL_BLENDMODE_NONE)
+                    esurf  = eps.contents
+                    ep_i32 = esurf.pitch // 4
+                    ep_ptr = ctypes.cast(esurf.pixels,
+                                         ctypes.POINTER(ctypes.c_int32))
+                    ed_flat = np.ctypeslib.as_array(ep_ptr,
+                                                    shape=(PROBE_H * ep_i32,))
+                    ent_dst      = ed_flat.reshape(PROBE_H, ep_i32)
+                    ent_window_p  = ew
+                    ent_surface_p = eps
+                    print("EvoCA SDL: entropy window created", flush=True)
+                else:
+                    sdl2.SDL_DestroyWindow(ew)
+            else:
+                print("EvoCA SDL: entropy window creation failed", flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: entropy SharedMemory open failed: {e}", flush=True)
+            entropy_shm_name = None
+
+    # Open pattern activity shared memory + create window
+    pat_activity_shm     = None
+    pat_activity_cursor  = None
+    pat_activity_pixels  = None
+    pa_window_p  = None
+    pa_surface_p = None
+    pa_dst       = None
+    if pat_activity_shm_name:
+        try:
+            pat_activity_shm = SharedMemory(name=pat_activity_shm_name)
+            pat_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                             buffer=pat_activity_shm.buf)
+            pat_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                             buffer=pat_activity_shm.buf, offset=4)
+            print(f"EvoCA SDL: pat_activity shm opened ({ACT_H}x{PROBE_W})", flush=True)
+            paw_x = main_x - PROBE_W
+            paw = sdl2.SDL_CreateWindow(
+                b"pat_activity", paw_x, next_probe_y, PROBE_W, ACT_H,
+                sdl2.SDL_WINDOW_SHOWN)
+            if paw:
+                actual_y = ctypes.c_int(0)
+                sdl2.SDL_GetWindowPosition(paw, None, ctypes.byref(actual_y))
+                next_probe_y = actual_y.value + ACT_H + real_title_h
+                paps = sdl2.SDL_GetWindowSurface(paw)
+                if paps:
+                    sdl2.SDL_SetSurfaceBlendMode(paps, sdl2.SDL_BLENDMODE_NONE)
+                    pasurf   = paps.contents
+                    pap_i32  = pasurf.pitch // 4
+                    pap_ptr  = ctypes.cast(pasurf.pixels,
+                                           ctypes.POINTER(ctypes.c_int32))
+                    pad_flat = np.ctypeslib.as_array(pap_ptr,
+                                                     shape=(ACT_H * pap_i32,))
+                    pa_dst       = pad_flat.reshape(ACT_H, pap_i32)
+                    pa_window_p  = paw
+                    pa_surface_p = paps
+                    print("EvoCA SDL: pat_activity window created", flush=True)
+                else:
+                    sdl2.SDL_DestroyWindow(paw)
+            else:
+                print("EvoCA SDL: pat_activity window creation failed", flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: pat_activity SharedMemory open failed: {e}", flush=True)
+            pat_activity_shm_name = None
+
     print("EvoCA SDL: entering main loop", flush=True)
 
     event = sdl2.SDL_Event()
+    pending_click = None          # deferred probe click: ('ega'|'ep', x, y)
 
     while ctrl[0] == 0:
 
@@ -287,9 +647,121 @@ def main():
                 k = event.key.keysym.sym
                 if k in (sdl2.SDLK_q, sdl2.SDLK_ESCAPE):
                     ctrl[0] = 1
+            elif event.type == sdl2.SDL_MOUSEBUTTONDOWN:
+                _wid = event.button.windowID
+                _mx  = event.button.x
+                _my  = event.button.y
+                if _wid == main_window_id:
+                    # Position magnifier centered on click point
+                    wx_c, wy_c = ctypes.c_int(0), ctypes.c_int(0)
+                    sdl2.SDL_GetWindowPosition(window_p,
+                        ctypes.byref(wx_c), ctypes.byref(wy_c))
+                    mag_x = wx_c.value + _mx - MAG_W // 2
+                    mag_y = wy_c.value + _my - MAG_H // 2
+                    if mag_window_p is None:
+                        mw = sdl2.SDL_CreateWindow(
+                            b"mag", mag_x, mag_y, MAG_W, MAG_H,
+                            sdl2.SDL_WINDOW_SHOWN)
+                        if mw:
+                            ms = sdl2.SDL_GetWindowSurface(mw)
+                            if ms:
+                                sdl2.SDL_SetSurfaceBlendMode(
+                                    ms, sdl2.SDL_BLENDMODE_NONE)
+                                msurf  = ms.contents
+                                mp_i32 = msurf.pitch // 4
+                                mp_ptr = ctypes.cast(msurf.pixels,
+                                    ctypes.POINTER(ctypes.c_int32))
+                                md_flat = np.ctypeslib.as_array(
+                                    mp_ptr, shape=(MAG_H * mp_i32,))
+                                mag_dst       = md_flat.reshape(MAG_H, mp_i32)
+                                mag_window_p  = mw
+                                mag_surface_p = ms
+                            else:
+                                sdl2.SDL_DestroyWindow(mw)
+                    else:
+                        sdl2.SDL_SetWindowPosition(mag_window_p,
+                            mag_x, mag_y)
+                elif (eg_act_window_id and _wid == eg_act_window_id):
+                    pending_click = ('ega', _mx, _my)
+                elif (ep_window_id and _wid == ep_window_id):
+                    pending_click = ('ep', _mx, _my)
+            elif event.type == sdl2.SDL_WINDOWEVENT:
+                if event.window.event == sdl2.SDL_WINDOWEVENT_CLOSE:
+                    if (mag_window_p is not None and
+                            event.window.windowID == sdl2.SDL_GetWindowID(
+                                mag_window_p)):
+                        sdl2.SDL_DestroyWindow(mag_window_p)
+                        mag_window_p  = None
+                        mag_surface_p = None
+                        mag_dst       = None
+                    elif event.window.windowID == main_window_id:
+                        ctrl[0] = 1
 
         if ctrl[0]:
             break
+
+        # ── Deferred probe click processing ──────────────────────
+        if pending_click is not None:
+            _kind, _cx, _cy = pending_click
+            pending_click = None
+            try:
+                if _kind == 'ega' and eg_activity_pixels is not None \
+                        and ega_m_cols is not None:
+                    cur = int(eg_activity_cursor[0])
+                    bx = (_cx + cur) % PROBE_W
+                    if 0 <= _cy < ACT_H and 0 <= bx < PROBE_W:
+                        col2eg = {}
+                        for i in range(64):
+                            cv = int(ega_m_cols[i])
+                            col2eg[cv] = i
+                            ru = (cv >> 16) & 0xFF
+                            gu = (cv >>  8) & 0xFF
+                            bu =  cv        & 0xFF
+                            dim = (0xFF000000 | ((ru*15//100) << 16)
+                                   | ((gu*15//100) << 8) | (bu*15//100))
+                            if dim >= 0x80000000:
+                                dim -= 0x100000000
+                            col2eg.setdefault(dim, i)
+                        best_eg = -1
+                        for sy in range(_cy, -1, -1):
+                            spx = int(eg_activity_pixels[sy, bx])
+                            if spx in col2eg:
+                                best_eg = col2eg[spx]
+                                break
+                        if best_eg >= 0:
+                            eg_overlay_val = best_eg
+                            total_pop = max(int(ega_m_pops.sum()), 1)
+                            frac = int(ega_m_pops[best_eg]) / total_pop
+                            alive = ("alive" if ega_m_pops[best_eg] > 0
+                                     else "extinct")
+                            print(f"eg_activity click: egenome "
+                                  f"{best_eg} (0b{best_eg:06b})  "
+                                  f"pop={frac:.3f}  {alive}",
+                                  flush=True)
+                elif _kind == 'ep' and eg_pop_pixels is not None \
+                        and ega_m_cols is not None:
+                    cur = int(eg_pop_cursor[0])
+                    bx = (_cx + cur) % PROBE_W
+                    if 0 <= _cy < PROBE_H and 0 <= bx < PROBE_W:
+                        col2eg = {}
+                        for i in range(64):
+                            col2eg[int(ega_m_cols[i])] = i
+                        best_eg = -1
+                        for sy in range(_cy, -1, -1):
+                            spx = int(eg_pop_pixels[sy, bx])
+                            if spx in col2eg:
+                                best_eg = col2eg[spx]
+                                break
+                        if best_eg >= 0:
+                            ep_overlay_val = best_eg
+                            total_pop = max(int(ega_m_pops.sum()), 1)
+                            frac = int(ega_m_pops[best_eg]) / total_pop
+                            print(f"eg_pop click: egenome {best_eg} "
+                                  f"(0b{best_eg:06b})  "
+                                  f"pop={frac:.3f}", flush=True)
+            except Exception:
+                with open("/tmp/evoca_click.log", "a") as _lf:
+                    traceback.print_exc(file=_lf)
 
         # Render main window
         sdl2.SDL_LockSurface(surface_p)
@@ -300,6 +772,30 @@ def main():
             dst[:H, :W] = np.repeat(np.repeat(src, px, axis=0), px, axis=1)
         sdl2.SDL_UnlockSurface(surface_p)
         sdl2.SDL_UpdateWindowSurface(window_p)
+
+        # Render magnifier — center computed from window position
+        if mag_window_p is not None:
+            wx_m, wy_m = ctypes.c_int(0), ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(mag_window_p,
+                ctypes.byref(wx_m), ctypes.byref(wy_m))
+            wx_main, wy_main = ctypes.c_int(0), ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(window_p,
+                ctypes.byref(wx_main), ctypes.byref(wy_main))
+            # Center of magnifier in main-window pixel coords
+            cx_px = wx_m.value + MAG_W // 2 - wx_main.value
+            cy_px = wy_m.value + MAG_H // 2 - wy_main.value
+            cell_col = max(MAG_HALF, min(N - 1 - MAG_HALF, cx_px // px))
+            cell_row = max(MAG_HALF, min(N - 1 - MAG_HALF, cy_px // px))
+            r0 = cell_row - MAG_HALF
+            c0 = cell_col - MAG_HALF
+            region = src[r0:r0+MAG_CELLS, c0:c0+MAG_CELLS]
+            sdl2.SDL_LockSurface(mag_surface_p)
+            mag_dst[:MAG_H, :MAG_W] = np.repeat(
+                np.repeat(region, MAG_PX, axis=0), MAG_PX, axis=1)
+            sdl2.SDL_UnlockSurface(mag_surface_p)
+            sdl2.SDL_UpdateWindowSurface(mag_window_p)
+            sdl2.SDL_SetWindowTitle(mag_window_p,
+                f"mag ({cell_row},{cell_col})".encode())
 
         # Render probe windows
         if probe_cursor is not None:
@@ -313,6 +809,96 @@ def main():
                 sdl2.SDL_UnlockSurface(probe_surfaces[i])
                 sdl2.SDL_UpdateWindowSurface(probe_windows[i])
 
+        # Render activity window (scroll so newest column is on the right)
+        if act_window_p is not None and activity_pixels is not None:
+            sdl2.SDL_LockSurface(act_surface_p)
+            cur_act = int(activity_cursor[0])
+            act_dst[:ACT_H, :PROBE_W] = np.roll(activity_pixels, -cur_act,
+                                                  axis=1)
+            sdl2.SDL_UnlockSurface(act_surface_p)
+            sdl2.SDL_UpdateWindowSurface(act_window_p)
+
+        # Render egenome activity window
+        if eg_act_window_p is not None and eg_activity_pixels is not None:
+            sdl2.SDL_LockSurface(eg_act_surface_p)
+            cur_ega = int(eg_activity_cursor[0])
+            eg_act_dst[:ACT_H, :PROBE_W] = np.roll(eg_activity_pixels,
+                                                     -cur_ega, axis=1)
+            # Overlay: draw 5×5 egenome pattern in top-right corner
+            if eg_overlay_val >= 0:
+                _orbit = np.array([[4,5,2,5,4],[5,3,1,3,5],[2,1,0,1,2],
+                                   [5,3,1,3,5],[4,5,2,5,4]], dtype=np.uint8)
+                pat = ((eg_overlay_val >> _orbit) & 1).astype(np.uint8)
+                col = int(ega_m_cols[eg_overlay_val]) if ega_m_cols is not None \
+                    else _c(0xFFFFFFFF)
+                ox = PROBE_W - EG_OVL_PX - 3
+                oy = 3
+                # border (1px white)
+                eg_act_dst[oy-1:oy+EG_OVL_PX+1, ox-1:ox+EG_OVL_PX+1] = \
+                    _c(0xFFFFFFFF)
+                for r in range(EG_PAT_N):
+                    for c in range(EG_PAT_N):
+                        px_col = col if pat[r, c] else _c(0xFF000000)
+                        y0 = oy + r * EG_CELL_PX
+                        x0 = ox + c * EG_CELL_PX
+                        eg_act_dst[y0:y0+EG_CELL_PX, x0:x0+EG_CELL_PX] = px_col
+            sdl2.SDL_UnlockSurface(eg_act_surface_p)
+            sdl2.SDL_UpdateWindowSurface(eg_act_window_p)
+
+        # Render LUT complexity window
+        if lc_window_p is not None and lut_complexity_pixels is not None:
+            sdl2.SDL_LockSurface(lc_surface_p)
+            cur_lc = int(lut_complexity_cursor[0])
+            lc_dst[:PROBE_H, :PROBE_W] = np.roll(lut_complexity_pixels,
+                                                   -cur_lc, axis=1)
+            sdl2.SDL_UnlockSurface(lc_surface_p)
+            sdl2.SDL_UpdateWindowSurface(lc_window_p)
+
+        # Render egenome population window
+        if ep_window_p is not None and eg_pop_pixels is not None:
+            sdl2.SDL_LockSurface(ep_surface_p)
+            cur_ep = int(eg_pop_cursor[0])
+            ep_dst[:PROBE_H, :PROBE_W] = np.roll(eg_pop_pixels,
+                                                    -cur_ep, axis=1)
+            # Overlay: draw 5×5 egenome pattern in top-right corner
+            if ep_overlay_val >= 0:
+                _orbit = np.array([[4,5,2,5,4],[5,3,1,3,5],[2,1,0,1,2],
+                                   [5,3,1,3,5],[4,5,2,5,4]], dtype=np.uint8)
+                pat = ((ep_overlay_val >> _orbit) & 1).astype(np.uint8)
+                col = int(ega_m_cols[ep_overlay_val]) if ega_m_cols is not None \
+                    else _c(0xFFFFFFFF)
+                ox = PROBE_W - EG_OVL_PX - 3
+                oy = 3
+                ep_dst[oy-1:oy+EG_OVL_PX+1, ox-1:ox+EG_OVL_PX+1] = \
+                    _c(0xFFFFFFFF)
+                for r in range(EG_PAT_N):
+                    for c in range(EG_PAT_N):
+                        px_col = col if pat[r, c] else _c(0xFF000000)
+                        y0 = oy + r * EG_CELL_PX
+                        x0 = ox + c * EG_CELL_PX
+                        ep_dst[y0:y0+EG_CELL_PX, x0:x0+EG_CELL_PX] = px_col
+            sdl2.SDL_UnlockSurface(ep_surface_p)
+            sdl2.SDL_UpdateWindowSurface(ep_window_p)
+
+        # Render entropy window
+        if ent_window_p is not None and entropy_buf is not None:
+            sdl2.SDL_LockSurface(ent_surface_p)
+            cur_ent = int(entropy_cursor[0])
+            _render_probe(ent_dst, ent_dst.shape[1],
+                          entropy_buf, entropy_std_buf, cur_ent,
+                          _c(0xFF00CCCC), _c(0xFF004444))
+            sdl2.SDL_UnlockSurface(ent_surface_p)
+            sdl2.SDL_UpdateWindowSurface(ent_window_p)
+
+        # Render pattern activity window
+        if pa_window_p is not None and pat_activity_pixels is not None:
+            sdl2.SDL_LockSurface(pa_surface_p)
+            cur_pa = int(pat_activity_cursor[0])
+            pa_dst[:ACT_H, :PROBE_W] = np.roll(pat_activity_pixels,
+                                                -cur_pa, axis=1)
+            sdl2.SDL_UnlockSurface(pa_surface_p)
+            sdl2.SDL_UpdateWindowSurface(pa_window_p)
+
         # Window title
         step   = int(ctrl[2])
         mode   = COLOR_MODES[min(int(ctrl[1]), 3)]
@@ -323,9 +909,22 @@ def main():
         else:
             fps   = ctrl[3] / 10.0
             title = f"EvoCA  t={step}  fps={fps:.1f}  color={mode}"
+            sdl2.SDL_Delay(4)   # cap render ~250 fps; prevents 100% CPU spin
         sdl2.SDL_SetWindowTitle(window_p, title.encode())
 
     print("EvoCA SDL: exiting cleanly", flush=True)
+    if mag_window_p is not None:
+        sdl2.SDL_DestroyWindow(mag_window_p)
+    if pa_window_p is not None:
+        sdl2.SDL_DestroyWindow(pa_window_p)
+    if ent_window_p is not None:
+        sdl2.SDL_DestroyWindow(ent_window_p)
+    if lc_window_p is not None:
+        sdl2.SDL_DestroyWindow(lc_window_p)
+    if eg_act_window_p is not None:
+        sdl2.SDL_DestroyWindow(eg_act_window_p)
+    if act_window_p is not None:
+        sdl2.SDL_DestroyWindow(act_window_p)
     for pw in probe_windows:
         sdl2.SDL_DestroyWindow(pw)
     sdl2.SDL_DestroyWindow(window_p)
@@ -334,6 +933,18 @@ def main():
     ctrl_shm.close()
     if probe_shm is not None:
         probe_shm.close()
+    if activity_shm is not None:
+        activity_shm.close()
+    if eg_activity_shm is not None:
+        eg_activity_shm.close()
+    if lut_complexity_shm is not None:
+        lut_complexity_shm.close()
+    if entropy_shm is not None:
+        entropy_shm.close()
+    if pat_activity_shm is not None:
+        pat_activity_shm.close()
+    if eg_pop_shm is not None:
+        eg_pop_shm.close()
 
 
 if __name__ == "__main__":
