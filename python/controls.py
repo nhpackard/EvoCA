@@ -42,7 +42,7 @@ from multiprocessing.shared_memory import SharedMemory
 
 import ctypes
 
-COLOR_MODES      = ["state", "env-food", "priv-food", "births"]
+COLOR_MODES      = ["state", "env-food", "priv-food", "births", "age"]
 _SLIDER_RESUME_S = 0.20   # seconds after last slider touch before auto-resume
 _WORKER          = os.path.join(os.path.dirname(__file__), "sdl_worker.py")
 
@@ -52,6 +52,14 @@ _QUIT, _CMODE, _STEP, _FPS10, _PAUSED = 0, 1, 2, 3, 4
 # Probe strip-chart constants
 PROBE_W = 512    # pixels = time steps visible
 PROBE_H = 128    # pixel height of each strip chart
+
+# Grouped time-series probe: 6 traces in 2 stacked strips (3 each).
+# Order below must match _TS_COLORS / _TS_LABELS in sdl_worker.py.
+_TS_TRACES = ('pop', 'F_mean', 'f_mean',
+              'lut_div', 'eg_div', 'activity_flux')
+TS_N_TRACES = len(_TS_TRACES)
+_TS_GROUPS  = ((0, 1, 2), (3, 4, 5))
+TS_STRIPS   = len(_TS_GROUPS)
 
 # Map probe name → (C getter function name, ctype element type)
 _PROBE_GETTER = {
@@ -70,6 +78,9 @@ _AVAILABLE_PROBES = {
     'eg_pop':         'Stacked area: egenome population fractions',
     'entropy':        'Local-pattern Shannon entropy',
     'pat_activity':   'Local-pattern activity (scrolling hash-colored strip)',
+    'q_activity':     'Activity quantile profile (decile strip chart)',
+    'ts':             ('Grouped time-series: pop, F_mean, f_mean '
+                       '(top) / lut_div, eg_div, activity_flux (bottom)'),
 }
 
 
@@ -211,6 +222,31 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
 
     pat_enabled = entropy_enabled or pat_activity_enabled
 
+    # ── Activity quantile (q_activity) probe setup ──────────────────
+    q_activity_enabled  = bool((probes or {}).get('q_activity'))
+    QA_N_DECILES        = 9
+    q_activity_shm      = None
+    q_activity_cursor   = None
+    q_activity_deciles  = None   # list of 9 float32[PROBE_W] views
+    q_activity_col      = None   # temp float32[9]
+
+    if q_activity_enabled:
+        qa_shm_size = 4 + QA_N_DECILES * PROBE_W * 4
+        q_activity_shm = SharedMemory(create=True, size=qa_shm_size)
+        _qabuf = np.ndarray((qa_shm_size,), dtype=np.uint8,
+                             buffer=q_activity_shm.buf)
+        _qabuf[:] = 0
+        q_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                        buffer=q_activity_shm.buf)
+        q_activity_deciles = []
+        off = 4
+        for _ in range(QA_N_DECILES):
+            q_activity_deciles.append(
+                np.ndarray((PROBE_W,), dtype=np.float32,
+                           buffer=q_activity_shm.buf, offset=off))
+            off += PROBE_W * 4
+        q_activity_col = np.zeros(QA_N_DECILES, dtype=np.float32)
+
     # ── Set n_ent on C library ───────────────────────────────────────
     if pat_enabled:
         sim._lib.evoca_set_n_ent(sim.n_ent)
@@ -252,6 +288,30 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         eg_pop_pixels = np.ndarray((PROBE_H, PROBE_W), dtype=np.int32,
                                     buffer=eg_pop_shm.buf, offset=4)
         eg_pop_col = np.zeros(PROBE_H, dtype=np.int32)
+
+    # ── Grouped time-series (ts) probe setup ────────────────────────
+    ts_enabled = bool((probes or {}).get('ts'))
+    ts_shm     = None
+    ts_cursor  = None
+    ts_bufs    = None   # list of 6 float32[PROBE_W]
+    ts_getters = None   # (F_ptr_fn, f_ptr_fn, alive_ptr_fn)
+
+    if ts_enabled:
+        ts_shm_size = 4 + TS_N_TRACES * PROBE_W * 4
+        ts_shm = SharedMemory(create=True, size=ts_shm_size)
+        _tsbuf = np.ndarray((ts_shm_size,), dtype=np.uint8,
+                            buffer=ts_shm.buf)
+        _tsbuf[:] = 0
+        ts_cursor = np.ndarray((1,), dtype=np.int32, buffer=ts_shm.buf)
+        ts_bufs = []
+        off = 4
+        for _ in range(TS_N_TRACES):
+            ts_bufs.append(np.ndarray((PROBE_W,), dtype=np.float32,
+                                       buffer=ts_shm.buf, offset=off))
+            off += PROBE_W * 4
+        ts_getters = (sim._lib.evoca_get_F,
+                       sim._lib.evoca_get_f,
+                       sim._lib.evoca_get_alive)
 
     # ── Probe setup ─────────────────────────────────────────────────
     probe_names = [k for k, v in (probes or {}).items() if v and k in _PROBE_GETTER]
@@ -302,6 +362,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         cmd += ["--pat-activity=" + pat_activity_shm.name]
     if eg_pop_enabled:
         cmd += ["--eg-pop=" + eg_pop_shm.name]
+    if q_activity_enabled:
+        cmd += ["--q-activity=" + q_activity_shm.name]
+    if ts_enabled:
+        cmd += ["--ts=" + ts_shm.name]
     sdl_proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
@@ -312,6 +376,41 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             print(line.decode(errors='replace'), end='', flush=True)
 
     threading.Thread(target=_reader, name="evoca-sdl-reader", daemon=True).start()
+
+    # ── ts record helper ────────────────────────────────────────────
+    def _record_ts():
+        if not ts_enabled:
+            return
+        F_ptr = ts_getters[0]()
+        F_arr = np.ctypeslib.as_array(F_ptr, shape=(N * N,))
+        f_ptr = ts_getters[1]()
+        f_arr = np.ctypeslib.as_array(f_ptr, shape=(N * N,))
+        a_ptr = ts_getters[2]()
+        a_arr = np.ctypeslib.as_array(a_ptr, shape=(N * N,))
+        pop = int(a_arr.sum())
+        F_mean = float(F_arr.mean())
+        if pop > 0:
+            mask = a_arr.astype(bool)
+            f_mean = float(f_arr[mask].mean())
+        else:
+            f_mean = 0.0
+        # Activity must be updated at least once per tick for diversity
+        # and flux to be current.
+        if not (activity_enabled or q_activity_enabled):
+            sim._lib.evoca_activity_update()
+        lut_div = sim.n_distinct_genomes()
+        # Egenome diversity: count eg_pop[i] > 0; need recent eg update.
+        if not (eg_activity_enabled or eg_pop_enabled):
+            sim._lib.evoca_eg_activity_update()
+        eg_info = sim.get_eg_activity()
+        eg_div = int((eg_info['pop_count'] > 0).sum())
+        flux = sim.activity_flux()
+        ts_cur = int(ts_cursor[0])
+        vals = (float(pop), F_mean, f_mean,
+                float(lut_div), float(eg_div), float(flux))
+        for ti, v in enumerate(vals):
+            ts_bufs[ti][ts_cur] = v
+        ts_cursor[0] = (ts_cur + 1) % PROBE_W
 
     # ── Shared sim state ──────────────────────────────────────────
     st    = dict(paused=bool(paused), running=True, colormode=colormode, step_cnt=0)
@@ -347,6 +446,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             all_shm.append(pat_activity_shm)
         if eg_pop_shm is not None:
             all_shm.append(eg_pop_shm)
+        if q_activity_shm is not None:
+            all_shm.append(q_activity_shm)
+        if ts_shm is not None:
+            all_shm.append(ts_shm)
         for shm in all_shm:
             try:
                 shm.unlink()
@@ -511,6 +614,16 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 sim._lib.evoca_activity_render_col(act_col_ptr, ACT_H)
                 activity_pixels[:, act_cur] = activity_col
                 activity_cursor[0] = (act_cur + 1) % PROBE_W
+            if q_activity_enabled:
+                if not activity_enabled:
+                    sim._lib.evoca_activity_update()
+                qa_cur = int(q_activity_cursor[0])
+                qa_col_ptr = q_activity_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_float))
+                sim._lib.evoca_q_activity_deciles(qa_col_ptr)
+                for di in range(QA_N_DECILES):
+                    q_activity_deciles[di][qa_cur] = q_activity_col[di]
+                q_activity_cursor[0] = (qa_cur + 1) % PROBE_W
             if eg_activity_enabled or eg_pop_enabled:
                 sim._lib.evoca_eg_activity_update()
             if eg_activity_enabled:
@@ -552,6 +665,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                     sim._lib.evoca_pat_activity_render_col(pa_col_ptr, PAT_H)
                     pat_activity_pixels[:, pac] = pat_activity_col
                     pat_activity_cursor[0] = (pac + 1) % PROBE_W
+            _record_ts()
             status_lbl.value = f"t={st['step_cnt']}  (paused)"
 
     def on_quit(_):
@@ -647,6 +761,14 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         if pat_activity_enabled:
             pat_activity_cursor[0] = 0
             pat_activity_pixels[:] = 0
+        if q_activity_enabled:
+            q_activity_cursor[0] = 0
+            for di in range(QA_N_DECILES):
+                q_activity_deciles[di][:] = 0
+        if ts_enabled:
+            ts_cursor[0] = 0
+            for ti in range(TS_N_TRACES):
+                ts_bufs[ti][:] = 0
 
         sim.colorize(pixels, st['colormode'])
         status_lbl.value = "Restarted — t=0  (paused)"
@@ -755,6 +877,18 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 activity_pixels[:, act_cur] = activity_col
                 activity_cursor[0] = (act_cur + 1) % PROBE_W
 
+            # Record activity quantile data
+            if q_activity_enabled:
+                if not activity_enabled:
+                    sim._lib.evoca_activity_update()
+                qa_cur = int(q_activity_cursor[0])
+                qa_col_ptr = q_activity_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_float))
+                sim._lib.evoca_q_activity_deciles(qa_col_ptr)
+                for di in range(QA_N_DECILES):
+                    q_activity_deciles[di][qa_cur] = q_activity_col[di]
+                q_activity_cursor[0] = (qa_cur + 1) % PROBE_W
+
             _t3 = time.perf_counter() if diag else 0
 
             # Record egenome activity / population
@@ -805,6 +939,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                     sim._lib.evoca_pat_activity_render_col(pa_col_ptr, PAT_H)
                     pat_activity_pixels[:, pac] = pat_activity_col
                     pat_activity_cursor[0] = (pac + 1) % PROBE_W
+
+            _record_ts()
 
             _t4 = time.perf_counter()
             if diag:

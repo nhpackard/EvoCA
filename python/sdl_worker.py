@@ -53,6 +53,95 @@ _PROBE_COLORS = {
 }
 _DEFAULT_COLORS = (_c(0xFFCCCCCC), _c(0xFF333333))   # grey fallback
 
+# ── Grouped time-series (ts) probe ───────────────────────────────
+# Must match controls._TS_TRACES order.
+TS_N_TRACES = 6
+_TS_GROUPS  = ((0, 1, 2), (3, 4, 5))
+TS_STRIPS   = len(_TS_GROUPS)
+_TS_COLORS = (
+    _c(0xFFFF4488),   # pop           — magenta
+    _c(0xFF00CC44),   # F_mean        — green
+    _c(0xFF4488FF),   # f_mean        — blue
+    _c(0xFFFFAA22),   # lut_div       — orange
+    _c(0xFFCC66FF),   # eg_div        — purple
+    _c(0xFF22EEDD),   # activity_flux — cyan/teal
+)
+_TS_LABELS = ('pop', 'F_mean', 'f_mean', 'lut_div', 'eg_div', 'flux')
+TS_SEP_COLOR = _c(0xFF444444)
+
+# Decile colors for q_activity (p10 blue → p50 green → p90 red)
+_QA_COLORS = [
+    _c(0xFF3344FF),  # p10 - blue
+    _c(0xFF2288FF),  # p20
+    _c(0xFF00BBDD),  # p30 - cyan
+    _c(0xFF00CC88),  # p40 - teal
+    _c(0xFF44DD44),  # p50 - green (median)
+    _c(0xFFBBBB00),  # p60 - yellow
+    _c(0xFFFF8800),  # p70 - orange
+    _c(0xFFFF4422),  # p80
+    _c(0xFFFF1144),  # p90 - red
+]
+
+
+def _render_q_activity(dst, decile_bufs, cursor, global_max):
+    """Render activity quantile strip chart with log-scaled Y axis.
+
+    decile_bufs: list of 9 float32[PROBE_W] arrays (p10..p90).
+    global_max:  all-time observed max (float); updated and returned.
+    Returns:     updated global_max.
+    """
+    import numpy as np
+    import math
+
+    dst[:PROBE_H, :PROBE_W] = BG_COLOR
+
+    # Roll each decile buffer so newest is on the right
+    rolled = [np.roll(b, -cursor) for b in decile_bufs]
+
+    # Find min/max of positive values in current window
+    all_pos = []
+    for r in rolled:
+        pos = r[r > 0]
+        if len(pos) > 0:
+            all_pos.append(pos)
+    if len(all_pos) == 0:
+        return global_max
+    cat = np.concatenate(all_pos)
+    lo = float(cat.min())
+    hi = float(cat.max())
+
+    # Track all-time max so collapses remain visible after scrolling out
+    global_max = max(global_max, hi)
+
+    if lo <= 0:
+        lo = float(cat[cat > 0].min()) if (cat > 0).any() else 1.0
+    hi = global_max
+    if hi <= lo:
+        hi = lo * 10.0
+    log_lo = math.log10(lo)
+    log_hi = math.log10(hi)
+    # Add 10% margin in log-space so top quantile doesn't touch the ceiling
+    span = log_hi - log_lo
+    if span < 0.01:
+        span = 1.0
+    log_hi += span * 0.10
+    scale = (PROBE_H - 1) / (log_hi - log_lo)
+
+    xs = np.arange(PROBE_W)
+    for di in range(9):
+        col = _QA_COLORS[di]
+        r = rolled[di]
+        mask = r > 0
+        if not mask.any():
+            continue
+        lv = np.log10(r[mask])
+        ys = np.clip(((log_hi - lv) * scale).astype(int), 0, PROBE_H - 1)
+        dst[ys, xs[mask]] = col
+
+    # Cursor line at right edge
+    dst[:PROBE_H, PROBE_W - 1] = CURSOR_COLOR
+    return global_max
+
 
 def _render_probe(dst, pitch_i32, mean_buf, std_buf, cursor, color_mean, color_band,
                    y_fixed=None):
@@ -114,6 +203,94 @@ def _render_probe(dst, pitch_i32, mean_buf, std_buf, cursor, color_mean, color_b
         dst[y, cx] = CURSOR_COLOR
 
 
+def _draw_ts_legend(dst, y0, trace_idxs):
+    """Paint a small color-coded legend block in the top-left of the
+    strip starting at row y0. Each trace gets a 3-row swatch plus a
+    label drawn via a minimal 3x5 bitmap font."""
+    import numpy as np
+    # Minimal font — only chars we need for _TS_LABELS.
+    _F = {
+        'p': ["###", "# #", "###", "#  ", "#  "],
+        'o': ["###", "# #", "# #", "# #", "###"],
+        'F': ["###", "#  ", "## ", "#  ", "#  "],
+        '_': ["   ", "   ", "   ", "   ", "###"],
+        'm': ["# #", "###", "###", "# #", "# #"],
+        'e': ["###", "#  ", "###", "#  ", "###"],
+        'a': [" ##", "# #", "###", "# #", "# #"],
+        'n': ["# #", "###", "###", "# #", "# #"],
+        'f': ["###", "#  ", "## ", "#  ", "#  "],
+        'l': ["#  ", "#  ", "#  ", "#  ", "###"],
+        'u': ["# #", "# #", "# #", "# #", "###"],
+        't': ["###", " # ", " # ", " # ", " # "],
+        'd': ["## ", "# #", "# #", "# #", "## "],
+        'i': ["#", "#", "#", "#", "#"],
+        'v': ["# #", "# #", "# #", "# #", " # "],
+        'x': ["# #", "# #", " # ", "# #", "# #"],
+        ' ': ["  ", "  ", "  ", "  ", "  "],
+    }
+    ch_w = 4   # per-char width with 1px spacing
+    sw_w = 8   # swatch width
+    line_h = 8
+    x = 3
+    y = y0 + 2
+    for ti in trace_idxs:
+        col = _TS_COLORS[ti]
+        label = _TS_LABELS[ti]
+        dst[y + 1:y + 4, x:x + sw_w] = col
+        lx = x + sw_w + 2
+        for ch in label:
+            rows = _F.get(ch, _F[' '])
+            for rr, bits in enumerate(rows):
+                for cc, b in enumerate(bits):
+                    if b == '#':
+                        dst[y + rr, lx + cc] = col
+            lx += ch_w
+        x += sw_w + 2 + ch_w * len(label) + 5
+        if x > 256:
+            break
+
+
+def _render_ts(dst, bufs, cursor):
+    """Render the grouped time-series probe into `dst`.
+
+    `dst` has shape (2*PROBE_H, W+).  `bufs` is a list of 6 float32[PROBE_W]
+    views.  Each trace auto-scales independently within its strip.
+    """
+    import numpy as np
+
+    H_total = TS_STRIPS * PROBE_H
+    dst[:H_total, :PROBE_W] = BG_COLOR
+
+    rolled = [np.roll(b, -cursor) for b in bufs]
+    xs = np.arange(PROBE_W)
+
+    for gi, group in enumerate(_TS_GROUPS):
+        y0 = gi * PROBE_H
+        strip = dst[y0:y0 + PROBE_H]
+
+        for ti in group:
+            r = rolled[ti]
+            filled = r != 0.0
+            if not filled.any():
+                continue
+            y_min = float(r[filled].min())
+            y_max = float(r[filled].max())
+            if y_max - y_min < 1e-8:
+                y_min -= 0.5; y_max += 0.5
+            margin = (y_max - y_min) * 0.05
+            y_min -= margin; y_max += margin
+            scale = (PROBE_H - 1) / (y_max - y_min)
+            ys = np.clip(((y_max - r) * scale).astype(int),
+                         0, PROBE_H - 1)
+            strip[ys[filled], xs[filled]] = _TS_COLORS[ti]
+
+        # Cursor edge + legend
+        strip[:, PROBE_W - 1] = CURSOR_COLOR
+        _draw_ts_legend(dst, y0, group)
+        if gi < TS_STRIPS - 1:
+            dst[y0 + PROBE_H - 1, :PROBE_W] = TS_SEP_COLOR
+
+
 def main():
     if len(sys.argv) < 5:
         print("EvoCA SDL: bad args", flush=True)
@@ -137,6 +314,8 @@ def main():
     entropy_shm_name = None
     pat_activity_shm_name = None
     eg_pop_shm_name = None
+    q_activity_shm_name = None
+    ts_shm_name = None
     for arg in sys.argv:
         if arg.startswith("--activity="):
             activity_shm_name = arg[len("--activity="):]
@@ -150,6 +329,10 @@ def main():
             pat_activity_shm_name = arg[len("--pat-activity="):]
         elif arg.startswith("--eg-pop="):
             eg_pop_shm_name = arg[len("--eg-pop="):]
+        elif arg.startswith("--q-activity="):
+            q_activity_shm_name = arg[len("--q-activity="):]
+        elif arg.startswith("--ts="):
+            ts_shm_name = arg[len("--ts="):]
 
     ACT_H = 2 * PROBE_H  # 256
 
@@ -278,7 +461,50 @@ def main():
                   flush=True)
             eg_pop_shm_name = None
 
-    COLOR_MODES = ["state", "env-food", "priv-food", "births"]
+    # Open activity quantile shared memory
+    QA_N_DECILES        = 9
+    q_activity_shm      = None
+    q_activity_cursor   = None
+    q_activity_deciles  = None   # list of 9 float32[PROBE_W]
+    if q_activity_shm_name:
+        try:
+            q_activity_shm = SharedMemory(name=q_activity_shm_name)
+            q_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                            buffer=q_activity_shm.buf)
+            q_activity_deciles = []
+            off = 4
+            for _ in range(QA_N_DECILES):
+                q_activity_deciles.append(
+                    np.ndarray((PROBE_W,), dtype=np.float32,
+                               buffer=q_activity_shm.buf, offset=off))
+                off += PROBE_W * 4
+            print(f"EvoCA SDL: q_activity shm opened ({QA_N_DECILES}x{PROBE_W})",
+                  flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: q_activity SharedMemory open failed: {e}",
+                  flush=True)
+            q_activity_shm_name = None
+
+    # Open ts shared memory
+    ts_shm     = None
+    ts_cursor  = None
+    ts_bufs    = None
+    if ts_shm_name:
+        try:
+            ts_shm = SharedMemory(name=ts_shm_name)
+            ts_cursor = np.ndarray((1,), dtype=np.int32, buffer=ts_shm.buf)
+            ts_bufs = []
+            off = 4
+            for _ in range(TS_N_TRACES):
+                ts_bufs.append(np.ndarray((PROBE_W,), dtype=np.float32,
+                                           buffer=ts_shm.buf, offset=off))
+                off += PROBE_W * 4
+            print(f"EvoCA SDL: ts shm opened ({TS_N_TRACES} traces)", flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: ts SharedMemory open failed: {e}", flush=True)
+            ts_shm_name = None
+
+    COLOR_MODES = ["state", "env-food", "priv-food", "births", "age"]
 
     # ── SDL2 init ─────────────────────────────────────────────────
     if sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO) != 0:
@@ -542,6 +768,41 @@ def main():
         else:
             print("EvoCA SDL: eg_pop window creation failed", flush=True)
 
+    # Create q_activity window
+    qa_window_p    = None
+    qa_surface_p   = None
+    qa_dst         = None
+    qa_global_max  = 0.0
+    if q_activity_shm is not None:
+        qaw_x = main_x - PROBE_W
+        qaw = sdl2.SDL_CreateWindow(
+            b"q_activity",
+            qaw_x, next_probe_y,
+            PROBE_W, PROBE_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if qaw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(qaw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + PROBE_H + real_title_h
+            qaps = sdl2.SDL_GetWindowSurface(qaw)
+            if qaps:
+                sdl2.SDL_SetSurfaceBlendMode(qaps, sdl2.SDL_BLENDMODE_NONE)
+                qasurf  = qaps.contents
+                qap_i32 = qasurf.pitch // 4
+                qap_ptr = ctypes.cast(qasurf.pixels,
+                                       ctypes.POINTER(ctypes.c_int32))
+                qad_flat = np.ctypeslib.as_array(qap_ptr,
+                                                  shape=(PROBE_H * qap_i32,))
+                qa_dst       = qad_flat.reshape(PROBE_H, qap_i32)
+                qa_window_p  = qaw
+                qa_surface_p = qaps
+                print("EvoCA SDL: q_activity window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(qaw)
+        else:
+            print("EvoCA SDL: q_activity window creation failed", flush=True)
+
     # Open entropy shared memory + create window
     entropy_shm      = None
     entropy_cursor   = None
@@ -631,6 +892,38 @@ def main():
         except Exception as e:
             print(f"EvoCA SDL: pat_activity SharedMemory open failed: {e}", flush=True)
             pat_activity_shm_name = None
+
+    # ── ts window (2×PROBE_H tall) ─────────────────────────────────
+    TS_H = TS_STRIPS * PROBE_H
+    ts_window_p  = None
+    ts_surface_p = None
+    ts_dst       = None
+    if ts_shm is not None:
+        tw_x = main_x - PROBE_W
+        tw = sdl2.SDL_CreateWindow(
+            b"ts", tw_x, next_probe_y, PROBE_W, TS_H,
+            sdl2.SDL_WINDOW_SHOWN)
+        if tw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(tw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + TS_H + real_title_h
+            tps = sdl2.SDL_GetWindowSurface(tw)
+            if tps:
+                sdl2.SDL_SetSurfaceBlendMode(tps, sdl2.SDL_BLENDMODE_NONE)
+                tsurf  = tps.contents
+                tp_i32 = tsurf.pitch // 4
+                tp_ptr = ctypes.cast(tsurf.pixels,
+                                      ctypes.POINTER(ctypes.c_int32))
+                td_flat = np.ctypeslib.as_array(tp_ptr,
+                                                 shape=(TS_H * tp_i32,))
+                ts_dst       = td_flat.reshape(TS_H, tp_i32)
+                ts_window_p  = tw
+                ts_surface_p = tps
+                print("EvoCA SDL: ts window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(tw)
+        else:
+            print("EvoCA SDL: ts window creation failed", flush=True)
 
     print("EvoCA SDL: entering main loop", flush=True)
 
@@ -899,9 +1192,26 @@ def main():
             sdl2.SDL_UnlockSurface(pa_surface_p)
             sdl2.SDL_UpdateWindowSurface(pa_window_p)
 
+        # Render q_activity window
+        if qa_window_p is not None and q_activity_deciles is not None:
+            sdl2.SDL_LockSurface(qa_surface_p)
+            cur_qa = int(q_activity_cursor[0])
+            qa_global_max = _render_q_activity(qa_dst, q_activity_deciles,
+                                                cur_qa, qa_global_max)
+            sdl2.SDL_UnlockSurface(qa_surface_p)
+            sdl2.SDL_UpdateWindowSurface(qa_window_p)
+
+        # Render ts window
+        if ts_window_p is not None and ts_bufs is not None:
+            sdl2.SDL_LockSurface(ts_surface_p)
+            cur_ts = int(ts_cursor[0])
+            _render_ts(ts_dst, ts_bufs, cur_ts)
+            sdl2.SDL_UnlockSurface(ts_surface_p)
+            sdl2.SDL_UpdateWindowSurface(ts_window_p)
+
         # Window title
         step   = int(ctrl[2])
-        mode   = COLOR_MODES[min(int(ctrl[1]), 3)]
+        mode   = COLOR_MODES[min(int(ctrl[1]), len(COLOR_MODES) - 1)]
         paused = bool(ctrl[4])
         if paused:
             title = f"EvoCA  PAUSED  t={step}  color={mode}"
@@ -913,12 +1223,18 @@ def main():
         sdl2.SDL_SetWindowTitle(window_p, title.encode())
 
     print("EvoCA SDL: exiting cleanly", flush=True)
+    if ts_window_p is not None:
+        sdl2.SDL_DestroyWindow(ts_window_p)
     if mag_window_p is not None:
         sdl2.SDL_DestroyWindow(mag_window_p)
     if pa_window_p is not None:
         sdl2.SDL_DestroyWindow(pa_window_p)
     if ent_window_p is not None:
         sdl2.SDL_DestroyWindow(ent_window_p)
+    if qa_window_p is not None:
+        sdl2.SDL_DestroyWindow(qa_window_p)
+    if ep_window_p is not None:
+        sdl2.SDL_DestroyWindow(ep_window_p)
     if lc_window_p is not None:
         sdl2.SDL_DestroyWindow(lc_window_p)
     if eg_act_window_p is not None:
@@ -945,6 +1261,10 @@ def main():
         pat_activity_shm.close()
     if eg_pop_shm is not None:
         eg_pop_shm.close()
+    if q_activity_shm is not None:
+        q_activity_shm.close()
+    if ts_shm is not None:
+        ts_shm.close()
 
 
 if __name__ == "__main__":
