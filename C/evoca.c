@@ -126,6 +126,9 @@ static uint32_t  g_step    = 0;     /* global step counter */
 static uint8_t  *env_mask  = NULL;  /* [N*N] food regen mask; 1=regen, 0=no */
 static uint8_t  *alive     = NULL;  /* [N*N] 1=alive organism, 0=dead slot */
 
+/* Adaptive age colormap scale: tracks max observed age, decays slowly. */
+static double    g_age_scale = 50.0;
+
 /* ── Reproduction age histogram ────────────────────────────────── */
 
 #define REPRO_AGE_MAX 1024          /* bins 0..1023; overflow in last bin */
@@ -319,17 +322,22 @@ void evoca_pat_activity_render_col(int32_t *col, int height)
 #define ACT_INIT_CAP 4096
 #define ACT_EMPTY    0        /* key=0 is the empty sentinel */
 
+/* Per-bucket pop history ring buffer for the flux probe. */
+#define FLUX_W_MAX   64
+
 typedef struct {
     uint64_t activity;    /* cumulative count */
     uint32_t pop_count;   /* current population */
     int32_t  color;       /* ARGB (same as lut_color) */
 } act_entry_t;
 
-static uint32_t    *act_keys = NULL;
-static act_entry_t *act_vals = NULL;
-static int          act_cap  = 0;
-static int          act_cnt  = 0;
-static int          act_ymax = 2000; /* Y-scale for activity saturation */
+static uint32_t    *act_keys     = NULL;
+static act_entry_t *act_vals     = NULL;
+static uint32_t    *act_pop_hist = NULL;   /* [act_cap * FLUX_W_MAX] */
+static int          act_cap      = 0;
+static int          act_cnt      = 0;
+static int          act_ymax     = 2000;   /* Y-scale for activity saturation */
+static uint32_t     flux_t       = 0;      /* monotonic tick counter for pop_hist */
 
 static void act_resize(void)
 {
@@ -339,6 +347,7 @@ static void act_resize(void)
                 act_cap, new_cap, act_cnt, g_step);
     uint32_t    *nk = calloc((size_t)new_cap, sizeof(uint32_t));
     act_entry_t *nv = calloc((size_t)new_cap, sizeof(act_entry_t));
+    uint32_t    *nh = calloc((size_t)new_cap * FLUX_W_MAX, sizeof(uint32_t));
     for (int i = 0; i < act_cap; i++) {
         if (act_keys[i] == ACT_EMPTY) continue;
         uint32_t slot = act_keys[i] % (uint32_t)new_cap;
@@ -346,9 +355,12 @@ static void act_resize(void)
             slot = (slot + 1) % (uint32_t)new_cap;
         nk[slot] = act_keys[i];
         nv[slot] = act_vals[i];
+        memcpy(nh + (size_t)slot * FLUX_W_MAX,
+               act_pop_hist + (size_t)i * FLUX_W_MAX,
+               FLUX_W_MAX * sizeof(uint32_t));
     }
-    free(act_keys); free(act_vals);
-    act_keys = nk; act_vals = nv; act_cap = new_cap;
+    free(act_keys); free(act_vals); free(act_pop_hist);
+    act_keys = nk; act_vals = nv; act_pop_hist = nh; act_cap = new_cap;
 }
 
 /* Find or insert; returns pointer to value entry. */
@@ -387,6 +399,7 @@ static void act_compact(uint64_t threshold)
 
     uint32_t    *nk = calloc((size_t)new_cap, sizeof(uint32_t));
     act_entry_t *nv = calloc((size_t)new_cap, sizeof(act_entry_t));
+    uint32_t    *nh = calloc((size_t)new_cap * FLUX_W_MAX, sizeof(uint32_t));
 
     for (int i = 0; i < act_cap; i++) {
         if (act_keys[i] == ACT_EMPTY) continue;
@@ -397,11 +410,14 @@ static void act_compact(uint64_t threshold)
             slot = (slot + 1) % (uint32_t)new_cap;
         nk[slot] = act_keys[i];
         nv[slot] = act_vals[i];
+        memcpy(nh + (size_t)slot * FLUX_W_MAX,
+               act_pop_hist + (size_t)i * FLUX_W_MAX,
+               FLUX_W_MAX * sizeof(uint32_t));
     }
 
     int old_cnt = act_cnt, old_cap = act_cap;
-    free(act_keys); free(act_vals);
-    act_keys = nk; act_vals = nv;
+    free(act_keys); free(act_vals); free(act_pop_hist);
+    act_keys = nk; act_vals = nv; act_pop_hist = nh;
     act_cap  = new_cap;
     act_cnt  = keep;
 
@@ -415,16 +431,20 @@ static void evoca_activity_init(void)
 {
     act_cap = ACT_INIT_CAP;
     act_cnt = 0;
-    act_keys = calloc((size_t)act_cap, sizeof(uint32_t));
-    act_vals = calloc((size_t)act_cap, sizeof(act_entry_t));
+    act_keys     = calloc((size_t)act_cap, sizeof(uint32_t));
+    act_vals     = calloc((size_t)act_cap, sizeof(act_entry_t));
+    act_pop_hist = calloc((size_t)act_cap * FLUX_W_MAX, sizeof(uint32_t));
+    flux_t       = 0;
 }
 
 static void evoca_activity_free(void)
 {
-    free(act_keys);  act_keys = NULL;
-    free(act_vals);  act_vals = NULL;
+    free(act_keys);     act_keys     = NULL;
+    free(act_vals);     act_vals     = NULL;
+    free(act_pop_hist); act_pop_hist = NULL;
     act_cap = 0;
     act_cnt = 0;
+    flux_t  = 0;
 }
 
 /* ── Lifecycle ──────────────────────────────────────────────────── */
@@ -792,6 +812,48 @@ void evoca_activity_update(void)
      * remain visible on the chart.  Trigger at 50k entries. */
     if (act_cnt > 50000)
         act_compact((uint64_t)act_ymax / 10);
+
+    /* Record per-bucket pop history for the flux probe. */
+    int slot = (int)(flux_t % (uint32_t)FLUX_W_MAX);
+    for (int i = 0; i < act_cap; i++) {
+        act_pop_hist[(size_t)i * FLUX_W_MAX + slot] =
+            (act_keys[i] == ACT_EMPTY) ? 0u : act_vals[i].pop_count;
+    }
+    flux_t++;
+}
+
+/* Activity flux probe: for each bucket, walk the past `window` ticks and
+ * reconstruct the activity trajectory from stored pop history. A tick
+ * contributes one slope sample = pop iff the activity increment interval
+ * (A_prev, A_now] overlaps [a_lo, a_hi]. Writes up to max_n float slopes
+ * and returns the count written. */
+int evoca_activity_crossings(uint64_t a_lo, uint64_t a_hi, int window,
+                             float *slopes_out, int max_n)
+{
+    if (!act_keys || window <= 0 || max_n <= 0) return 0;
+    if (window > FLUX_W_MAX) window = FLUX_W_MAX;
+    if ((uint32_t)window > flux_t) window = (int)flux_t;
+    if (window <= 0) return 0;
+
+    int n = 0;
+    for (int i = 0; i < act_cap; i++) {
+        if (act_keys[i] == ACT_EMPTY) continue;
+        uint64_t A_after = act_vals[i].activity;
+        size_t base = (size_t)i * FLUX_W_MAX;
+        for (int k = 0; k < window; k++) {
+            uint32_t slot = (flux_t - 1u - (uint32_t)k)
+                            % (uint32_t)FLUX_W_MAX;
+            uint32_t h = act_pop_hist[base + slot];
+            uint64_t A_before = (A_after >= h) ? A_after - h : 0;
+            if (h > 0 && A_before < a_hi && A_after >= a_lo) {
+                if (n >= max_n) return n;
+                slopes_out[n++] = (float)h;
+            }
+            if (A_before < a_lo) break;
+            A_after = A_before;
+        }
+    }
+    return n;
 }
 
 void evoca_activity_render_col(int32_t *col, int height)
@@ -843,6 +905,40 @@ void evoca_activity_render_col(int32_t *col, int height)
     }
 }
 
+int evoca_count_distinct_genomes(void)
+{
+    if (!act_keys) return 0;
+    int n = 0;
+    for (int i = 0; i < act_cap; i++) {
+        if (act_keys[i] == ACT_EMPTY) continue;
+        if (act_vals[i].pop_count > 0) n++;
+    }
+    return n;
+}
+
+int evoca_get_population(void)
+{
+    if (!alive) return 0;
+    size_t cells = (size_t)gN * gN;
+    int pop = 0;
+    for (size_t i = 0; i < cells; i++) pop += alive[i];
+    return pop;
+}
+
+void evoca_get_ages(int32_t *out)
+{
+    size_t cells = (size_t)gN * gN;
+    if (!alive || !last_event_step) {
+        for (size_t i = 0; i < cells; i++) out[i] = -1;
+        return;
+    }
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) { out[i] = -1; continue; }
+        uint32_t t0 = last_event_step[i];
+        out[i] = (g_step >= t0) ? (int32_t)(g_step - t0) : 0;
+    }
+}
+
 int evoca_activity_get(uint32_t *keys, uint64_t *activities,
                        uint32_t *pop_counts, int32_t *colors, int max_n)
 {
@@ -857,6 +953,58 @@ int evoca_activity_get(uint32_t *keys, uint64_t *activities,
         n++;
     }
     return n;
+}
+
+/* ── Activity quantile (q_activity) probe ──────────────────────── */
+
+static int _float_cmp(const void *a, const void *b)
+{
+    float fa = *(const float *)a, fb = *(const float *)b;
+    return (fa > fb) - (fa < fb);
+}
+
+void evoca_q_activity_deciles(float *deciles_out)
+{
+    /* Collect normalized activities of alive genomes (pop_count > 0) */
+    if (!act_keys || act_cnt == 0) {
+        for (int i = 0; i < 9; i++) deciles_out[i] = 0.0f;
+        return;
+    }
+
+    /* Count alive distinct genomes (diversity D) */
+    int D = 0;
+    for (int i = 0; i < act_cap; i++)
+        if (act_keys[i] != ACT_EMPTY && act_vals[i].pop_count > 0)
+            D++;
+
+    if (D == 0) {
+        for (int i = 0; i < 9; i++) deciles_out[i] = 0.0f;
+        return;
+    }
+
+    /* Allocate temp buffer, collect and normalize */
+    float *buf = (float *)malloc((size_t)D * sizeof(float));
+    if (!buf) {
+        for (int i = 0; i < 9; i++) deciles_out[i] = 0.0f;
+        return;
+    }
+    int n = 0;
+    float inv_D = 1.0f / (float)D;
+    for (int i = 0; i < act_cap; i++) {
+        if (act_keys[i] == ACT_EMPTY || act_vals[i].pop_count == 0) continue;
+        buf[n++] = (float)act_vals[i].activity * inv_D;
+    }
+
+    /* Sort ascending */
+    qsort(buf, (size_t)n, sizeof(float), _float_cmp);
+
+    /* Extract deciles: p10, p20, ..., p90 */
+    for (int d = 0; d < 9; d++) {
+        int idx = (int)((float)(d + 1) * 0.1f * (float)n);
+        if (idx >= n) idx = n - 1;
+        deciles_out[d] = buf[idx];
+    }
+    free(buf);
 }
 
 /* ── Egenome activity tracking ──────────────────────────────────── */
@@ -1093,6 +1241,43 @@ void evoca_colorize(int32_t *pixels, int colormode)
                 }
             }
             break;
+        case 4: {
+            /* Log-age gradient across the alive population. Tracks peak age
+             * adaptively so hue range follows the distribution. */
+            int max_age = 0;
+            if (last_event_step) {
+                for (size_t i = 0; i < cells; i++) {
+                    if (!alive[i]) continue;
+                    uint32_t t0 = last_event_step[i];
+                    int a = (g_step >= t0) ? (int)(g_step - t0) : 0;
+                    if (a > max_age) max_age = a;
+                }
+            }
+            if ((double)max_age > g_age_scale) g_age_scale = (double)max_age;
+            else                               g_age_scale *= 0.995;
+            if (g_age_scale < 10.0) g_age_scale = 10.0;
+
+            double denom = log1p(g_age_scale);
+            for (size_t i = 0; i < cells; i++) {
+                if (!alive[i] || !last_event_step) {
+                    pixels[i] = (int32_t)0xFF000000;
+                    continue;
+                }
+                uint32_t t0 = last_event_step[i];
+                int a = (g_step >= t0) ? (int)(g_step - t0) : 0;
+                float v = (float)(log1p((double)a) / denom);
+                if (v < 0.0f) v = 0.0f;
+                if (v > 1.0f) v = 1.0f;
+                uint8_t R = (uint8_t)(80.0f  + 175.0f * v);
+                uint8_t G = (uint8_t)(60.0f  + 560.0f * v * (1.0f - v));
+                uint8_t B = (uint8_t)(40.0f  + 180.0f * (1.0f - v));
+                pixels[i] = (int32_t)(0xFF000000u
+                                       | ((uint32_t)R << 16)
+                                       | ((uint32_t)G <<  8)
+                                       |  (uint32_t)B);
+            }
+            break;
+        }
         default:
             for (size_t i = 0; i < cells; i++)
                 pixels[i] = (int32_t)0xFF000000;

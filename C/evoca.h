@@ -79,6 +79,31 @@ void evoca_activity_render_col(int32_t *col, int height);
 int  evoca_activity_get(uint32_t *keys, uint64_t *activities,
                         uint32_t *pop_counts, int32_t *colors, int max_n);
 
+/* ── Activity quantile probe ──────────────────────────────────────── */
+
+void evoca_q_activity_deciles(float *deciles_out);  /* 9 floats: p10..p90 */
+
+/* Activity flux probe: for each live-genome bucket, walk the past `window`
+ * ticks (capped at a small compile-time bound) and reconstruct the activity
+ * trajectory from stored pop history. A tick contributes one slope sample
+ * = pop iff the activity increment interval (A_prev, A_now] overlaps
+ * [a_lo, a_hi]. Writes up to max_n float slopes and returns the count
+ * written. Use evoca_q_activity_deciles + live diversity count to pick
+ * [a_lo, a_hi] bounds from the current distribution. */
+int evoca_activity_crossings(uint64_t a_lo, uint64_t a_hi, int window,
+                             float *slopes_out, int max_n);
+
+/* Count distinct LUT content hashes across live cells. Useful for driving
+ * band bounds in the flux probe and as a diversity trace. */
+int  evoca_count_distinct_genomes(void);
+
+/* Total alive cells. */
+int  evoca_get_population(void);
+
+/* Copy per-cell age (g_step - last_event_step[x]) into out[N*N].
+ * Dead cells get -1. */
+void evoca_get_ages(int32_t *out);
+
 /* ── Egenome activity tracking ─────────────────────────────────────── */
 
 void evoca_eg_activity_update(void);
@@ -110,7 +135,8 @@ int   evoca_get_pat_act_ymax(void);
    colormode 0: cell state with LUT-hashed genome color (wild-type=white)
    colormode 1: env food F as green; alive cells tinted red
    colormode 2: private food f as blue; alive cells tinted red
-   colormode 3: birth events (yellow=birth, magenta=mutant birth, dim=alive, black=dead) */
+   colormode 3: birth events (yellow=birth, magenta=mutant birth, dim=alive, black=dead)
+   colormode 4: cell age (cool→hot log gradient; black=dead) */
 void evoca_colorize(int32_t *pixels, int colormode);
 
 /* ── Accessors ──────────────────────────────────────────────────────── */

@@ -42,7 +42,7 @@ from multiprocessing.shared_memory import SharedMemory
 
 import ctypes
 
-COLOR_MODES      = ["state", "env-food", "priv-food", "births"]
+COLOR_MODES      = ["state", "env-food", "priv-food", "births", "age"]
 _SLIDER_RESUME_S = 0.20   # seconds after last slider touch before auto-resume
 _WORKER          = os.path.join(os.path.dirname(__file__), "sdl_worker.py")
 
@@ -52,6 +52,14 @@ _QUIT, _CMODE, _STEP, _FPS10, _PAUSED = 0, 1, 2, 3, 4
 # Probe strip-chart constants
 PROBE_W = 512    # pixels = time steps visible
 PROBE_H = 128    # pixel height of each strip chart
+
+# Grouped time-series probe: 6 traces in 2 stacked strips (3 each).
+# Order below must match _TS_COLORS / _TS_LABELS in sdl_worker.py.
+_TS_TRACES = ('pop', 'F_mean', 'f_mean',
+              'lut_div', 'eg_ent', 'activity_flux')
+TS_N_TRACES = len(_TS_TRACES)
+_TS_GROUPS  = ((0, 1, 2), (3, 4, 5))
+TS_STRIPS   = len(_TS_GROUPS)
 
 # Map probe name → (C getter function name, ctype element type)
 _PROBE_GETTER = {
@@ -70,6 +78,9 @@ _AVAILABLE_PROBES = {
     'eg_pop':         'Stacked area: egenome population fractions',
     'entropy':        'Local-pattern Shannon entropy',
     'pat_activity':   'Local-pattern activity (scrolling hash-colored strip)',
+    'q_activity':     'Activity quantile profile (decile strip chart)',
+    'ts':             ('Grouped time-series: pop, F_mean, f_mean '
+                       '(top) / lut_div, eg_ent, activity_flux (bottom)'),
 }
 
 
@@ -211,6 +222,31 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
 
     pat_enabled = entropy_enabled or pat_activity_enabled
 
+    # ── Activity quantile (q_activity) probe setup ──────────────────
+    q_activity_enabled  = bool((probes or {}).get('q_activity'))
+    QA_N_DECILES        = 9
+    q_activity_shm      = None
+    q_activity_cursor   = None
+    q_activity_deciles  = None   # list of 9 float32[PROBE_W] views
+    q_activity_col      = None   # temp float32[9]
+
+    if q_activity_enabled:
+        qa_shm_size = 4 + QA_N_DECILES * PROBE_W * 4
+        q_activity_shm = SharedMemory(create=True, size=qa_shm_size)
+        _qabuf = np.ndarray((qa_shm_size,), dtype=np.uint8,
+                             buffer=q_activity_shm.buf)
+        _qabuf[:] = 0
+        q_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                        buffer=q_activity_shm.buf)
+        q_activity_deciles = []
+        off = 4
+        for _ in range(QA_N_DECILES):
+            q_activity_deciles.append(
+                np.ndarray((PROBE_W,), dtype=np.float32,
+                           buffer=q_activity_shm.buf, offset=off))
+            off += PROBE_W * 4
+        q_activity_col = np.zeros(QA_N_DECILES, dtype=np.float32)
+
     # ── Set n_ent on C library ───────────────────────────────────────
     if pat_enabled:
         sim._lib.evoca_set_n_ent(sim.n_ent)
@@ -252,6 +288,30 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         eg_pop_pixels = np.ndarray((PROBE_H, PROBE_W), dtype=np.int32,
                                     buffer=eg_pop_shm.buf, offset=4)
         eg_pop_col = np.zeros(PROBE_H, dtype=np.int32)
+
+    # ── Grouped time-series (ts) probe setup ────────────────────────
+    ts_enabled = bool((probes or {}).get('ts'))
+    ts_shm     = None
+    ts_cursor  = None
+    ts_bufs    = None   # list of 6 float32[PROBE_W]
+    ts_getters = None   # (F_ptr_fn, f_ptr_fn, alive_ptr_fn)
+
+    if ts_enabled:
+        ts_shm_size = 4 + TS_N_TRACES * PROBE_W * 4
+        ts_shm = SharedMemory(create=True, size=ts_shm_size)
+        _tsbuf = np.ndarray((ts_shm_size,), dtype=np.uint8,
+                            buffer=ts_shm.buf)
+        _tsbuf[:] = 0
+        ts_cursor = np.ndarray((1,), dtype=np.int32, buffer=ts_shm.buf)
+        ts_bufs = []
+        off = 4
+        for _ in range(TS_N_TRACES):
+            ts_bufs.append(np.ndarray((PROBE_W,), dtype=np.float32,
+                                       buffer=ts_shm.buf, offset=off))
+            off += PROBE_W * 4
+        ts_getters = (sim._lib.evoca_get_F,
+                       sim._lib.evoca_get_f,
+                       sim._lib.evoca_get_alive)
 
     # ── Probe setup ─────────────────────────────────────────────────
     probe_names = [k for k, v in (probes or {}).items() if v and k in _PROBE_GETTER]
@@ -302,6 +362,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         cmd += ["--pat-activity=" + pat_activity_shm.name]
     if eg_pop_enabled:
         cmd += ["--eg-pop=" + eg_pop_shm.name]
+    if q_activity_enabled:
+        cmd += ["--q-activity=" + q_activity_shm.name]
+    if ts_enabled:
+        cmd += ["--ts=" + ts_shm.name]
     sdl_proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
@@ -312,6 +376,50 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             print(line.decode(errors='replace'), end='', flush=True)
 
     threading.Thread(target=_reader, name="evoca-sdl-reader", daemon=True).start()
+
+    # ── ts record helper ────────────────────────────────────────────
+    def _record_ts():
+        if not ts_enabled:
+            return
+        F_ptr = ts_getters[0]()
+        F_arr = np.ctypeslib.as_array(F_ptr, shape=(N * N,))
+        f_ptr = ts_getters[1]()
+        f_arr = np.ctypeslib.as_array(f_ptr, shape=(N * N,))
+        a_ptr = ts_getters[2]()
+        a_arr = np.ctypeslib.as_array(a_ptr, shape=(N * N,))
+        pop = int(a_arr.sum())
+        F_mean = float(F_arr.mean())
+        if pop > 0:
+            mask = a_arr.astype(bool)
+            f_mean = float(f_arr[mask].mean())
+        else:
+            f_mean = 0.0
+        # Activity must be updated at least once per tick for diversity
+        # and flux to be current.
+        if not (activity_enabled or q_activity_enabled):
+            sim._lib.evoca_activity_update()
+        lut_div = sim.n_distinct_genomes()
+        # Egenome entropy: Shannon entropy (bits) over the 64-bucket egenome
+        # distribution. Unlike a raw distinct-count, this stays responsive
+        # to mutation pressure even after all 64 buckets are occupied.
+        # Needs a recent eg update.
+        if not (eg_activity_enabled or eg_pop_enabled):
+            sim._lib.evoca_eg_activity_update()
+        eg_info = sim.get_eg_activity()
+        eg_pops = eg_info['pop_count']
+        total = int(eg_pops.sum())
+        if total > 0:
+            p = eg_pops[eg_pops > 0].astype(np.float64) / total
+            eg_ent = float(-(p * np.log2(p)).sum())
+        else:
+            eg_ent = 0.0
+        flux = sim.activity_flux()
+        ts_cur = int(ts_cursor[0])
+        vals = (float(pop), F_mean, f_mean,
+                float(lut_div), eg_ent, float(flux))
+        for ti, v in enumerate(vals):
+            ts_bufs[ti][ts_cur] = v
+        ts_cursor[0] = (ts_cur + 1) % PROBE_W
 
     # ── Shared sim state ──────────────────────────────────────────
     st    = dict(paused=bool(paused), running=True, colormode=colormode, step_cnt=0)
@@ -347,6 +455,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             all_shm.append(pat_activity_shm)
         if eg_pop_shm is not None:
             all_shm.append(eg_pop_shm)
+        if q_activity_shm is not None:
+            all_shm.append(q_activity_shm)
+        if ts_shm is not None:
+            all_shm.append(ts_shm)
         for shm in all_shm:
             try:
                 shm.unlink()
@@ -381,6 +493,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         description="Restart", layout=widgets.Layout(width="80px"))
     btn_step  = widgets.Button(
         description="Step",  layout=widgets.Layout(width="70px"))
+    btn_step200 = widgets.Button(
+        description="Step200", layout=widgets.Layout(width="80px"))
     btn_quit  = widgets.Button(
         description="Quit",  button_style="danger",
         layout=widgets.Layout(width="70px"))
@@ -394,26 +508,44 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     sl_kw = dict(continuous_update=True,
                  style={"description_width": "90px"},
                  layout=widgets.Layout(width="440px"))
+
+    # Slider limits scale to the initialized parameter value: max = 2 × init,
+    # with a tiny floor so a zero-init slider isn't completely degenerate.
+    # Step gives ~100 increments, no finer than the floor.
+    def _flt_lims(init, floor):
+        mx = max(2.0 * float(init), floor)
+        st = max(mx / 100.0, floor)
+        return mx, st
+
+    def _int_lims(init, floor):
+        return max(2 * int(init), floor)
+
+    fi_max, fi_step = _flt_lims(sim.food_inc,   1e-3)
     sl_food_inc = widgets.FloatSlider(
-        value=sim.food_inc,   min=0.0, max=0.5,  step=0.001,
-        description="food_inc:",   readout_format=".3f", **sl_kw)
+        value=sim.food_inc,   min=0.0, max=fi_max, step=fi_step,
+        description="food_inc:",   readout_format=".4f", **sl_kw)
+    ms_max, ms_step = _flt_lims(sim.m_scale,    1e-2)
     sl_m_scale = widgets.FloatSlider(
-        value=sim.m_scale,    min=0.0, max=10.0, step=0.1,
-        description="m_scale:",    readout_format=".2f", **sl_kw)
+        value=sim.m_scale,    min=0.0, max=ms_max, step=ms_step,
+        description="m_scale:",    readout_format=".3f", **sl_kw)
+    gd_max = _int_lims(sim.gdiff, 2)
     sl_gdiff = widgets.IntSlider(
-        value=sim.gdiff, min=0, max=10, step=1,
+        value=sim.gdiff, min=0, max=gd_max, step=1,
         description="gdiff:",
         style={"description_width": "90px"},
         layout=widgets.Layout(width="440px"))
+    mul_max, mul_step = _flt_lims(sim.mu_lut,     1e-6)
     sl_mu_lut = widgets.FloatSlider(
-        value=sim.mu_lut, min=0.0, max=0.001, step=0.00001,
-        description="mu_lut:",    readout_format=".5f", **sl_kw)
+        value=sim.mu_lut, min=0.0, max=mul_max, step=mul_step,
+        description="mu_lut:",    readout_format=".6f", **sl_kw)
+    mue_max, mue_step = _flt_lims(sim.mu_egenome, 1e-4)
     sl_mu_egenome = widgets.FloatSlider(
-        value=sim.mu_egenome, min=0.0, max=0.05, step=0.001,
-        description="mu_egenome:", readout_format=".3f", **sl_kw)
+        value=sim.mu_egenome, min=0.0, max=mue_max, step=mue_step,
+        description="mu_egenome:", readout_format=".4f", **sl_kw)
+    tx_max, tx_step = _flt_lims(sim.tax,        1e-4)
     sl_tax = widgets.FloatSlider(
-        value=sim.tax, min=0.0, max=0.1, step=0.001,
-        description="tax:", readout_format=".3f", **sl_kw)
+        value=sim.tax, min=0.0, max=tx_max, step=tx_step,
+        description="tax:", readout_format=".4f", **sl_kw)
 
     # ── ymax halve / double buttons ──────────────────────────────────
     def _make_ymax_btns(name, initial, update_fn):
@@ -460,8 +592,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     status_lbl = widgets.Label(value="Starting…")
 
     _rows = [
-        widgets.HBox([btn_pause, btn_restart, btn_step, btn_quit, btn_save,
-                      txt_descriptor, btn_export]),
+        widgets.HBox([btn_pause, btn_restart, btn_step, btn_step200,
+                      btn_quit, btn_save, txt_descriptor, btn_export]),
         sl_food_inc, sl_m_scale, sl_gdiff,
         sl_mu_lut, sl_mu_egenome, sl_tax,
     ]
@@ -486,6 +618,77 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     def on_pause_toggle(change):
         _set_paused(change['new'])
 
+    def _record_probes():
+        if n_probes > 0:
+            cur = int(probe_cursor[0])
+            for pi, (getter, dt) in enumerate(probe_getters):
+                ptr = getter()
+                arr = np.ctypeslib.as_array(ptr, shape=(N * N,))
+                farr = arr.astype(np.float64) if dt != np.float32 else arr
+                probe_means[pi][cur] = farr.mean()
+                probe_stds[pi][cur]  = farr.std()
+            probe_cursor[0] = (cur + 1) % PROBE_W
+        if activity_enabled:
+            sim._lib.evoca_activity_update()
+            act_cur = int(activity_cursor[0])
+            act_col_ptr = activity_col.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_int32))
+            sim._lib.evoca_activity_render_col(act_col_ptr, ACT_H)
+            activity_pixels[:, act_cur] = activity_col
+            activity_cursor[0] = (act_cur + 1) % PROBE_W
+        if q_activity_enabled:
+            if not activity_enabled:
+                sim._lib.evoca_activity_update()
+            qa_cur = int(q_activity_cursor[0])
+            qa_col_ptr = q_activity_col.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_float))
+            sim._lib.evoca_q_activity_deciles(qa_col_ptr)
+            for di in range(QA_N_DECILES):
+                q_activity_deciles[di][qa_cur] = q_activity_col[di]
+            q_activity_cursor[0] = (qa_cur + 1) % PROBE_W
+        if eg_activity_enabled or eg_pop_enabled:
+            sim._lib.evoca_eg_activity_update()
+        if eg_activity_enabled:
+            ega_cur = int(eg_activity_cursor[0])
+            ega_col_ptr = eg_activity_col.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_int32))
+            sim._lib.evoca_eg_activity_render_col(ega_col_ptr, ACT_H)
+            eg_activity_pixels[:, ega_cur] = eg_activity_col
+            eg_activity_cursor[0] = (ega_cur + 1) % PROBE_W
+            sim._lib.evoca_eg_activity_get(
+                ega_m_acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+                ega_m_pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+                ega_m_cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
+            ega_m_ymax[0] = sim._lib.evoca_get_eg_act_ymax()
+        if lut_complexity_enabled:
+            lc_cur = int(lut_complexity_cursor[0])
+            lc_col_ptr = lut_complexity_col.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_int32))
+            sim._lib.evoca_lut_complexity_render_col(lc_col_ptr, PROBE_H)
+            lut_complexity_pixels[:, lc_cur] = lut_complexity_col
+            lut_complexity_cursor[0] = (lc_cur + 1) % PROBE_W
+        if eg_pop_enabled:
+            ep_cur = int(eg_pop_cursor[0])
+            ep_col_ptr = eg_pop_col.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_int32))
+            sim._lib.evoca_eg_pop_render_col(ep_col_ptr, PROBE_H)
+            eg_pop_pixels[:, ep_cur] = eg_pop_col
+            eg_pop_cursor[0] = (ep_cur + 1) % PROBE_W
+        if pat_enabled:
+            sim._lib.evoca_pat_update()
+            if entropy_enabled:
+                ec = int(entropy_cursor[0])
+                entropy_buf[ec] = sim._lib.evoca_get_entropy()
+                entropy_cursor[0] = (ec + 1) % PROBE_W
+            if pat_activity_enabled:
+                pac = int(pat_activity_cursor[0])
+                pa_col_ptr = pat_activity_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_int32))
+                sim._lib.evoca_pat_activity_render_col(pa_col_ptr, PAT_H)
+                pat_activity_pixels[:, pac] = pat_activity_col
+                pat_activity_cursor[0] = (pac + 1) % PROBE_W
+        _record_ts()
+
     def on_step(_):
         if not _alive[0]:
             return
@@ -494,65 +697,38 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             st['step_cnt'] += 1
             ctrl[_STEP] = st['step_cnt']
             sim.colorize(pixels, st['colormode'])
-            if n_probes > 0:
-                cur = int(probe_cursor[0])
-                for pi, (getter, dt) in enumerate(probe_getters):
-                    ptr = getter()
-                    arr = np.ctypeslib.as_array(ptr, shape=(N * N,))
-                    farr = arr.astype(np.float64) if dt != np.float32 else arr
-                    probe_means[pi][cur] = farr.mean()
-                    probe_stds[pi][cur]  = farr.std()
-                probe_cursor[0] = (cur + 1) % PROBE_W
-            if activity_enabled:
-                sim._lib.evoca_activity_update()
-                act_cur = int(activity_cursor[0])
-                act_col_ptr = activity_col.ctypes.data_as(
-                    ctypes.POINTER(ctypes.c_int32))
-                sim._lib.evoca_activity_render_col(act_col_ptr, ACT_H)
-                activity_pixels[:, act_cur] = activity_col
-                activity_cursor[0] = (act_cur + 1) % PROBE_W
-            if eg_activity_enabled or eg_pop_enabled:
-                sim._lib.evoca_eg_activity_update()
-            if eg_activity_enabled:
-                ega_cur = int(eg_activity_cursor[0])
-                ega_col_ptr = eg_activity_col.ctypes.data_as(
-                    ctypes.POINTER(ctypes.c_int32))
-                sim._lib.evoca_eg_activity_render_col(ega_col_ptr, ACT_H)
-                eg_activity_pixels[:, ega_cur] = eg_activity_col
-                eg_activity_cursor[0] = (ega_cur + 1) % PROBE_W
-                sim._lib.evoca_eg_activity_get(
-                    ega_m_acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
-                    ega_m_pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
-                    ega_m_cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
-                ega_m_ymax[0] = sim._lib.evoca_get_eg_act_ymax()
-            if lut_complexity_enabled:
-                lc_cur = int(lut_complexity_cursor[0])
-                lc_col_ptr = lut_complexity_col.ctypes.data_as(
-                    ctypes.POINTER(ctypes.c_int32))
-                sim._lib.evoca_lut_complexity_render_col(lc_col_ptr, PROBE_H)
-                lut_complexity_pixels[:, lc_cur] = lut_complexity_col
-                lut_complexity_cursor[0] = (lc_cur + 1) % PROBE_W
-            if eg_pop_enabled:
-                ep_cur = int(eg_pop_cursor[0])
-                ep_col_ptr = eg_pop_col.ctypes.data_as(
-                    ctypes.POINTER(ctypes.c_int32))
-                sim._lib.evoca_eg_pop_render_col(ep_col_ptr, PROBE_H)
-                eg_pop_pixels[:, ep_cur] = eg_pop_col
-                eg_pop_cursor[0] = (ep_cur + 1) % PROBE_W
-            if pat_enabled:
-                sim._lib.evoca_pat_update()
-                if entropy_enabled:
-                    ec = int(entropy_cursor[0])
-                    entropy_buf[ec] = sim._lib.evoca_get_entropy()
-                    entropy_cursor[0] = (ec + 1) % PROBE_W
-                if pat_activity_enabled:
-                    pac = int(pat_activity_cursor[0])
-                    pa_col_ptr = pat_activity_col.ctypes.data_as(
-                        ctypes.POINTER(ctypes.c_int32))
-                    sim._lib.evoca_pat_activity_render_col(pa_col_ptr, PAT_H)
-                    pat_activity_pixels[:, pac] = pat_activity_col
-                    pat_activity_cursor[0] = (pac + 1) % PROBE_W
+            _record_probes()
             status_lbl.value = f"t={st['step_cnt']}  (paused)"
+
+    def _step_display(n=1, delay=0.0):
+        """Programmatic step loop that advances the SDL window, probes,
+        and step counter. Requires the sim to be paused (otherwise the
+        background sim thread would race on C state)."""
+        if not _alive[0]:
+            raise RuntimeError("no display session attached")
+        if not st['paused']:
+            raise RuntimeError(
+                "sim.step_display() requires the sim paused "
+                "(click Pause, or set btn_pause.value=True)")
+        for _ in range(int(n)):
+            sim.step()
+            st['step_cnt'] += 1
+            ctrl[_STEP] = st['step_cnt']
+            sim.colorize(pixels, st['colormode'])
+            _record_probes()
+            status_lbl.value = f"t={st['step_cnt']}  (stepping)"
+            if delay > 0:
+                time.sleep(delay)
+        status_lbl.value = f"t={st['step_cnt']}  (paused)"
+
+    sim.step_display = _step_display
+
+    def on_step200(_):
+        if not _alive[0]:
+            return
+        if not st['paused']:
+            _set_paused(True)
+        _step_display(200, delay=0.02)
 
     def on_quit(_):
         st['running'] = False
@@ -647,6 +823,14 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         if pat_activity_enabled:
             pat_activity_cursor[0] = 0
             pat_activity_pixels[:] = 0
+        if q_activity_enabled:
+            q_activity_cursor[0] = 0
+            for di in range(QA_N_DECILES):
+                q_activity_deciles[di][:] = 0
+        if ts_enabled:
+            ts_cursor[0] = 0
+            for ti in range(TS_N_TRACES):
+                ts_bufs[ti][:] = 0
 
         sim.colorize(pixels, st['colormode'])
         status_lbl.value = "Restarted — t=0  (paused)"
@@ -654,6 +838,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     btn_pause.observe(on_pause_toggle, names='value')
     btn_restart.on_click(on_restart)
     btn_step.on_click(on_step)
+    btn_step200.on_click(on_step200)
     btn_quit.on_click(on_quit)
     btn_save.on_click(on_save)
     btn_export.on_click(on_export)
@@ -755,6 +940,18 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 activity_pixels[:, act_cur] = activity_col
                 activity_cursor[0] = (act_cur + 1) % PROBE_W
 
+            # Record activity quantile data
+            if q_activity_enabled:
+                if not activity_enabled:
+                    sim._lib.evoca_activity_update()
+                qa_cur = int(q_activity_cursor[0])
+                qa_col_ptr = q_activity_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_float))
+                sim._lib.evoca_q_activity_deciles(qa_col_ptr)
+                for di in range(QA_N_DECILES):
+                    q_activity_deciles[di][qa_cur] = q_activity_col[di]
+                q_activity_cursor[0] = (qa_cur + 1) % PROBE_W
+
             _t3 = time.perf_counter() if diag else 0
 
             # Record egenome activity / population
@@ -805,6 +1002,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                     sim._lib.evoca_pat_activity_render_col(pa_col_ptr, PAT_H)
                     pat_activity_pixels[:, pac] = pat_activity_col
                     pat_activity_cursor[0] = (pac + 1) % PROBE_W
+
+            _record_ts()
 
             _t4 = time.perf_counter()
             if diag:

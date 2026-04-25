@@ -23,8 +23,10 @@ available_probes()
 | `eg_activity`    | 512 x 256     | Egenome activity (scrolling hash-colored strip)        |
 | `lut_complexity` | 512 x 128     | Stacked area: green=n1 only, yellow=n1+n2, red=all     |
 | `eg_pop`         | 512 x 128     | Stacked area: population fraction per egenome value    |
+| `q_activity`     | 512 x 128     | Activity quantile deciles (log-scaled strip chart)     |
 | `entropy`        | 512 x 128     | Local-pattern Shannon entropy over time                |
 | `pat_activity`   | 512 x 256     | Local-pattern activity (scrolling hash-colored strip)  |
+| `ts`             | 512 x 256     | Grouped scalar time-series (two 3-trace strips)        |
 
 Example:
 
@@ -102,6 +104,29 @@ runs even when `eg_activity` is not enabled.
 
 ---
 
+## Activity Quantile Probe (q_activity)
+
+Shows the distribution of LUT genome activity over time as 9 decile curves
+(p10 through p90) on a log-scaled Y axis.  Inspired by Figure 3 ("Activity
+Profile") of `Docs/genelife-2.pdf`.
+
+At each time step, `evoca_q_activity_deciles()` collects the cumulative
+activity of every currently-alive genome, normalises each by the diversity D
+(number of alive species), sorts the values, and extracts the 10th through
+90th percentiles.  The 9 decile values are written to shared memory as
+float32 tracks.
+
+The SDL window renders each decile as a colored line using a blue-to-red
+gradient: p10 (blue), p20, p30 (cyan), p40 (teal), p50 (green/median),
+p60 (yellow), p70 (orange), p80, p90 (red).  The Y axis is log10-scaled
+and auto-ranged from the data, so both very young (low activity) and ancient
+(high activity) genomes are visible simultaneously.
+
+Requires `activity` probe data (the function calls `evoca_activity_update()`
+if `activity` is not separately enabled).
+
+---
+
 ## Click-to-Identify (eg_activity, eg_pop)
 
 Clicking on either the `eg_activity` or `eg_pop` probe window identifies
@@ -127,6 +152,38 @@ status to the subprocess stdout (relayed to the notebook cell output).
 `SDL_PollEvent` loop but processing is deferred to the main render loop,
 outside the event poll.  This avoids a macOS-specific segfault triggered
 by accessing numpy shared-memory arrays during SDL event dispatch.
+
+---
+
+## Grouped Time-Series (ts)
+
+Six scalar traces in two stacked strips of three traces each:
+
+| Strip | Trace           | Source                                              |
+|-------|-----------------|-----------------------------------------------------|
+| top   | `pop`           | alive-cell count                                    |
+| top   | `F_mean`        | mean of environmental food F over the whole lattice |
+| top   | `f_mean`        | mean of private food f over alive cells only        |
+| bot   | `lut_div`       | distinct live LUT genomes (FNV-1a hash buckets)     |
+| bot   | `eg_ent`        | Shannon entropy (bits) of the 64-bucket egenome distribution |
+| bot   | `activity_flux` | flux-probe slope sum in the `[p20, p30]` activity band |
+
+Each trace auto-scales independently within its strip: the observed
+[min, max] over the visible window maps to the middle 80% of the
+strip's height (10% padding top and bottom).  Zero samples are treated
+as uninitialised and excluded from both autoscale and plotting.
+Adjacent samples are connected by vertical fill so traces render as
+continuous lines.  A small color-swatch legend sits at the top-left of
+each strip; the right edge of each strip is the cursor (newest data).
+
+**Note on `eg_ent`**: the egenome is a 6-bit D4-symmetric fiducial with
+only 64 possible values, so a raw distinct-count saturates almost
+immediately under any mutation pressure (all 64 buckets fill and the
+trace flatlines).  Shannon entropy over the 64-bucket distribution
+ranges 0..6 bits and stays responsive to mutation rate even after all
+buckets are occupied — higher entropy means a more even distribution
+across egenome space, lower entropy means one or a few egenomes
+dominate.
 
 ---
 

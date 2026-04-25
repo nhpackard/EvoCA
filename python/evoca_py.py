@@ -192,6 +192,20 @@ class EvoCA:
             ctypes.POINTER(ctypes.c_int32),
             ctypes.c_int]
         L.evoca_activity_get.restype    = ctypes.c_int
+        # Activity quantile probe
+        L.evoca_q_activity_deciles.argtypes = [ctypes.POINTER(ctypes.c_float)]
+        L.evoca_q_activity_deciles.restype  = None
+        # Activity flux probe
+        L.evoca_activity_crossings.argtypes = [
+            ctypes.c_uint64, ctypes.c_uint64, ctypes.c_int,
+            ctypes.POINTER(ctypes.c_float), ctypes.c_int]
+        L.evoca_activity_crossings.restype  = ctypes.c_int
+        L.evoca_count_distinct_genomes.argtypes = []
+        L.evoca_count_distinct_genomes.restype  = ctypes.c_int
+        L.evoca_get_population.argtypes = []
+        L.evoca_get_population.restype  = ctypes.c_int
+        L.evoca_get_ages.argtypes       = [ctypes.POINTER(ctypes.c_int32)]
+        L.evoca_get_ages.restype        = None
         # Egenome activity
         L.evoca_eg_activity_update.argtypes  = []
         L.evoca_eg_activity_update.restype   = None
@@ -638,6 +652,61 @@ class EvoCA:
             pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
             cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
         return {'activity': acts, 'pop_count': pops, 'color': cols}
+
+    def population(self):
+        """Total alive cells."""
+        return int(self._lib.evoca_get_population())
+
+    def n_distinct_genomes(self):
+        """Count of distinct LUT hashes among alive cells (after
+        evoca_activity_update has been called this tick)."""
+        return int(self._lib.evoca_count_distinct_genomes())
+
+    def get_ages(self):
+        """Return (N, N) int32 array of per-cell ages (g_step -
+        last_event_step). Dead cells get -1."""
+        out = np.zeros(self._N * self._N, dtype=np.int32)
+        self._lib.evoca_get_ages(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
+        return out.reshape(self._N, self._N)
+
+    def activity_crossings(self, decile_lo=2, decile_hi=3, window=8,
+                           max_n=65536):
+        """Return activity-wave slope samples across a decile band.
+
+        Reconstructs the last `window` ticks of activity for every live
+        G-activity bucket and collects one slope sample per tick whose
+        activity increment overlaps [decile_lo..decile_hi) of the current
+        live-bucket distribution. Each sample is the bucket's population
+        at that tick.
+        """
+        # Deciles (p10..p90) are normalized by D = distinct live genomes.
+        deciles = np.zeros(9, dtype=np.float32)
+        self._lib.evoca_q_activity_deciles(
+            deciles.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+        D = max(self.n_distinct_genomes(), 1)
+        # decile_lo=2 -> p20 (index 1); decile_hi=3 -> p30 (index 2). Clamp.
+        lo_i = max(0, min(8, int(decile_lo) - 1))
+        hi_i = max(lo_i, min(9, int(decile_hi) - 1))
+        a_lo = int(deciles[lo_i] * D) if lo_i < 9 else 0
+        a_hi = int(deciles[hi_i] * D) if hi_i < 9 else 0
+        if a_hi <= a_lo:
+            return np.zeros(0, dtype=np.float32)
+        buf = np.zeros(max_n, dtype=np.float32)
+        n = self._lib.evoca_activity_crossings(
+            ctypes.c_uint64(a_lo), ctypes.c_uint64(a_hi),
+            int(window),
+            buf.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            int(max_n))
+        return buf[:n].copy()
+
+    def activity_flux(self, decile_lo=2, decile_hi=3, window=8):
+        """Mean activity flow per tick through the decile band."""
+        slopes = self.activity_crossings(decile_lo=decile_lo,
+                                         decile_hi=decile_hi, window=window)
+        if len(slopes) == 0:
+            return 0.0
+        return float(slopes.sum()) / float(window)
 
     def get_activity(self, max_n=4096):
         """Return activity table as dict of arrays.
