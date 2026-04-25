@@ -63,10 +63,10 @@ _TS_COLORS = (
     _c(0xFF00CC44),   # F_mean        — green
     _c(0xFF4488FF),   # f_mean        — blue
     _c(0xFFFFAA22),   # lut_div       — orange
-    _c(0xFFCC66FF),   # eg_div        — purple
+    _c(0xFFCC66FF),   # eg_ent        — purple
     _c(0xFF22EEDD),   # activity_flux — cyan/teal
 )
-_TS_LABELS = ('pop', 'F_mean', 'f_mean', 'lut_div', 'eg_div', 'flux')
+_TS_LABELS = ('pop', 'F_mean', 'f_mean', 'lut_div', 'eg_ent', 'flux')
 TS_SEP_COLOR = _c(0xFF444444)
 
 # Decile colors for q_activity (p10 blue → p50 green → p90 red)
@@ -218,7 +218,7 @@ def _draw_ts_legend(dst, y0, trace_idxs):
         'e': ["###", "#  ", "###", "#  ", "###"],
         'a': [" ##", "# #", "###", "# #", "# #"],
         'n': ["# #", "###", "###", "# #", "# #"],
-        'f': ["###", "#  ", "## ", "#  ", "#  "],
+        'f': [" ##", "#  ", "###", "#  ", "#  "],
         'l': ["#  ", "#  ", "#  ", "#  ", "###"],
         'u': ["# #", "# #", "# #", "# #", "###"],
         't': ["###", " # ", " # ", " # ", " # "],
@@ -226,6 +226,7 @@ def _draw_ts_legend(dst, y0, trace_idxs):
         'i': ["#", "#", "#", "#", "#"],
         'v': ["# #", "# #", "# #", "# #", " # "],
         'x': ["# #", "# #", " # ", "# #", "# #"],
+        'g': ["###", "# #", "###", "  #", "###"],
         ' ': ["  ", "  ", "  ", "  ", "  "],
     }
     ch_w = 4   # per-char width with 1px spacing
@@ -254,7 +255,12 @@ def _render_ts(dst, bufs, cursor):
     """Render the grouped time-series probe into `dst`.
 
     `dst` has shape (2*PROBE_H, W+).  `bufs` is a list of 6 float32[PROBE_W]
-    views.  Each trace auto-scales independently within its strip.
+    views.  Each trace auto-scales independently within its strip; observed
+    [min, max] maps to the middle 80% of the strip's height (10% padding
+    top and bottom). Adjacent samples are connected by vertical fill so
+    each trace renders as a continuous line, not isolated dots. Zero
+    samples are treated as uninitialized and excluded from autoscale and
+    plotting.
     """
     import numpy as np
 
@@ -267,22 +273,43 @@ def _render_ts(dst, bufs, cursor):
     for gi, group in enumerate(_TS_GROUPS):
         y0 = gi * PROBE_H
         strip = dst[y0:y0 + PROBE_H]
+        y_top = 0.1 * (PROBE_H - 1)
+        y_bot = 0.9 * (PROBE_H - 1)
+        H_grid = np.arange(PROBE_H)[:, None]        # (H, 1)
 
         for ti in group:
             r = rolled[ti]
-            filled = r != 0.0
-            if not filled.any():
+            mask = r != 0.0
+            if not mask.any():
                 continue
-            y_min = float(r[filled].min())
-            y_max = float(r[filled].max())
-            if y_max - y_min < 1e-8:
-                y_min -= 0.5; y_max += 0.5
-            margin = (y_max - y_min) * 0.05
-            y_min -= margin; y_max += margin
-            scale = (PROBE_H - 1) / (y_max - y_min)
-            ys = np.clip(((y_max - r) * scale).astype(int),
-                         0, PROBE_H - 1)
-            strip[ys[filled], xs[filled]] = _TS_COLORS[ti]
+            vals = r[mask]
+            lo = float(vals.min())
+            hi = float(vals.max())
+            if hi <= lo:
+                ys_valid = np.full(int(mask.sum()),
+                                   int((y_top + y_bot) * 0.5), dtype=np.int32)
+            else:
+                scale = (y_bot - y_top) / (hi - lo)
+                ys_valid = np.clip(
+                    (y_bot - (vals - lo) * scale).astype(np.int32),
+                    0, PROBE_H - 1)
+
+            ys = np.full(PROBE_W, -1, dtype=np.int32)
+            ys[mask] = ys_valid
+
+            prev_ys = np.roll(ys, 1)
+            prev_ys[0] = -1
+            both = (ys >= 0) & (prev_ys >= 0)
+            y_lo = np.minimum(ys, prev_ys)
+            y_hi = np.maximum(ys, prev_ys)
+            fill = ((H_grid >= y_lo[None, :])
+                    & (H_grid <= y_hi[None, :])
+                    & both[None, :])
+
+            col = _TS_COLORS[ti % len(_TS_COLORS)]
+            strip[fill] = col
+            isolated = mask & ~both
+            strip[ys[isolated], xs[isolated]] = col
 
         # Cursor edge + legend
         strip[:, PROBE_W - 1] = CURSOR_COLOR
