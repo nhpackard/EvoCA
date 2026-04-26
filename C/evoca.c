@@ -1312,25 +1312,28 @@ void evoca_n_activity_update(void)
  *
  * Renders G-activity (real run) plus an N-activity (Channon shadow) overlay
  * on a shared y-axis. The y-axis is auto-scaled per render call so that the
- * shadow's top-decile activity (N_p90) lands at y = h/10 — i.e. the upper
- * 10% of the window is "above the shadow noise floor" and any G wave there
+ * shadow's top-decile activity (N_p90) lands at y = h/4 — i.e. the upper
+ * 25% of the window is "above the shadow noise floor" and any G wave there
  * is empirically significant.
  *
- *   y = (h-1) * ymax / (act + ymax)   →   y = h/10  iff  act = 9 * ymax
- *   so we set ymax = N_p90 / 9 directly each tick. No smoothing: N_p90 is
- *   monotonic (each live N bucket gains 1 activity/tick) and changes by
- *   roughly 1/9 per tick at steady state, which is well below visual jitter
- *   threshold. (An EMA was tried and lagged badly behind the early-run
- *   exponential rise.)
+ *   y = (h-1) * ymax / (act + ymax)   →   y = h/4  iff  act = 3 * ymax
+ *   so we set ymax = N_p90 / 3 directly each tick. No smoothing: N_p90 is
+ *   monotonic (each live N bucket gains 1 activity/tick) and changes only
+ *   slowly per tick at steady state, well below visual jitter threshold.
+ *   (An EMA was tried and lagged badly behind the early-run exponential
+ *   rise.)
  *
  * N is drawn as a presence-per-row tint (one alpha-blend per y, regardless
  * of how many N buckets land on that row), not a per-bucket compounding
  * blend. Without this, dense low-activity N clusters compound to near-white
  * and overwhelm the underlying G colors.
  *
- * A pure-white horizontal line is drawn at the threshold y, pinned at h/10. */
+ * A pure-white horizontal line is drawn at the threshold y, pinned at h/4
+ * within ~5 ticks of the shadow getting any data (the floor below is small
+ * enough to make the early-tick transient nearly invisible). */
 #define N_OVERLAY_ALPHA_PCT 10
-#define NACT_DYN_FLOOR      100.0
+#define NACT_DYN_DIVISOR    3.0   /* line at h/(divisor+1) = h/4 */
+#define NACT_DYN_FLOOR      1.0
 
 void evoca_n_activity_render_col(int32_t *col, int height)
 {
@@ -1359,8 +1362,9 @@ void evoca_n_activity_render_col(int32_t *col, int height)
         }
     }
 
-    /* ymax keeps N_p90 at y = h/10 directly (no EMA — see header comment). */
-    double ymax_d = (n_p90 > 0.0) ? (n_p90 / 9.0) : (double)act_ymax;
+    /* ymax keeps N_p90 at y = h/4 directly (no EMA — see header comment). */
+    double ymax_d = (n_p90 > 0.0) ? (n_p90 / NACT_DYN_DIVISOR)
+                                  : (double)act_ymax;
     if (ymax_d < NACT_DYN_FLOOR) ymax_d = NACT_DYN_FLOOR;
     uint64_t ymax = (uint64_t)ymax_d;
     if (ymax < 1) ymax = 1;
