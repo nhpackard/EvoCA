@@ -1311,33 +1311,42 @@ void evoca_n_activity_update(void)
 /* Combined activity + neutral-shadow strip-chart column.
  *
  * Renders G-activity (real run) plus an N-activity (Channon shadow) overlay
- * on a shared y-axis. The y-axis is auto-scaled per render call so that the
- * shadow's top-decile activity (N_p90) lands at y = h/4 — i.e. the upper
- * 25% of the window is "above the shadow noise floor" and any G wave there
- * is empirically significant.
+ * on a fixed-reference log y-axis (NACT_LOG_REF). Same scale used in every
+ * column, so older columns and newer columns are directly comparable — no
+ * warping as the simulation evolves.
  *
- *   y = (h-1) * ymax / (act + ymax)   →   y = h/4  iff  act = 3 * ymax
- *   so we set ymax = N_p90 / 3 directly each tick. No smoothing: N_p90 is
- *   monotonic (each live N bucket gains 1 activity/tick) and changes only
- *   slowly per tick at steady state, well below visual jitter threshold.
- *   (An EMA was tried and lagged badly behind the early-run exponential
- *   rise.)
+ *   y = (h-1) * (1 - log(act+1) / log(REF+1))
+ *
+ *   act = 0      → y = h-1 (bottom)
+ *   act = REF    → y = 0   (top)
+ *   act > REF    → clipped at top
+ *
+ * The white threshold line is drawn at the y for the current N_p90, so as
+ * the shadow's top-decile activity grows over time the line traces a curve
+ * from low (right when first written) to higher (right when written later)
+ * — visualising the calibration threshold's evolution across the window.
  *
  * N is drawn as a presence-per-row tint (one alpha-blend per y, regardless
- * of how many N buckets land on that row), not a per-bucket compounding
- * blend. Without this, dense low-activity N clusters compound to near-white
- * and overwhelm the underlying G colors.
- *
- * A pure-white horizontal line is drawn at the threshold y, pinned at h/4
- * within ~5 ticks of the shadow getting any data (the floor below is small
- * enough to make the early-tick transient nearly invisible). */
+ * of how many N buckets land on that row), so dense clusters don't
+ * compound to near-white. */
 #define N_OVERLAY_ALPHA_PCT 10
-#define NACT_DYN_DIVISOR    3.0   /* line at h/(divisor+1) = h/4 */
-#define NACT_DYN_FLOOR      1.0
+#define NACT_LOG_REF        1.0e6   /* activities approach top as they near this */
+
+static inline int nact_act_to_y_log(double act, double inv_log_ref, int height)
+{
+    if (act < 0.0) act = 0.0;
+    double frac = log(act + 1.0) * inv_log_ref;
+    if (frac > 1.0) frac = 1.0;
+    if (frac < 0.0) frac = 0.0;
+    int y = (int)((double)(height - 1) * (1.0 - frac));
+    if (y < 0) y = 0;
+    if (y >= height) y = height - 1;
+    return y;
+}
 
 void evoca_n_activity_render_col(int32_t *col, int height)
 {
-    /* Compute current N top-decile activity (raw). */
+    /* Compute current N top-decile activity (raw); used for threshold line. */
     double n_p90 = 0.0;
     int D = 0;
     if (nact_keys && nact_cnt > 0) {
@@ -1362,12 +1371,7 @@ void evoca_n_activity_render_col(int32_t *col, int height)
         }
     }
 
-    /* ymax keeps N_p90 at y = h/4 directly (no EMA — see header comment). */
-    double ymax_d = (n_p90 > 0.0) ? (n_p90 / NACT_DYN_DIVISOR)
-                                  : (double)act_ymax;
-    if (ymax_d < NACT_DYN_FLOOR) ymax_d = NACT_DYN_FLOOR;
-    uint64_t ymax = (uint64_t)ymax_d;
-    if (ymax < 1) ymax = 1;
+    const double inv_log_ref = 1.0 / log(NACT_LOG_REF + 1.0);
 
     /* Background fill. */
     for (int y = 0; y < height; y++)
@@ -1382,10 +1386,8 @@ void evoca_n_activity_render_col(int32_t *col, int height)
         for (int i = 0; i < act_cap; i++) {
             if (act_keys[i] == ACT_EMPTY) continue;
             if (act_vals[i].pop_count > 0) continue;
-            uint64_t act = act_vals[i].activity;
-            int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
-            if (y < 0) y = 0;
-            if (y >= height) y = height - 1;
+            int y = nact_act_to_y_log((double)act_vals[i].activity,
+                                       inv_log_ref, height);
             uint32_t c = (uint32_t)act_vals[i].color;
             uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
             uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
@@ -1399,10 +1401,8 @@ void evoca_n_activity_render_col(int32_t *col, int height)
             if (act_keys[i] == ACT_EMPTY) continue;
             uint32_t pop = act_vals[i].pop_count;
             if (pop == 0) continue;
-            uint64_t act = act_vals[i].activity;
-            int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
-            if (y < 0) y = 0;
-            if (y >= height) y = height - 1;
+            int y = nact_act_to_y_log((double)act_vals[i].activity,
+                                       inv_log_ref, height);
             if (pop >= ypop[y]) {
                 col[y] = act_vals[i].color;
                 ypop[y] = pop;
@@ -1417,10 +1417,8 @@ void evoca_n_activity_render_col(int32_t *col, int height)
         for (int i = 0; i < nact_cap; i++) {
             if (nact_keys[i] == ACT_EMPTY) continue;
             if (nact_vals[i].pop_count == 0) continue;
-            uint64_t act = nact_vals[i].activity;
-            int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
-            if (y < 0) y = 0;
-            if (y >= height) y = height - 1;
+            int y = nact_act_to_y_log((double)nact_vals[i].activity,
+                                       inv_log_ref, height);
             n_present[y] = 1;
         }
         const uint32_t a_pct = N_OVERLAY_ALPHA_PCT;
@@ -1436,13 +1434,9 @@ void evoca_n_activity_render_col(int32_t *col, int height)
         }
     }
 
-    /* ── Threshold line at N_p90 y-position (pure white). ── */
+    /* ── Threshold line at N_p90 in log scale (varies as N_p90 grows) ── */
     if (n_p90 > 0.0) {
-        int y_thresh = (height - 1)
-                     - (int)((uint64_t)(height - 1) * (uint64_t)n_p90
-                             / ((uint64_t)n_p90 + ymax));
-        if (y_thresh < 0) y_thresh = 0;
-        if (y_thresh >= height) y_thresh = height - 1;
+        int y_thresh = nact_act_to_y_log(n_p90, inv_log_ref, height);
         col[y_thresh] = (int32_t)0xFFFFFFFFu;
     }
 }
