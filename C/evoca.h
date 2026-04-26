@@ -83,6 +83,39 @@ int  evoca_activity_get(uint32_t *keys, uint64_t *activities,
 
 void evoca_q_activity_deciles(float *deciles_out);  /* 9 floats: p10..p90 */
 
+/* ── Per-step demography counters ──────────────────────────────────── */
+
+int evoca_get_births_last(void);
+int evoca_get_deaths_last(void);
+
+/* ── Neutral shadow population (Channon-style activity calibration) ────
+ *
+ * Shadow population mirroring the real run's demography under random
+ * selection. Same alive count 1:1 with real, same reproduction
+ * procedure (LUT bit flips at the same gmu_lut), but births pick a
+ * uniform-random surviving shadow parent and deaths pick a uniform-
+ * random shadow member. Initialised by copying the current alive cells'
+ * LUTs at enable time; mirrored each evoca_step thereafter.
+ *
+ * N-activity is bucketised by the same FNV-1a LUT-content hash as
+ * G-activity, so the two distributions live in the same magnitude
+ * space and can be directly compared. */
+
+void evoca_neutral_enable(void);
+void evoca_neutral_disable(void);
+int  evoca_neutral_is_enabled(void);
+int  evoca_neutral_get_population(void);
+
+void evoca_n_activity_update(void);
+void evoca_n_activity_render_col(int32_t *col, int height);
+int  evoca_n_activity_get(uint32_t *keys, uint64_t *activities,
+                          uint32_t *pop_counts, int32_t *colors, int max_n);
+void evoca_set_n_act_ymax(int y);
+int  evoca_get_n_act_ymax(void);
+
+/* Nq-activity: 9 deciles of N-activity (p10..p90). */
+void evoca_nq_activity_deciles(float *deciles_out);
+
 /* Activity flux probe: for each live-genome bucket, walk the past `window`
  * ticks (capped at a small compile-time bound) and reconstruct the activity
  * trajectory from stored pop history. A tick contributes one slope sample

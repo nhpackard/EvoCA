@@ -195,6 +195,39 @@ class EvoCA:
         # Activity quantile probe
         L.evoca_q_activity_deciles.argtypes = [ctypes.POINTER(ctypes.c_float)]
         L.evoca_q_activity_deciles.restype  = None
+        # Per-step demography counters
+        L.evoca_get_births_last.argtypes = []
+        L.evoca_get_births_last.restype  = ctypes.c_int
+        L.evoca_get_deaths_last.argtypes = []
+        L.evoca_get_deaths_last.restype  = ctypes.c_int
+        # Neutral shadow population (Channon-style activity calibration)
+        L.evoca_neutral_enable.argtypes        = []
+        L.evoca_neutral_enable.restype         = None
+        L.evoca_neutral_disable.argtypes       = []
+        L.evoca_neutral_disable.restype        = None
+        L.evoca_neutral_is_enabled.argtypes    = []
+        L.evoca_neutral_is_enabled.restype     = ctypes.c_int
+        L.evoca_neutral_get_population.argtypes = []
+        L.evoca_neutral_get_population.restype  = ctypes.c_int
+        # N-activity probe (shadow population, same hash as G-activity)
+        L.evoca_n_activity_update.argtypes     = []
+        L.evoca_n_activity_update.restype      = None
+        L.evoca_n_activity_render_col.argtypes = [
+            ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
+        L.evoca_n_activity_render_col.restype  = None
+        L.evoca_n_activity_get.argtypes        = [
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_int32),
+            ctypes.c_int]
+        L.evoca_n_activity_get.restype         = ctypes.c_int
+        L.evoca_set_n_act_ymax.argtypes        = [ctypes.c_int]
+        L.evoca_set_n_act_ymax.restype         = None
+        L.evoca_get_n_act_ymax.argtypes        = []
+        L.evoca_get_n_act_ymax.restype         = ctypes.c_int
+        L.evoca_nq_activity_deciles.argtypes   = [ctypes.POINTER(ctypes.c_float)]
+        L.evoca_nq_activity_deciles.restype    = None
         # Activity flux probe
         L.evoca_activity_crossings.argtypes = [
             ctypes.c_uint64, ctypes.c_uint64, ctypes.c_int,
@@ -726,6 +759,61 @@ class EvoCA:
             max_n)
         return {'hash': keys[:n], 'activity': acts[:n],
                 'pop_count': pops[:n], 'color': cols[:n]}
+
+    # ── Per-step demography counters ─────────────────────────────────
+
+    def get_births_last(self):
+        return int(self._lib.evoca_get_births_last())
+
+    def get_deaths_last(self):
+        return int(self._lib.evoca_get_deaths_last())
+
+    # ── N-activity probe (Channon-style neutral shadow) ──────────────
+
+    def neutral_enable(self):
+        """Enable the neutral shadow population, sized 1:1 with the
+        current alive count and seeded by copying current alive cells'
+        LUTs. Each subsequent step() mirrors real births/deaths into the
+        shadow with random selection (uniform parent / uniform kill,
+        same gmu_lut). N-activity counters are reset."""
+        self._lib.evoca_neutral_enable()
+
+    def neutral_disable(self):
+        """Disable the neutral shadow and free its state."""
+        self._lib.evoca_neutral_disable()
+
+    def neutral_is_enabled(self):
+        return bool(self._lib.evoca_neutral_is_enabled())
+
+    def neutral_population(self):
+        """Live shadow population (matches alive count while enabled)."""
+        return int(self._lib.evoca_neutral_get_population())
+
+    def n_activity_update(self):
+        self._lib.evoca_n_activity_update()
+
+    def get_n_activity(self, max_n=4096):
+        """Return N-activity table (shadow). Same key/value layout as
+        get_activity — both use the same FNV-1a LUT-content hash."""
+        keys = np.zeros(max_n, dtype=np.uint32)
+        acts = np.zeros(max_n, dtype=np.uint64)
+        pops = np.zeros(max_n, dtype=np.uint32)
+        cols = np.zeros(max_n, dtype=np.int32)
+        n = self._lib.evoca_n_activity_get(
+            keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+            pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
+            max_n)
+        return {'hash': keys[:n], 'activity': acts[:n],
+                'pop_count': pops[:n], 'color': cols[:n]}
+
+    def nq_activity_deciles(self):
+        """Return 9-element float array with N-activity deciles p10..p90."""
+        out = np.zeros(9, dtype=np.float32)
+        self._lib.evoca_nq_activity_deciles(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+        return out
 
     def plot_eg(self, n=8):
         """Plot the top-n egenomes by population fraction.

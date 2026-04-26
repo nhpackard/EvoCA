@@ -79,6 +79,8 @@ _AVAILABLE_PROBES = {
     'entropy':        'Local-pattern Shannon entropy',
     'pat_activity':   'Local-pattern activity (scrolling hash-colored strip)',
     'q_activity':     'Activity quantile profile (decile strip chart)',
+    'n_activity':     'N-activity: Channon shadow LUT-hash strip chart',
+    'nq_activity':    'Nq-activity: shadow activity decile strip chart',
     'ts':             ('Grouped time-series: pop, F_mean, f_mean '
                        '(top) / lut_div, eg_ent, activity_flux (bottom)'),
 }
@@ -247,6 +249,55 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             off += PROBE_W * 4
         q_activity_col = np.zeros(QA_N_DECILES, dtype=np.float32)
 
+    # ── N-activity probe setup (Channon-style neutral shadow) ───────
+    n_activity_enabled = bool((probes or {}).get('n_activity'))
+    n_activity_shm     = None
+    n_activity_cursor  = None
+    n_activity_pixels  = None
+    n_activity_col     = None
+
+    if n_activity_enabled:
+        nact_shm_size = 4 + PROBE_W * ACT_H * 4
+        n_activity_shm = SharedMemory(create=True, size=nact_shm_size)
+        _nbuf = np.ndarray((nact_shm_size,), dtype=np.uint8,
+                           buffer=n_activity_shm.buf)
+        _nbuf[:] = 0
+        n_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                       buffer=n_activity_shm.buf)
+        n_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                       buffer=n_activity_shm.buf, offset=4)
+        n_activity_col = np.zeros(ACT_H, dtype=np.int32)
+
+    # ── Nq-activity (deciles of N-activity) probe setup ─────────────
+    nq_activity_enabled  = bool((probes or {}).get('nq_activity'))
+    nq_activity_shm      = None
+    nq_activity_cursor   = None
+    nq_activity_deciles  = None
+    nq_activity_col      = None
+
+    if nq_activity_enabled:
+        nqa_shm_size = 4 + QA_N_DECILES * PROBE_W * 4
+        nq_activity_shm = SharedMemory(create=True, size=nqa_shm_size)
+        _nqabuf = np.ndarray((nqa_shm_size,), dtype=np.uint8,
+                             buffer=nq_activity_shm.buf)
+        _nqabuf[:] = 0
+        nq_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                         buffer=nq_activity_shm.buf)
+        nq_activity_deciles = []
+        off = 4
+        for _ in range(QA_N_DECILES):
+            nq_activity_deciles.append(
+                np.ndarray((PROBE_W,), dtype=np.float32,
+                           buffer=nq_activity_shm.buf, offset=off))
+            off += PROBE_W * 4
+        nq_activity_col = np.zeros(QA_N_DECILES, dtype=np.float32)
+
+    # If either N-probe is on, attach the neutral shadow now (snapshot
+    # of current alive cells). Mirroring runs automatically every step.
+    neutral_enabled = n_activity_enabled or nq_activity_enabled
+    if neutral_enabled:
+        sim.neutral_enable()
+
     # ── Set n_ent on C library ───────────────────────────────────────
     if pat_enabled:
         sim._lib.evoca_set_n_ent(sim.n_ent)
@@ -364,6 +415,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         cmd += ["--eg-pop=" + eg_pop_shm.name]
     if q_activity_enabled:
         cmd += ["--q-activity=" + q_activity_shm.name]
+    if n_activity_enabled:
+        cmd += ["--n-activity=" + n_activity_shm.name]
+    if nq_activity_enabled:
+        cmd += ["--nq-activity=" + nq_activity_shm.name]
     if ts_enabled:
         cmd += ["--ts=" + ts_shm.name]
     sdl_proc = subprocess.Popen(
@@ -457,6 +512,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             all_shm.append(eg_pop_shm)
         if q_activity_shm is not None:
             all_shm.append(q_activity_shm)
+        if n_activity_shm is not None:
+            all_shm.append(n_activity_shm)
+        if nq_activity_shm is not None:
+            all_shm.append(nq_activity_shm)
         if ts_shm is not None:
             all_shm.append(ts_shm)
         for shm in all_shm:
@@ -646,6 +705,24 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             for di in range(QA_N_DECILES):
                 q_activity_deciles[di][qa_cur] = q_activity_col[di]
             q_activity_cursor[0] = (qa_cur + 1) % PROBE_W
+        if n_activity_enabled:
+            sim._lib.evoca_n_activity_update()
+            n_cur = int(n_activity_cursor[0])
+            n_col_ptr = n_activity_col.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_int32))
+            sim._lib.evoca_n_activity_render_col(n_col_ptr, ACT_H)
+            n_activity_pixels[:, n_cur] = n_activity_col
+            n_activity_cursor[0] = (n_cur + 1) % PROBE_W
+        if nq_activity_enabled:
+            if not n_activity_enabled:
+                sim._lib.evoca_n_activity_update()
+            nq_cur = int(nq_activity_cursor[0])
+            nq_col_ptr = nq_activity_col.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_float))
+            sim._lib.evoca_nq_activity_deciles(nq_col_ptr)
+            for di in range(QA_N_DECILES):
+                nq_activity_deciles[di][nq_cur] = nq_activity_col[di]
+            nq_activity_cursor[0] = (nq_cur + 1) % PROBE_W
         if eg_activity_enabled or eg_pop_enabled:
             sim._lib.evoca_eg_activity_update()
         if eg_activity_enabled:
@@ -827,6 +904,16 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             q_activity_cursor[0] = 0
             for di in range(QA_N_DECILES):
                 q_activity_deciles[di][:] = 0
+        if n_activity_enabled:
+            n_activity_cursor[0] = 0
+            n_activity_pixels[:] = 0
+        if nq_activity_enabled:
+            nq_activity_cursor[0] = 0
+            for di in range(QA_N_DECILES):
+                nq_activity_deciles[di][:] = 0
+        # Re-attach the neutral shadow to the freshly-seeded population.
+        if neutral_enabled:
+            sim.neutral_enable()
         if ts_enabled:
             ts_cursor[0] = 0
             for ti in range(TS_N_TRACES):

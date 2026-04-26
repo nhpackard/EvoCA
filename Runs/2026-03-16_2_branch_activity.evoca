@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "created": "2026-03-16T07:30:18",
+  "descriptor": "2 branch activity",
+  "N": 512,
+  "metaparams_init": {
+    "food_inc": 0.12,
+    "m_scale": 0.4,
+    "gdiff": 0,
+    "mu_lut": 0.001,
+    "mu_egenome": 0.0,
+    "tax": 0.05,
+    "restricted_mu": 1
+  },
+  "metaparams_final": {
+    "food_inc": 0.12,
+    "m_scale": 0.4,
+    "gdiff": 0,
+    "mu_lut": 0.001,
+    "mu_egenome": 0.0,
+    "tax": 0.05,
+    "restricted_mu": 1
+  },
+  "initialization": {
+    "lut_method": "random",
+    "lut_n_init": 1,
+    "egenome_method": "uniform",
+    "egenome_value": 3,
+    "v_method": "random",
+    "v_density": 0.4980316162109375,
+    "f_init": 0.1,
+    "F_method": "uniform",
+    "F_init": 0.5
+  },
+  "display": {
+    "colormode": 0,
+    "probes": {
+      "lut_complexity": true,
+      "activity": true
+    }
+  }
+}

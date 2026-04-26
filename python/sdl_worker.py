@@ -342,6 +342,8 @@ def main():
     pat_activity_shm_name = None
     eg_pop_shm_name = None
     q_activity_shm_name = None
+    n_activity_shm_name  = None
+    nq_activity_shm_name = None
     ts_shm_name = None
     for arg in sys.argv:
         if arg.startswith("--activity="):
@@ -358,6 +360,10 @@ def main():
             eg_pop_shm_name = arg[len("--eg-pop="):]
         elif arg.startswith("--q-activity="):
             q_activity_shm_name = arg[len("--q-activity="):]
+        elif arg.startswith("--n-activity="):
+            n_activity_shm_name = arg[len("--n-activity="):]
+        elif arg.startswith("--nq-activity="):
+            nq_activity_shm_name = arg[len("--nq-activity="):]
         elif arg.startswith("--ts="):
             ts_shm_name = arg[len("--ts="):]
 
@@ -511,6 +517,47 @@ def main():
             print(f"EvoCA SDL: q_activity SharedMemory open failed: {e}",
                   flush=True)
             q_activity_shm_name = None
+
+    # Open N-activity (Channon shadow) shared memory
+    n_activity_shm    = None
+    n_activity_cursor = None
+    n_activity_pixels = None
+    if n_activity_shm_name:
+        try:
+            n_activity_shm = SharedMemory(name=n_activity_shm_name)
+            n_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                            buffer=n_activity_shm.buf)
+            n_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                            buffer=n_activity_shm.buf, offset=4)
+            print(f"EvoCA SDL: n_activity shm opened ({ACT_H}x{PROBE_W})",
+                  flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: n_activity SharedMemory open failed: {e}",
+                  flush=True)
+            n_activity_shm_name = None
+
+    # Open Nq-activity (deciles) shared memory
+    nq_activity_shm     = None
+    nq_activity_cursor  = None
+    nq_activity_deciles = None
+    if nq_activity_shm_name:
+        try:
+            nq_activity_shm = SharedMemory(name=nq_activity_shm_name)
+            nq_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                             buffer=nq_activity_shm.buf)
+            nq_activity_deciles = []
+            off = 4
+            for _ in range(QA_N_DECILES):
+                nq_activity_deciles.append(
+                    np.ndarray((PROBE_W,), dtype=np.float32,
+                               buffer=nq_activity_shm.buf, offset=off))
+                off += PROBE_W * 4
+            print(f"EvoCA SDL: nq_activity shm opened "
+                  f"({QA_N_DECILES}x{PROBE_W})", flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: nq_activity SharedMemory open failed: {e}",
+                  flush=True)
+            nq_activity_shm_name = None
 
     # Open ts shared memory
     ts_shm     = None
@@ -829,6 +876,75 @@ def main():
                 sdl2.SDL_DestroyWindow(qaw)
         else:
             print("EvoCA SDL: q_activity window creation failed", flush=True)
+
+    # Create N-activity window (Channon shadow)
+    n_window_p   = None
+    n_surface_p  = None
+    n_dst        = None
+    if n_activity_shm is not None:
+        nw_x = main_x - PROBE_W
+        nw = sdl2.SDL_CreateWindow(
+            b"n_activity (shadow)",
+            nw_x, next_probe_y,
+            PROBE_W, ACT_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if nw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(nw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + ACT_H + real_title_h
+            nps = sdl2.SDL_GetWindowSurface(nw)
+            if nps:
+                sdl2.SDL_SetSurfaceBlendMode(nps, sdl2.SDL_BLENDMODE_NONE)
+                nsurf  = nps.contents
+                np_i32 = nsurf.pitch // 4
+                np_ptr = ctypes.cast(nsurf.pixels,
+                                      ctypes.POINTER(ctypes.c_int32))
+                nd_flat = np.ctypeslib.as_array(np_ptr,
+                                                 shape=(ACT_H * np_i32,))
+                n_dst        = nd_flat.reshape(ACT_H, np_i32)
+                n_window_p   = nw
+                n_surface_p  = nps
+                print("EvoCA SDL: n_activity window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(nw)
+        else:
+            print("EvoCA SDL: n_activity window creation failed", flush=True)
+
+    # Create Nq-activity window
+    nq_window_p   = None
+    nq_surface_p  = None
+    nq_dst        = None
+    nq_global_max = 0.0
+    if nq_activity_shm is not None:
+        nqw_x = main_x - PROBE_W
+        nqw = sdl2.SDL_CreateWindow(
+            b"nq_activity (shadow)",
+            nqw_x, next_probe_y,
+            PROBE_W, PROBE_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if nqw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(nqw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + PROBE_H + real_title_h
+            nqps = sdl2.SDL_GetWindowSurface(nqw)
+            if nqps:
+                sdl2.SDL_SetSurfaceBlendMode(nqps, sdl2.SDL_BLENDMODE_NONE)
+                nqsurf  = nqps.contents
+                nqp_i32 = nqsurf.pitch // 4
+                nqp_ptr = ctypes.cast(nqsurf.pixels,
+                                       ctypes.POINTER(ctypes.c_int32))
+                nqd_flat = np.ctypeslib.as_array(nqp_ptr,
+                                                  shape=(PROBE_H * nqp_i32,))
+                nq_dst       = nqd_flat.reshape(PROBE_H, nqp_i32)
+                nq_window_p  = nqw
+                nq_surface_p = nqps
+                print("EvoCA SDL: nq_activity window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(nqw)
+        else:
+            print("EvoCA SDL: nq_activity window creation failed", flush=True)
 
     # Open entropy shared memory + create window
     entropy_shm      = None
@@ -1228,6 +1344,24 @@ def main():
             sdl2.SDL_UnlockSurface(qa_surface_p)
             sdl2.SDL_UpdateWindowSurface(qa_window_p)
 
+        # Render N-activity window (Channon shadow)
+        if n_window_p is not None and n_activity_pixels is not None:
+            sdl2.SDL_LockSurface(n_surface_p)
+            cur_n = int(n_activity_cursor[0])
+            n_dst[:ACT_H, :PROBE_W] = np.roll(n_activity_pixels, -cur_n,
+                                                axis=1)
+            sdl2.SDL_UnlockSurface(n_surface_p)
+            sdl2.SDL_UpdateWindowSurface(n_window_p)
+
+        # Render Nq-activity window (shadow deciles)
+        if nq_window_p is not None and nq_activity_deciles is not None:
+            sdl2.SDL_LockSurface(nq_surface_p)
+            cur_nq = int(nq_activity_cursor[0])
+            nq_global_max = _render_q_activity(nq_dst, nq_activity_deciles,
+                                                cur_nq, nq_global_max)
+            sdl2.SDL_UnlockSurface(nq_surface_p)
+            sdl2.SDL_UpdateWindowSurface(nq_window_p)
+
         # Render ts window
         if ts_window_p is not None and ts_bufs is not None:
             sdl2.SDL_LockSurface(ts_surface_p)
@@ -1258,6 +1392,10 @@ def main():
         sdl2.SDL_DestroyWindow(pa_window_p)
     if ent_window_p is not None:
         sdl2.SDL_DestroyWindow(ent_window_p)
+    if nq_window_p is not None:
+        sdl2.SDL_DestroyWindow(nq_window_p)
+    if n_window_p is not None:
+        sdl2.SDL_DestroyWindow(n_window_p)
     if qa_window_p is not None:
         sdl2.SDL_DestroyWindow(qa_window_p)
     if ep_window_p is not None:
@@ -1290,6 +1428,10 @@ def main():
         eg_pop_shm.close()
     if q_activity_shm is not None:
         q_activity_shm.close()
+    if n_activity_shm is not None:
+        n_activity_shm.close()
+    if nq_activity_shm is not None:
+        nq_activity_shm.close()
     if ts_shm is not None:
         ts_shm.close()
 

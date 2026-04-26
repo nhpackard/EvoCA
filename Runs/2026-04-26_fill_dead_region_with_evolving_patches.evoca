@@ -1,0 +1,47 @@
+{
+  "version": 3,
+  "created": "2026-04-26T02:13:12",
+  "descriptor": "fill dead region with evolving patches",
+  "N": 512,
+  "metaparams_init": {
+    "food_inc": 0.02,
+    "m_scale": 0.5,
+    "gdiff": 20,
+    "mu_lut": 0.001,
+    "mu_egenome": 0.001,
+    "tax": 0.025,
+    "restricted_mu": 1
+  },
+  "metaparams_final": {
+    "food_inc": 0.02,
+    "m_scale": 0.5,
+    "gdiff": 20,
+    "mu_lut": 0.001,
+    "mu_egenome": 0.001,
+    "tax": 0.025,
+    "restricted_mu": 1
+  },
+  "initialization": {
+    "lut": "gol",
+    "egenome": "uniform",
+    "egenome_value": 3,
+    "v_density": 0.4980316162109375,
+    "f_init": 0.5,
+    "F": "uniform",
+    "F_init": 1.0,
+    "alive": "halfplane",
+    "alive_axis": 0
+  },
+  "display": {
+    "colormode": 0,
+    "probes": {
+      "activity": true,
+      "q_activity": true,
+      "n_activity": true,
+      "nq_activity": true,
+      "env_food": true,
+      "priv_food": true,
+      "ts": true
+    }
+  }
+}
