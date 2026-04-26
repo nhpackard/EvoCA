@@ -1308,45 +1308,80 @@ void evoca_n_activity_update(void)
     }
 }
 
+/* Combined activity + neutral-shadow strip-chart column.
+ *
+ * Renders G-activity (real run) just like evoca_activity_render_col, then
+ * overlays N-activity (Channon shadow) buckets as translucent white traces
+ * via per-pixel alpha-blending (alpha = N_OVERLAY_ALPHA_PCT / 100).
+ *
+ * Both layers use the same y-axis transform with the SAME ymax (act_ymax),
+ * so the visual y-position of a wave is directly comparable between G and
+ * N — small N waves sit lower (act<<ymax) while large G waves rise toward
+ * the top (act>>ymax). nact_ymax is no longer used for rendering. */
+#define N_OVERLAY_ALPHA_PCT 10
+
 void evoca_n_activity_render_col(int32_t *col, int height)
 {
     for (int y = 0; y < height; y++)
         col[y] = (int32_t)0xFF111111u;
 
-    if (!nact_keys || nact_cnt == 0) return;
+    /* Single y-axis for both layers, set by act_ymax. */
+    uint64_t ymax = (uint64_t)act_ymax;
 
-    uint64_t ymax = (uint64_t)nact_ymax;
-    uint32_t ypop[height];
-    memset(ypop, 0, (size_t)height * sizeof(uint32_t));
+    /* ── Layer 1: G-activity (real run) ── */
+    if (act_keys && act_cnt > 0) {
+        uint32_t ypop[height];
+        memset(ypop, 0, (size_t)height * sizeof(uint32_t));
 
-    /* Pass 1: extinct buckets — dimmed color. */
-    for (int i = 0; i < nact_cap; i++) {
-        if (nact_keys[i] == ACT_EMPTY) continue;
-        if (nact_vals[i].pop_count > 0) continue;
-        uint64_t act = nact_vals[i].activity;
-        int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
-        if (y < 0) y = 0;
-        if (y >= height) y = height - 1;
-        uint32_t c = (uint32_t)nact_vals[i].color;
-        uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
-        uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
-        uint8_t b = (uint8_t)(( c        & 0xFF) * 15 / 100);
-        col[y] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
-                           | ((uint32_t)g << 8) | b);
+        /* Pass 1: extinct G — dimmed color. */
+        for (int i = 0; i < act_cap; i++) {
+            if (act_keys[i] == ACT_EMPTY) continue;
+            if (act_vals[i].pop_count > 0) continue;
+            uint64_t act = act_vals[i].activity;
+            int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
+            if (y < 0) y = 0;
+            if (y >= height) y = height - 1;
+            uint32_t c = (uint32_t)act_vals[i].color;
+            uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
+            uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
+            uint8_t b = (uint8_t)(( c        & 0xFF) * 15 / 100);
+            col[y] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                               | ((uint32_t)g << 8) | b);
+        }
+
+        /* Pass 2: alive G — full color, higher pop wins. */
+        for (int i = 0; i < act_cap; i++) {
+            if (act_keys[i] == ACT_EMPTY) continue;
+            uint32_t pop = act_vals[i].pop_count;
+            if (pop == 0) continue;
+            uint64_t act = act_vals[i].activity;
+            int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
+            if (y < 0) y = 0;
+            if (y >= height) y = height - 1;
+            if (pop >= ypop[y]) {
+                col[y] = act_vals[i].color;
+                ypop[y] = pop;
+            }
+        }
     }
 
-    /* Pass 2: alive buckets — full color, higher pop wins. */
-    for (int i = 0; i < nact_cap; i++) {
-        if (nact_keys[i] == ACT_EMPTY) continue;
-        uint32_t pop = nact_vals[i].pop_count;
-        if (pop == 0) continue;
-        uint64_t act = nact_vals[i].activity;
-        int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
-        if (y < 0) y = 0;
-        if (y >= height) y = height - 1;
-        if (pop >= ypop[y]) {
-            col[y] = nact_vals[i].color;
-            ypop[y] = pop;
+    /* ── Layer 2: N-activity overlay (translucent white) ── */
+    if (nact_keys && nact_cnt > 0) {
+        const uint32_t a   = N_OVERLAY_ALPHA_PCT;
+        const uint32_t inv = 100 - a;
+        for (int i = 0; i < nact_cap; i++) {
+            if (nact_keys[i] == ACT_EMPTY) continue;
+            if (nact_vals[i].pop_count == 0) continue;   /* alive only */
+            uint64_t act = nact_vals[i].activity;
+            int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
+            if (y < 0) y = 0;
+            if (y >= height) y = height - 1;
+            uint32_t cur = (uint32_t)col[y];
+            uint8_t r = (uint8_t)((((cur >> 16) & 0xFF) * inv + 255 * a) / 100);
+            uint8_t g = (uint8_t)((((cur >>  8) & 0xFF) * inv + 255 * a) / 100);
+            uint8_t b = (uint8_t)((( cur        & 0xFF) * inv + 255 * a) / 100);
+            col[y] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                               | ((uint32_t)g << 8) | b);
         }
     }
 }
