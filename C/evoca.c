@@ -1310,23 +1310,64 @@ void evoca_n_activity_update(void)
 
 /* Combined activity + neutral-shadow strip-chart column.
  *
- * Renders G-activity (real run) just like evoca_activity_render_col, then
- * overlays N-activity (Channon shadow) buckets as translucent white traces
- * via per-pixel alpha-blending (alpha = N_OVERLAY_ALPHA_PCT / 100).
+ * Renders G-activity (real run) plus an N-activity (Channon shadow) overlay
+ * on a shared y-axis. The y-axis is auto-scaled per render call so that the
+ * shadow's top-decile activity (N_p90) lands at y = h/10 — i.e. the upper
+ * 10% of the window is "above the shadow noise floor" and any G wave there
+ * is empirically significant.
  *
- * Both layers use the same y-axis transform with the SAME ymax (act_ymax),
- * so the visual y-position of a wave is directly comparable between G and
- * N — small N waves sit lower (act<<ymax) while large G waves rise toward
- * the top (act>>ymax). nact_ymax is no longer used for rendering. */
+ *   y = (h-1) * ymax / (act + ymax)   →   y = h/10  iff  act = 9 * ymax
+ *   so we set ymax = N_p90 / 9 directly each tick. No smoothing: N_p90 is
+ *   monotonic (each live N bucket gains 1 activity/tick) and changes by
+ *   roughly 1/9 per tick at steady state, which is well below visual jitter
+ *   threshold. (An EMA was tried and lagged badly behind the early-run
+ *   exponential rise.)
+ *
+ * N is drawn as a presence-per-row tint (one alpha-blend per y, regardless
+ * of how many N buckets land on that row), not a per-bucket compounding
+ * blend. Without this, dense low-activity N clusters compound to near-white
+ * and overwhelm the underlying G colors.
+ *
+ * A pure-white horizontal line is drawn at the threshold y, pinned at h/10. */
 #define N_OVERLAY_ALPHA_PCT 10
+#define NACT_DYN_FLOOR      100.0
 
 void evoca_n_activity_render_col(int32_t *col, int height)
 {
+    /* Compute current N top-decile activity (raw). */
+    double n_p90 = 0.0;
+    int D = 0;
+    if (nact_keys && nact_cnt > 0) {
+        for (int i = 0; i < nact_cap; i++)
+            if (nact_keys[i] != ACT_EMPTY && nact_vals[i].pop_count > 0)
+                D++;
+        if (D > 0) {
+            float *buf = (float *)malloc((size_t)D * sizeof(float));
+            if (buf) {
+                int n = 0;
+                for (int i = 0; i < nact_cap; i++) {
+                    if (nact_keys[i] == ACT_EMPTY) continue;
+                    if (nact_vals[i].pop_count == 0) continue;
+                    buf[n++] = (float)nact_vals[i].activity;
+                }
+                qsort(buf, (size_t)n, sizeof(float), _float_cmp);
+                int idx = (int)(0.9f * (float)n);
+                if (idx >= n) idx = n - 1;
+                n_p90 = (double)buf[idx];
+                free(buf);
+            }
+        }
+    }
+
+    /* ymax keeps N_p90 at y = h/10 directly (no EMA — see header comment). */
+    double ymax_d = (n_p90 > 0.0) ? (n_p90 / 9.0) : (double)act_ymax;
+    if (ymax_d < NACT_DYN_FLOOR) ymax_d = NACT_DYN_FLOOR;
+    uint64_t ymax = (uint64_t)ymax_d;
+    if (ymax < 1) ymax = 1;
+
+    /* Background fill. */
     for (int y = 0; y < height; y++)
         col[y] = (int32_t)0xFF111111u;
-
-    /* Single y-axis for both layers, set by act_ymax. */
-    uint64_t ymax = (uint64_t)act_ymax;
 
     /* ── Layer 1: G-activity (real run) ── */
     if (act_keys && act_cnt > 0) {
@@ -1365,24 +1406,40 @@ void evoca_n_activity_render_col(int32_t *col, int height)
         }
     }
 
-    /* ── Layer 2: N-activity overlay (translucent white) ── */
+    /* ── Layer 2: N-activity overlay (presence-per-row, alpha-blend once) ── */
     if (nact_keys && nact_cnt > 0) {
-        const uint32_t a   = N_OVERLAY_ALPHA_PCT;
-        const uint32_t inv = 100 - a;
+        uint8_t n_present[height];
+        memset(n_present, 0, (size_t)height);
         for (int i = 0; i < nact_cap; i++) {
             if (nact_keys[i] == ACT_EMPTY) continue;
-            if (nact_vals[i].pop_count == 0) continue;   /* alive only */
+            if (nact_vals[i].pop_count == 0) continue;
             uint64_t act = nact_vals[i].activity;
             int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
             if (y < 0) y = 0;
             if (y >= height) y = height - 1;
+            n_present[y] = 1;
+        }
+        const uint32_t a_pct = N_OVERLAY_ALPHA_PCT;
+        const uint32_t inv   = 100 - a_pct;
+        for (int y = 0; y < height; y++) {
+            if (!n_present[y]) continue;
             uint32_t cur = (uint32_t)col[y];
-            uint8_t r = (uint8_t)((((cur >> 16) & 0xFF) * inv + 255 * a) / 100);
-            uint8_t g = (uint8_t)((((cur >>  8) & 0xFF) * inv + 255 * a) / 100);
-            uint8_t b = (uint8_t)((( cur        & 0xFF) * inv + 255 * a) / 100);
+            uint8_t r = (uint8_t)((((cur >> 16) & 0xFF) * inv + 255 * a_pct) / 100);
+            uint8_t g = (uint8_t)((((cur >>  8) & 0xFF) * inv + 255 * a_pct) / 100);
+            uint8_t b = (uint8_t)((( cur        & 0xFF) * inv + 255 * a_pct) / 100);
             col[y] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
                                | ((uint32_t)g << 8) | b);
         }
+    }
+
+    /* ── Threshold line at N_p90 y-position (pure white). ── */
+    if (n_p90 > 0.0) {
+        int y_thresh = (height - 1)
+                     - (int)((uint64_t)(height - 1) * (uint64_t)n_p90
+                             / ((uint64_t)n_p90 + ymax));
+        if (y_thresh < 0) y_thresh = 0;
+        if (y_thresh >= height) y_thresh = height - 1;
+        col[y_thresh] = (int32_t)0xFFFFFFFFu;
     }
 }
 
