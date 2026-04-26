@@ -1039,6 +1039,28 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                     q_activity_deciles[di][qa_cur] = q_activity_col[di]
                 q_activity_cursor[0] = (qa_cur + 1) % PROBE_W
 
+            # Record N-activity (Channon shadow) data
+            if n_activity_enabled:
+                sim._lib.evoca_n_activity_update()
+                n_cur = int(n_activity_cursor[0])
+                n_col_ptr = n_activity_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_int32))
+                sim._lib.evoca_n_activity_render_col(n_col_ptr, ACT_H)
+                n_activity_pixels[:, n_cur] = n_activity_col
+                n_activity_cursor[0] = (n_cur + 1) % PROBE_W
+
+            # Record Nq-activity (shadow deciles) data
+            if nq_activity_enabled:
+                if not n_activity_enabled:
+                    sim._lib.evoca_n_activity_update()
+                nq_cur = int(nq_activity_cursor[0])
+                nq_col_ptr = nq_activity_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_float))
+                sim._lib.evoca_nq_activity_deciles(nq_col_ptr)
+                for di in range(QA_N_DECILES):
+                    nq_activity_deciles[di][nq_cur] = nq_activity_col[di]
+                nq_activity_cursor[0] = (nq_cur + 1) % PROBE_W
+
             _t3 = time.perf_counter() if diag else 0
 
             # Record egenome activity / population
