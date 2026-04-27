@@ -358,6 +358,196 @@ def evoca_from_scan(scan_dir, config_idx, descriptor=None,
     return filepath
 
 
+# ── Nearest-neighbour helpers (relative to a target row) ──────────────
+
+# Default metric sets used by nearest_evo / nearest_spatial. Can be
+# overridden by passing a custom `metrics=[...]` to either function.
+
+EVO_METRICS = [
+    'n_distinct_genomes_mean',
+    'n_distinct_genomes_temporal_std',
+    'unique_top_genomes',
+    'excess_activity_slope',
+]
+
+SPATIAL_METRICS = [
+    'correlation_length_mean',
+    'F_std_mean',
+    'largest_patch_mean',
+    'largest_patch_temporal_std',
+    'n_patches_mean',
+]
+
+
+def _find_target(cands, target_config_idx):
+    for r in cands:
+        try:
+            if int(r['config_idx']) == int(target_config_idx):
+                return r
+        except (ValueError, TypeError):
+            continue
+    raise ValueError(
+        f"target config_idx={target_config_idx} not found in scan results")
+
+
+def _emit_neighbors(scan_dir, ranked, descriptor_prefix,
+                    runs_dir=None, probes=None, colormode=0,
+                    write_recipes=True, verbose=True):
+    """Common emission. `ranked` is [(config_idx, distance), ...]
+    already sorted ascending by distance and with self excluded.
+
+    Returns [(config_idx, recipe_path), ...] — same shape as
+    evoca_from_scan_top, so results[i][1] is always the .evoca path
+    that import_run() can load. If verbose, prints distances to stdout
+    so the caller can see how close each neighbour is."""
+    out = []
+    for rank, (idx, dist) in enumerate(ranked):
+        path = None
+        if write_recipes:
+            desc = f"{descriptor_prefix}_{rank+1}_cfg{idx}_d{dist:.2f}"
+            path = evoca_from_scan(scan_dir, idx, descriptor=desc,
+                                   runs_dir=runs_dir, probes=probes,
+                                   colormode=colormode)
+        if verbose:
+            print(f"  rank {rank+1}: cfg{idx:<4d}  d={dist:6.3f}")
+        out.append((idx, path))
+    return out
+
+
+def nearest_params(scan_dir, target_config_idx, n=5, runs_dir=None,
+                   probes=None, colormode=0, write_recipes=True,
+                   verbose=True):
+    """Find the `n` configs nearest to `target_config_idx` by **Euclidean
+    distance in normalised parameter space**.
+
+    Each parameter axis (food_inc, gdiff, ...) is min-max scaled to [0,1]
+    over the scan's candidate set, so axes with very different absolute
+    ranges (e.g. gdiff∈[0.005,0.05] vs food_inc∈[0.015,0.04]) contribute
+    equally. The boolean restricted_mu is mapped to {0, 1}.
+
+    Returns [(config_idx, recipe_path), ...] sorted by distance ascending —
+    same shape as evoca_from_scan_top, so results[i][1] feeds straight
+    into import_run(). The target row is excluded. Prints distances to
+    stdout when verbose=True."""
+    _, rows = _load_scan(scan_dir)
+    target = _find_target(rows, target_config_idx)
+    target_idx = int(target_config_idx)
+
+    def _to_num(raw):
+        if isinstance(raw, bool): return 1.0 if raw else 0.0
+        try: return float(raw)
+        except (ValueError, TypeError): return 0.0
+
+    axes_minmax = {}
+    for k in _PARAM_KEYS:
+        vals = [_to_num(_row_param_value(r, k)) for r in rows]
+        axes_minmax[k] = (min(vals), max(vals))
+
+    def vec(row):
+        v = []
+        for k in _PARAM_KEYS:
+            x = _to_num(_row_param_value(row, k))
+            lo, hi = axes_minmax[k]
+            v.append((x - lo) / (hi - lo) if hi > lo else 0.0)
+        return np.array(v)
+
+    target_v = vec(target)
+    distances = []
+    for r in rows:
+        idx = int(r['config_idx'])
+        if idx == target_idx:
+            continue
+        d = float(np.linalg.norm(vec(r) - target_v))
+        distances.append((idx, d))
+    distances.sort(key=lambda x: x[1])
+    return _emit_neighbors(scan_dir, distances[:n], 'near_param',
+                           runs_dir=runs_dir, probes=probes,
+                           colormode=colormode,
+                           write_recipes=write_recipes,
+                           verbose=verbose)
+
+
+def _nearest_by_metric_ranks(scan_dir, target_config_idx, n, metrics,
+                             descriptor_prefix,
+                             runs_dir=None, probes=None, colormode=0,
+                             write_recipes=True, verbose=True):
+    _, rows = _load_scan(scan_dir)
+    target = _find_target(rows, target_config_idx)
+    target_idx = int(target_config_idx)
+
+    def _num(s, d=0.0):
+        try: return float(s)
+        except (ValueError, TypeError): return d
+
+    # Per-metric rank table: config_idx -> rank (0 = lowest value).
+    rank_tables = {}
+    for m in metrics:
+        vals = np.array([_num(r.get(m, 0)) for r in rows])
+        order = np.argsort(vals)
+        ranks = np.empty_like(order)
+        ranks[order] = np.arange(len(order))
+        rank_tables[m] = {int(r['config_idx']): int(rk)
+                          for r, rk in zip(rows, ranks)}
+
+    target_ranks = np.array([rank_tables[m][target_idx] for m in metrics])
+    distances = []
+    for r in rows:
+        idx = int(r['config_idx'])
+        if idx == target_idx:
+            continue
+        row_ranks = np.array([rank_tables[m][idx] for m in metrics])
+        d = float(np.abs(row_ranks - target_ranks).mean())
+        distances.append((idx, d))
+    distances.sort(key=lambda x: x[1])
+    return _emit_neighbors(scan_dir, distances[:n], descriptor_prefix,
+                           runs_dir=runs_dir, probes=probes,
+                           colormode=colormode,
+                           write_recipes=write_recipes,
+                           verbose=verbose)
+
+
+def nearest_evo(scan_dir, target_config_idx, n=5, metrics=None,
+                runs_dir=None, probes=None, colormode=0,
+                write_recipes=True, verbose=True):
+    """Find the `n` configs nearest to `target_config_idx` in
+    **evolutionary-metric rank space**.
+
+    For each metric in `metrics` (default: EVO_METRICS — diversity_mean,
+    diversity_temporal_std, unique_top_genomes, excess_activity_slope),
+    every candidate gets a rank (0 = lowest value). Distance from the
+    target = mean |rank_row − rank_target| across the metrics. Two
+    configs at the same rank on every metric have distance 0.
+
+    Returns [(config_idx, recipe_path), ...] sorted ascending — same
+    shape as evoca_from_scan_top. Prints distances when verbose=True."""
+    return _nearest_by_metric_ranks(
+        scan_dir, target_config_idx, n,
+        metrics or EVO_METRICS, 'near_evo',
+        runs_dir=runs_dir, probes=probes, colormode=colormode,
+        write_recipes=write_recipes, verbose=verbose)
+
+
+def nearest_spatial(scan_dir, target_config_idx, n=5, metrics=None,
+                    runs_dir=None, probes=None, colormode=0,
+                    write_recipes=True, verbose=True):
+    """Find the `n` configs nearest to `target_config_idx` in
+    **spatial-metric rank space**.
+
+    For each metric in `metrics` (default: SPATIAL_METRICS —
+    correlation_length_mean, F_std_mean, largest_patch_mean,
+    largest_patch_temporal_std, n_patches_mean), every candidate gets
+    a rank (0 = lowest value). Distance from the target = mean
+    |rank_row − rank_target| across the metrics.
+
+    Returns [(config_idx, recipe_path), ...] sorted ascending — same
+    shape as evoca_from_scan_top. Prints distances when verbose=True."""
+    return _nearest_by_metric_ranks(
+        scan_dir, target_config_idx, n,
+        metrics or SPATIAL_METRICS, 'near_spatial',
+        runs_dir=runs_dir, probes=probes, colormode=colormode,
+        write_recipes=write_recipes, verbose=verbose)
+
+
 def evoca_from_scan_top(scan_dir, top_k=5, score_keys=None, descriptor_prefix=None,
                         runs_dir=None, probes=None, colormode=0):
     """Convenience: rank rows by a composite of normalised score_keys

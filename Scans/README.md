@@ -100,6 +100,41 @@ sim, kw = import_run(top[0][1])
 run_with_controls(sim, **kw)
 ```
 
+### Finding configs near a target row
+
+If you've identified a config you like (say `config_idx=34`) and want to
+explore its neighbourhood, three helpers return the n configs closest to
+the target by different criteria — each with the same return shape as
+`evoca_from_scan_top`:
+
+```python
+from evoca_explore import nearest_params, nearest_evo, nearest_spatial
+
+# Closest in parameter space (Euclidean, axes min-max scaled to [0,1])
+r = nearest_params('Scans/2026-04-27_initial', 34, n=5,
+                   probes={...}, colormode=4)
+
+# Closest by evolutionary metrics (mean |rank-diff| across
+# n_distinct_genomes_mean, n_distinct_genomes_temporal_std,
+# unique_top_genomes, excess_activity_slope)
+r = nearest_evo('Scans/2026-04-27_initial', 34, n=5, probes={...})
+
+# Closest by spatial metrics (mean |rank-diff| across
+# correlation_length_mean, F_std_mean, largest_patch_mean,
+# largest_patch_temporal_std, n_patches_mean)
+r = nearest_spatial('Scans/2026-04-27_initial', 34, n=5, probes={...})
+
+# Each prints distances during the call. The return value is
+# [(config_idx, path), ...] sorted ascending by distance — same shape
+# as evoca_from_scan_top, so:
+sim, kw = import_run(r[0][1], N=512)
+run_with_controls(sim, **kw)
+```
+
+The default metric sets are exposed as `EVO_METRICS` and
+`SPATIAL_METRICS`; pass `metrics=[...]` to override (e.g. only one
+axis).
+
 ### Promoting a scan winner to a larger grid
 
 Scans are run at a smaller grid (e.g. N=256) for speed. To watch a
