@@ -110,25 +110,32 @@ the target by different criteria — each with the same return shape as
 ```python
 from evoca_explore import nearest_params, nearest_evo, nearest_spatial
 
+# scan_dir is optional — defaults to the most-recently-modified
+# subdirectory under EvoCA/Scans/, so when you have a single live
+# scan you don't need to pass it.
+
 # Closest in parameter space (Euclidean, axes min-max scaled to [0,1])
-r = nearest_params('Scans/2026-04-27_initial', 34, n=5,
+r = nearest_params(target_config_idx=34, n=5,
                    probes={...}, colormode=4)
 
 # Closest by evolutionary metrics (mean |rank-diff| across
 # n_distinct_genomes_mean, n_distinct_genomes_temporal_std,
 # unique_top_genomes, excess_activity_slope)
-r = nearest_evo('Scans/2026-04-27_initial', 34, n=5, probes={...})
+r = nearest_evo(34, n=5, probes={...})
 
 # Closest by spatial metrics (mean |rank-diff| across
 # correlation_length_mean, F_std_mean, largest_patch_mean,
 # largest_patch_temporal_std, n_patches_mean)
-r = nearest_spatial('Scans/2026-04-27_initial', 34, n=5, probes={...})
+r = nearest_spatial(34, n=5, probes={...})
 
 # Each prints distances during the call. The return value is
 # [(config_idx, path), ...] sorted ascending by distance — same shape
 # as evoca_from_scan_top, so:
 sim, kw = import_run(r[0][1], N=512)
 run_with_controls(sim, **kw)
+
+# To target a specific scan instead of the most-recent:
+r = nearest_params(34, n=5, scan_dir='Scans/2026-04-27_initial', probes={...})
 ```
 
 The default metric sets are exposed as `EVO_METRICS` and

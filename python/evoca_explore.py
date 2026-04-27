@@ -272,7 +272,26 @@ def save_scan_config(scan_dir, *, N, n_steps, sample_every, seed, shadow,
     return out_path
 
 
+def _default_scan_dir():
+    """Most-recently-modified subdirectory of EvoCA/Scans/. Used as the
+    default `scan_dir` for the higher-level helpers when caller doesn't
+    pass one explicitly."""
+    base = os.path.normpath(os.path.join(_HERE, '..', 'Scans'))
+    if not os.path.isdir(base):
+        raise FileNotFoundError(f"no Scans/ directory at {base}")
+    subs = [os.path.join(base, d) for d in os.listdir(base)
+            if os.path.isdir(os.path.join(base, d))]
+    if not subs:
+        raise FileNotFoundError(f"no scan subdirectories in {base}")
+    return max(subs, key=os.path.getmtime)
+
+
+def _resolve_scan_dir(scan_dir):
+    return _default_scan_dir() if scan_dir is None else scan_dir
+
+
 def _load_scan(scan_dir):
+    scan_dir = _resolve_scan_dir(scan_dir)
     cfg_path = os.path.join(scan_dir, 'scan_config.json')
     csv_path = os.path.join(scan_dir, 'results.csv')
     if not os.path.exists(cfg_path):
@@ -298,14 +317,19 @@ def _row_param_value(row, key):
     except (ValueError, TypeError): return raw
 
 
-def evoca_from_scan(scan_dir, config_idx, descriptor=None,
+def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
                     runs_dir=None, probes=None, colormode=0):
     """Read scan_config.json + the row with given config_idx from
     results.csv; write a .evoca recipe to Runs/ (or runs_dir) that
     can be loaded with import_run(). Returns the recipe filepath.
 
     config_idx matches the 'config_idx' column in results.csv.
+    If scan_dir is None, defaults to the most-recently-modified
+    subdir under EvoCA/Scans/.
     """
+    if config_idx is None:
+        raise TypeError("evoca_from_scan() requires config_idx")
+    scan_dir = _resolve_scan_dir(scan_dir)
     cfg, rows = _load_scan(scan_dir)
 
     # Find row by config_idx
@@ -446,7 +470,7 @@ def _emit_neighbors(scan_dir, ranked, descriptor_prefix,
     return out
 
 
-def nearest_params(scan_dir, target_config_idx, n=5,
+def nearest_params(target_config_idx, n=5, scan_dir=None,
                    runs_dir=None,
                    probes=None, colormode=0, write_recipes=True,
                    verbose=True):
@@ -461,7 +485,9 @@ def nearest_params(scan_dir, target_config_idx, n=5,
     Returns [(config_idx, recipe_path), ...] sorted by distance ascending —
     same shape as evoca_from_scan_top, so results[i][1] feeds straight
     into import_run(). The target row is excluded. Prints distances to
-    stdout when verbose=True."""
+    stdout when verbose=True. If scan_dir is None, defaults to the
+    most-recently-modified subdir under EvoCA/Scans/."""
+    scan_dir = _resolve_scan_dir(scan_dir)
     _, rows = _load_scan(scan_dir)
     target = _find_target(rows, target_config_idx)
     target_idx = int(target_config_idx)
@@ -504,6 +530,7 @@ def _nearest_by_metric_ranks(scan_dir, target_config_idx, n, metrics,
                              descriptor_prefix,
                              runs_dir=None, probes=None, colormode=0,
                              write_recipes=True, verbose=True):
+    scan_dir = _resolve_scan_dir(scan_dir)
     _, rows = _load_scan(scan_dir)
     target = _find_target(rows, target_config_idx)
     target_idx = int(target_config_idx)
@@ -539,7 +566,7 @@ def _nearest_by_metric_ranks(scan_dir, target_config_idx, n, metrics,
                            verbose=verbose)
 
 
-def nearest_evo(scan_dir, target_config_idx, n=5, metrics=None,
+def nearest_evo(target_config_idx, n=5, scan_dir=None, metrics=None,
                 runs_dir=None, probes=None, colormode=0,
                 write_recipes=True, verbose=True):
     """Find the `n` configs nearest to `target_config_idx` in
@@ -560,7 +587,7 @@ def nearest_evo(scan_dir, target_config_idx, n=5, metrics=None,
         write_recipes=write_recipes, verbose=verbose)
 
 
-def nearest_spatial(scan_dir, target_config_idx, n=5, metrics=None,
+def nearest_spatial(target_config_idx, n=5, scan_dir=None, metrics=None,
                     runs_dir=None, probes=None, colormode=0,
                     write_recipes=True, verbose=True):
     """Find the `n` configs nearest to `target_config_idx` in
@@ -581,15 +608,20 @@ def nearest_spatial(scan_dir, target_config_idx, n=5, metrics=None,
         write_recipes=write_recipes, verbose=verbose)
 
 
-def evoca_from_scan_top(scan_dir, top_k=5, score_keys=None, descriptor_prefix=None,
-                        runs_dir=None, probes=None, colormode=0):
+def evoca_from_scan_top(scan_dir=None, top_k=5, score_keys=None,
+                        descriptor_prefix=None, runs_dir=None,
+                        probes=None, colormode=0):
     """Convenience: rank rows by a composite of normalised score_keys
     (default: correlation_length_mean + largest_patch_temporal_std +
     n_distinct_genomes_temporal_std + unique_top_genomes), and emit a
     .evoca for each of the top-K. Filters out extinct and >95% saturated
     configurations first.
 
+    If scan_dir is None, defaults to the most-recently-modified subdir
+    under EvoCA/Scans/.
+
     Returns list of (config_idx, filepath) tuples in score order."""
+    scan_dir = _resolve_scan_dir(scan_dir)
     cfg, rows = _load_scan(scan_dir)
     if score_keys is None:
         score_keys = [
