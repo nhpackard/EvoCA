@@ -99,7 +99,13 @@ static int    gN          = 0;
 static float  gfood_inc   = 0.0f;
 static float  gm_scale    = 1.0f;
 /* food_repro removed — reproduction threshold hardcoded to 1.0 */
-static int    ggdiff      = 0;    /* diffusion passes per step */
+static float  ggdiff      = 0.0f; /* diffusion strength per step
+                                   * floor(gdiff) full 3x3 box-blur passes,
+                                   * then one partial pass with strength
+                                   * (gdiff - floor(gdiff)) where strength=1
+                                   * is a full blur and strength=0 is no-op.
+                                   * gdiff < 1 lets the user dial diffusion
+                                   * below the previous integer minimum. */
 static float  gmu_lut     = 0.0f; /* per-bit LUT mutation rate */
 static float  gmu_egenome  = 0.0f; /* per-bit egenome mutation rate */
 static float  gtax        = 0.0f; /* priv food decrement per step */
@@ -539,8 +545,8 @@ void evoca_free(void)
 
 void evoca_set_food_inc(float f)   { gfood_inc   = f; }
 void evoca_set_m_scale(float m)    { gm_scale    = m; }
-void evoca_set_gdiff(int d)        { ggdiff      = d; }
-int  evoca_get_gdiff(void)         { return ggdiff;   }
+void  evoca_set_gdiff(float d)     { ggdiff      = d; }
+float evoca_get_gdiff(void)        { return ggdiff;   }
 void  evoca_set_mu_lut(float m)    { gmu_lut     = m; }
 void  evoca_set_mu_egenome(float m) { gmu_egenome  = m; }
 float evoca_get_mu_lut(void)       { return gmu_lut;    }
@@ -665,6 +671,32 @@ static void diffuse_food_once(void)
     float *tmp = F_food; F_food = F_temp; F_temp = tmp;
 }
 
+/* Partial diffusion pass with strength s ∈ (0, 1):
+ *   F'(x) = (1 - s) * F(x) + s * mean_3x3(F(x))
+ * Equivalently F'(x) = F(x) - s * (F(x) - mean), which collapses to
+ * diffuse_food_once when s = 1 and to identity when s = 0. */
+static void diffuse_food_partial(float s)
+{
+    int N = gN;
+    float t = 1.0f - s;
+    float inv9 = s * (1.0f / 9.0f);
+    for (int row = 0; row < N; row++) {
+        for (int col = 0; col < N; col++) {
+            float sum = 0.0f;
+            for (int di = -1; di <= 1; di++) {
+                int r = ((row + di) % N + N) % N;
+                for (int dj = -1; dj <= 1; dj++) {
+                    int c = ((col + dj) % N + N) % N;
+                    sum += F_food[r * N + c];
+                }
+            }
+            F_temp[row * N + col] = t * F_food[row * N + col] + inv9 * sum;
+        }
+    }
+    /* swap buffers */
+    float *tmp = F_food; F_food = F_temp; F_temp = tmp;
+}
+
 /* ── Time step ──────────────────────────────────────────────────── */
 
 void evoca_step(void)
@@ -703,9 +735,15 @@ void evoca_step(void)
         if (F_food[i] > 1.0f) F_food[i] = 1.0f;
     }
 
-    /* Phase 2b: Food diffusion (gdiff passes of 3×3 box blur) */
-    for (int d = 0; d < ggdiff; d++)
-        diffuse_food_once();
+    /* Phase 2b: Food diffusion. floor(gdiff) full 3×3 box-blur passes,
+     * then one partial pass with strength = (gdiff - floor(gdiff)) so the
+     * diffusion knob is continuous below 1 as well as above. */
+    if (ggdiff > 0.0f) {
+        int n_full = (int)ggdiff;
+        float frac = ggdiff - (float)n_full;
+        for (int d = 0; d < n_full; d++) diffuse_food_once();
+        if (frac > 0.0f) diffuse_food_partial(frac);
+    }
 
     /* Phase 2c: Tax — decrement private food; death if depleted */
     if (gtax > 0.0f) {

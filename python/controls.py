@@ -587,12 +587,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     sl_m_scale = widgets.FloatSlider(
         value=sim.m_scale,    min=0.0, max=ms_max, step=ms_step,
         description="m_scale:",    readout_format=".3f", **sl_kw)
-    gd_max = _int_lims(sim.gdiff, 2)
-    sl_gdiff = widgets.IntSlider(
-        value=sim.gdiff, min=0, max=gd_max, step=1,
-        description="gdiff:",
-        style={"description_width": "90px"},
-        layout=widgets.Layout(width="440px"))
+    gd_max, gd_step = _flt_lims(max(sim.gdiff, 1.0), 0.01)
+    sl_gdiff = widgets.FloatSlider(
+        value=sim.gdiff, min=0.0, max=gd_max, step=gd_step,
+        description="gdiff:", readout_format=".2f", **sl_kw)
     mul_max, mul_step = _flt_lims(sim.mu_lut,     1e-6)
     sl_mu_lut = widgets.FloatSlider(
         value=sim.mu_lut, min=0.0, max=mul_max, step=mul_step,

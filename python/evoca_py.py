@@ -88,10 +88,10 @@ class EvoCA:
         L.evoca_set_food_inc.restype    = None
         L.evoca_set_m_scale.argtypes    = [ctypes.c_float]
         L.evoca_set_m_scale.restype     = None
-        L.evoca_set_gdiff.argtypes      = [ctypes.c_int]
+        L.evoca_set_gdiff.argtypes      = [ctypes.c_float]
         L.evoca_set_gdiff.restype       = None
         L.evoca_get_gdiff.argtypes      = []
-        L.evoca_get_gdiff.restype       = ctypes.c_int
+        L.evoca_get_gdiff.restype       = ctypes.c_float
         L.evoca_set_mu_lut.argtypes     = [ctypes.c_float]
         L.evoca_set_mu_lut.restype      = None
         L.evoca_set_mu_egenome.argtypes  = [ctypes.c_float]
@@ -284,7 +284,7 @@ class EvoCA:
 
     # ── Lifecycle ──────────────────────────────────────────────────────
 
-    def init(self, N, food_inc=0.0, m_scale=1.0, gdiff=0,
+    def init(self, N, food_inc=0.0, m_scale=1.0, gdiff=0.0,
              mu_lut=0.0, mu_egenome=0.0, tax=0.0, restricted_mu=0, n_ent=2):
         stop = getattr(self, '_stop_display', None)
         if stop is not None:
@@ -293,7 +293,7 @@ class EvoCA:
         self._N         = N
         self.food_inc   = float(food_inc)
         self.m_scale    = float(m_scale)
-        self.gdiff      = int(gdiff)
+        self.gdiff      = float(gdiff)
         self.mu_lut     = float(mu_lut)
         self.mu_egenome  = float(mu_egenome)
         self.tax        = float(tax)
@@ -343,7 +343,7 @@ class EvoCA:
         self._lib.evoca_set_m_scale(self.m_scale)
 
     def update_gdiff(self, d):
-        self.gdiff = int(d)
+        self.gdiff = float(d)
         self._lib.evoca_set_gdiff(self.gdiff)
 
     def update_mu_lut(self, m):

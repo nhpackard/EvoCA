@@ -43,7 +43,7 @@ void evoca_free(void);
 
 void evoca_set_food_inc(float f);
 void evoca_set_m_scale(float m);
-void evoca_set_gdiff(int d);
+void evoca_set_gdiff(float d);
 void evoca_set_mu_lut(float m);
 void evoca_set_mu_egenome(float m);
 void evoca_set_tax(float t);
@@ -183,7 +183,7 @@ uint8_t *evoca_get_births(void); /* [N*N] 0=none, 1=birth, 2=mutant birth */
 uint8_t *evoca_get_alive(void);  /* [N*N] 1=alive organism, 0=dead slot */
 int      evoca_get_N(void);
 int      evoca_get_cell_px(void);
-int      evoca_get_gdiff(void);
+float    evoca_get_gdiff(void);
 float    evoca_get_mu_lut(void);
 float    evoca_get_mu_egenome(void);
 float    evoca_get_tax(void);
