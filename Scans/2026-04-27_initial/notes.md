@@ -73,14 +73,29 @@ high tax + low food + moderate diffusion + aggressive eating + medium mutation. 
 this the population dies; above it the system saturates uniformly with no spatial
 structure.
 
+## Visual validation
+
+- **results[3] (cfg34, score 0.630)**: `gdiff=0.05, food_inc=0.015,
+  tax=0.035, mu_lut=0.03, mu_egenome=0.01, m_scale=0.6, restricted_mu=True`
+  — confirmed visually as showing "very nice large scale patch dynamics".
+  This is the gdiff=0.05 + high-tax + low-food + high-mu_lut variant: corr_L
+  ≈ 49 cells, alive_density ≈ 0.37, with strong genomic turnover (50 distinct
+  top genomes across 50 samples). Note that despite being only 4th by
+  composite score, it has *longer* correlation length than the top-1 and
+  top-2 (which are at corr_L≈21). The score balances four things, so a
+  config can lead on spatial scale while losing on patch-temporal-std —
+  that's the case here.
+
 ## Next steps
 
-- [ ] Validate the top config at N=512 visually with the SDL window. Should show
-      ~50-cell-scale patches with continual genomic turnover (no garden-plot lock-in).
-- [ ] (Optional) Refined scan: tighter grid around the death-edge —
-      `food_inc ∈ {0.012, 0.015, 0.018, 0.022}`,
-      `tax ∈ {0.030, 0.035, 0.040, 0.045}`,
-      `gdiff ∈ {0.02, 0.03, 0.05, 0.08}`,
-      everything else fixed at the top-config values. ~64 combos, < 1 min.
-- [ ] Multi-seed runs of the top config to confirm the dynamics are robust to
+- [ ] Validate top_1 / top_2 (the gdiff=0.05 branch) at N=512 — likely
+      different visual character than the gdiff=0.01 branch.
+- [ ] (Optional) Refined scan around the gdiff=0.01 branch:
+      `food_inc ∈ {0.010, 0.015, 0.020}`,
+      `tax ∈ {0.015, 0.020, 0.025}`,
+      `gdiff ∈ {0.005, 0.01, 0.015, 0.02}`,
+      `mu_lut ∈ {0.003, 0.01, 0.03}`,
+      with `m_scale=0.6, restricted_mu=False, mu_egenome=0.01` fixed. ~108
+      combos, ~2 min.
+- [ ] Multi-seed runs of both winners to confirm the dynamics are robust to
       v_curr initialisation.

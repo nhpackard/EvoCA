@@ -1,13 +1,13 @@
 {
   "version": 3,
   "created": "2026-04-27T11:13:37",
-  "descriptor": "top_1_cfg49_score0.75",
+  "descriptor": "top_9_cfg82_score0.55",
   "source_scan": "2026-04-27_initial",
-  "source_config_idx": 49,
+  "source_config_idx": 82,
   "N": 256,
   "metaparams_init": {
-    "food_inc": 0.025,
-    "m_scale": 0.6,
+    "food_inc": 0.015,
+    "m_scale": 0.4,
     "gdiff": 0.05,
     "mu_lut": 0.01,
     "mu_egenome": 0.001,
@@ -15,8 +15,8 @@
     "restricted_mu": true
   },
   "metaparams_final": {
-    "food_inc": 0.025,
-    "m_scale": 0.6,
+    "food_inc": 0.015,
+    "m_scale": 0.4,
     "gdiff": 0.05,
     "mu_lut": 0.01,
     "mu_egenome": 0.001,
