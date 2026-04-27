@@ -1202,8 +1202,27 @@ static void neut_mutate_inplace(uint8_t *child_lut)
     }
 }
 
+/* Find an existing nact bucket by key (no insert). Returns slot index
+ * (>=0) on hit or -1 on miss. */
+static int nact_find_slot(uint32_t key)
+{
+    if (!nact_keys || nact_cap <= 0 || key == ACT_EMPTY) return -1;
+    uint32_t slot = key % (uint32_t)nact_cap;
+    while (nact_keys[slot] != ACT_EMPTY) {
+        if (nact_keys[slot] == key) return (int)slot;
+        slot = (slot + 1) % (uint32_t)nact_cap;
+    }
+    return -1;
+}
+
 /* Apply 'deaths' uniform-random kills then 'births' uniform-random
- * reproductions to the shadow. Called at the end of evoca_step. */
+ * reproductions to the shadow. Called at the end of evoca_step.
+ *
+ * Maintains nact pop_counts incrementally: each death decrements the
+ * victim's bucket, each birth increments the child's bucket. This makes
+ * evoca_n_activity_update O(nact_cap) instead of O(neut_n) — for a 512×512
+ * grid with halfplane init that's ~50k bucket scans instead of ~131k
+ * hash-table lookups per tick. */
 static void neutral_apply_demography(int births, int deaths)
 {
     if (!neut_enabled) return;
@@ -1212,6 +1231,10 @@ static void neutral_apply_demography(int births, int deaths)
     for (int d = 0; d < deaths; d++) {
         int victim = (int)(rng_next() % (uint32_t)neut_n);
         int last   = neut_n - 1;
+        /* Decrement victim's bucket pop_count (incremental maintenance). */
+        int s = nact_find_slot(neut_hashes[victim]);
+        if (s >= 0 && nact_vals[s].pop_count > 0)
+            nact_vals[s].pop_count--;
         if (victim != last) {
             memcpy(neut_luts + (size_t)victim * LUT_BYTES,
                    neut_luts + (size_t)last   * LUT_BYTES, LUT_BYTES);
@@ -1238,8 +1261,14 @@ static void neutral_apply_demography(int births, int deaths)
                 child_lut[i] = (uint8_t)(rng_next() & 0xFF);
         }
         neut_mutate_inplace(child_lut);
-        neut_hashes[neut_n] = lut_hash_fn(child_lut);
+        uint32_t h = lut_hash_fn(child_lut);
+        neut_hashes[neut_n] = h;
         neut_n++;
+        /* Increment child's bucket pop_count (incremental maintenance). */
+        if (nact_keys) {
+            act_entry_t *e = nact_find_or_insert(h, hash_to_color(h, wt_hash));
+            e->pop_count++;
+        }
     }
 }
 
@@ -1248,10 +1277,12 @@ static void neutral_apply_demography(int births, int deaths)
 void evoca_neutral_enable(void)
 {
     /* Seed the shadow by copying every alive cell's LUT 1:1 into the
-     * shadow array. Resets N-activity. */
+     * shadow array. Resets N-activity, then populates pop_counts as we
+     * insert each individual's hash so the incremental scheme starts
+     * with correct counts. */
     neut_free_all();
+    nact_reset();
     if (!alive || !lut || gN == 0) {
-        nact_reset();
         return;
     }
     size_t cells = (size_t)gN * gN;
@@ -1264,12 +1295,15 @@ void evoca_neutral_enable(void)
         if (!alive[i]) continue;
         memcpy(neut_luts + (size_t)k * LUT_BYTES,
                lut + i * LUT_BYTES, LUT_BYTES);
-        neut_hashes[k] = lut_hash_cache[i];
+        uint32_t h = lut_hash_cache[i];
+        neut_hashes[k] = h;
         k++;
+        /* Seed bucket pop_count for incremental maintenance. */
+        act_entry_t *e = nact_find_or_insert(h, hash_to_color(h, wt_hash));
+        e->pop_count++;
     }
     neut_n = k;
     neut_enabled = 1;
-    nact_reset();
 }
 
 void evoca_neutral_disable(void)
@@ -1289,15 +1323,15 @@ int  evoca_get_n_act_ymax(void)  { return nact_ymax; }
 void evoca_n_activity_update(void)
 {
     if (!nact_keys) return;
-    for (int i = 0; i < nact_cap; i++)
-        if (nact_keys[i] != ACT_EMPTY)
-            nact_vals[i].pop_count = 0;
 
-    for (int i = 0; i < neut_n; i++) {
-        uint32_t h = neut_hashes[i];
-        act_entry_t *e = nact_find_or_insert(h, hash_to_color(h, wt_hash));
-        e->pop_count++;
-        e->activity++;
+    /* pop_count is maintained incrementally by neutral_apply_demography
+     * and seeded by evoca_neutral_enable. So per-tick activity update is
+     * just "for each live bucket, activity += pop_count". No per-individual
+     * loop, no hash lookups, no resetting. */
+    for (int i = 0; i < nact_cap; i++) {
+        if (nact_keys[i] == ACT_EMPTY) continue;
+        if (nact_vals[i].pop_count == 0) continue;
+        nact_vals[i].activity += nact_vals[i].pop_count;
     }
 
     if (nact_cnt > nact_compact_threshold) {
