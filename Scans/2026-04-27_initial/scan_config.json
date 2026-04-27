@@ -1,0 +1,19 @@
+{
+  "created": "2026-04-27T10:39:14",
+  "N": 256,
+  "n_steps": 5000,
+  "sample_every": 100,
+  "seed": 0,
+  "shadow": true,
+  "initialization": {
+    "lut": "gol",
+    "egenome": "uniform",
+    "egenome_value": 3,
+    "v_density": 0.5,
+    "f_init": 0.5,
+    "F": "uniform",
+    "F_init": 1.0,
+    "alive": "halfplane",
+    "alive_axis": 0
+  }
+}

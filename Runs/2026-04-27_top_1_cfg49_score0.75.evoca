@@ -1,0 +1,48 @@
+{
+  "version": 3,
+  "created": "2026-04-27T10:39:23",
+  "descriptor": "top_1_cfg49_score0.75",
+  "source_scan": "2026-04-27_initial",
+  "source_config_idx": 49,
+  "N": 256,
+  "metaparams_init": {
+    "food_inc": 0.025,
+    "m_scale": 0.6,
+    "gdiff": 0.05,
+    "mu_lut": 0.01,
+    "mu_egenome": 0.001,
+    "tax": 0.035,
+    "restricted_mu": true
+  },
+  "metaparams_final": {
+    "food_inc": 0.025,
+    "m_scale": 0.6,
+    "gdiff": 0.05,
+    "mu_lut": 0.01,
+    "mu_egenome": 0.001,
+    "tax": 0.035,
+    "restricted_mu": true
+  },
+  "initialization": {
+    "lut": "gol",
+    "egenome": "uniform",
+    "egenome_value": 3,
+    "v_density": 0.5,
+    "f_init": 0.5,
+    "F": "uniform",
+    "F_init": 1.0,
+    "alive": "halfplane",
+    "alive_axis": 0
+  },
+  "display": {
+    "colormode": 4,
+    "probes": {
+      "activity": true,
+      "q_activity": true,
+      "n_activity": true,
+      "env_food": true,
+      "priv_food": true,
+      "ts": true
+    }
+  }
+}
