@@ -35,6 +35,7 @@ import csv
 import json
 import os
 import sys
+import tempfile
 from collections import defaultdict
 from datetime import datetime
 
@@ -362,9 +363,24 @@ def evoca_from_scan(scan_dir, config_idx, descriptor=None,
 
 # Nearest-neighbour helpers write recipe files to a tmp directory by
 # default rather than Runs/, so casual exploration doesn't litter the
-# tracked Runs/. Copy from here to Runs/ to permanently save.
+# tracked Runs/. With runs_dir=None (the default), each call creates
+# its own unique subdirectory under NEAREST_TMP_PARENT — files don't
+# accumulate across calls. Copy from there to Runs/ to permanently save.
 
-NEAREST_TMP_DIR = '/tmp/evoca_scan_neighbors'
+NEAREST_TMP_PARENT = '/tmp/evoca_scan_neighbors'
+
+
+def _resolve_neighbor_dir(runs_dir, descriptor_prefix):
+    """If `runs_dir` is None, mint a unique subdir under NEAREST_TMP_PARENT
+    for this call. Otherwise just ensure `runs_dir` exists. Returns the
+    path actually used."""
+    if runs_dir is None:
+        os.makedirs(NEAREST_TMP_PARENT, exist_ok=True)
+        runs_dir = tempfile.mkdtemp(prefix=f'{descriptor_prefix}_',
+                                     dir=NEAREST_TMP_PARENT)
+    else:
+        os.makedirs(runs_dir, exist_ok=True)
+    return runs_dir
 
 # Default metric sets used by nearest_evo / nearest_spatial. Can be
 # overridden by passing a custom `metrics=[...]` to either function.
@@ -402,10 +418,20 @@ def _emit_neighbors(scan_dir, ranked, descriptor_prefix,
     """Common emission. `ranked` is [(config_idx, distance), ...]
     already sorted ascending by distance and with self excluded.
 
+    If write_recipes is True and runs_dir is None, mints a unique
+    /tmp/evoca_scan_neighbors/<descriptor_prefix>_XXXXXX/ for this
+    call so files don't collide across invocations. Pass
+    runs_dir='/some/path' to use a fixed location, or write_recipes=
+    False to skip file output entirely.
+
     Returns [(config_idx, recipe_path), ...] — same shape as
     evoca_from_scan_top, so results[i][1] is always the .evoca path
-    that import_run() can load. If verbose, prints distances to stdout
-    so the caller can see how close each neighbour is."""
+    that import_run() can load. If verbose, prints distances and the
+    chosen runs_dir."""
+    if write_recipes:
+        runs_dir = _resolve_neighbor_dir(runs_dir, descriptor_prefix)
+        if verbose:
+            print(f"writing recipes to {runs_dir}")
     out = []
     for rank, (idx, dist) in enumerate(ranked):
         path = None
@@ -421,7 +447,7 @@ def _emit_neighbors(scan_dir, ranked, descriptor_prefix,
 
 
 def nearest_params(scan_dir, target_config_idx, n=5,
-                   runs_dir=NEAREST_TMP_DIR,
+                   runs_dir=None,
                    probes=None, colormode=0, write_recipes=True,
                    verbose=True):
     """Find the `n` configs nearest to `target_config_idx` by **Euclidean
@@ -514,7 +540,7 @@ def _nearest_by_metric_ranks(scan_dir, target_config_idx, n, metrics,
 
 
 def nearest_evo(scan_dir, target_config_idx, n=5, metrics=None,
-                runs_dir=NEAREST_TMP_DIR, probes=None, colormode=0,
+                runs_dir=None, probes=None, colormode=0,
                 write_recipes=True, verbose=True):
     """Find the `n` configs nearest to `target_config_idx` in
     **evolutionary-metric rank space**.
@@ -535,7 +561,7 @@ def nearest_evo(scan_dir, target_config_idx, n=5, metrics=None,
 
 
 def nearest_spatial(scan_dir, target_config_idx, n=5, metrics=None,
-                    runs_dir=NEAREST_TMP_DIR, probes=None, colormode=0,
+                    runs_dir=None, probes=None, colormode=0,
                     write_recipes=True, verbose=True):
     """Find the `n` configs nearest to `target_config_idx` in
     **spatial-metric rank space**.
