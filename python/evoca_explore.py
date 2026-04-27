@@ -360,6 +360,12 @@ def evoca_from_scan(scan_dir, config_idx, descriptor=None,
 
 # ── Nearest-neighbour helpers (relative to a target row) ──────────────
 
+# Nearest-neighbour helpers write recipe files to a tmp directory by
+# default rather than Runs/, so casual exploration doesn't litter the
+# tracked Runs/. Copy from here to Runs/ to permanently save.
+
+NEAREST_TMP_DIR = '/tmp/evoca_scan_neighbors'
+
 # Default metric sets used by nearest_evo / nearest_spatial. Can be
 # overridden by passing a custom `metrics=[...]` to either function.
 
@@ -414,7 +420,8 @@ def _emit_neighbors(scan_dir, ranked, descriptor_prefix,
     return out
 
 
-def nearest_params(scan_dir, target_config_idx, n=5, runs_dir=None,
+def nearest_params(scan_dir, target_config_idx, n=5,
+                   runs_dir=NEAREST_TMP_DIR,
                    probes=None, colormode=0, write_recipes=True,
                    verbose=True):
     """Find the `n` configs nearest to `target_config_idx` by **Euclidean
@@ -507,7 +514,7 @@ def _nearest_by_metric_ranks(scan_dir, target_config_idx, n, metrics,
 
 
 def nearest_evo(scan_dir, target_config_idx, n=5, metrics=None,
-                runs_dir=None, probes=None, colormode=0,
+                runs_dir=NEAREST_TMP_DIR, probes=None, colormode=0,
                 write_recipes=True, verbose=True):
     """Find the `n` configs nearest to `target_config_idx` in
     **evolutionary-metric rank space**.
@@ -528,7 +535,7 @@ def nearest_evo(scan_dir, target_config_idx, n=5, metrics=None,
 
 
 def nearest_spatial(scan_dir, target_config_idx, n=5, metrics=None,
-                    runs_dir=None, probes=None, colormode=0,
+                    runs_dir=NEAREST_TMP_DIR, probes=None, colormode=0,
                     write_recipes=True, verbose=True):
     """Find the `n` configs nearest to `target_config_idx` in
     **spatial-metric rank space**.

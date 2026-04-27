@@ -135,6 +135,13 @@ The default metric sets are exposed as `EVO_METRICS` and
 `SPATIAL_METRICS`; pass `metrics=[...]` to override (e.g. only one
 axis).
 
+By default these write the recipe files to `/tmp/evoca_scan_neighbors/`
+(constant `NEAREST_TMP_DIR`) rather than `Runs/`, so casual exploration
+doesn't litter the tracked recipe directory. `import_run` reads from
+any path — copy a winner to `Runs/` if you want to keep it. To suppress
+file output entirely, pass `write_recipes=False`. To redirect, pass
+`runs_dir='/some/other/path'`.
+
 ### Promoting a scan winner to a larger grid
 
 Scans are run at a smaller grid (e.g. N=256) for speed. To watch a
