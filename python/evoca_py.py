@@ -947,17 +947,23 @@ def available_state_init():
 
 # ── Recipe import ─────────────────────────────────────────────────────
 
-def import_run(filepath=None, recipe='init', lib_path=None):
+def import_run(filepath=None, recipe='init', lib_path=None, N=None):
     """Load a .evoca recipe file and return (sim, display_kwargs).
 
     If called with no arguments, lists available recipes in Runs/.
 
     recipe: 'init' uses the initial metaparams, 'final' uses the
             metaparams at export time (after any slider adjustments).
+    N:      override the grid size from the recipe. Useful for promoting
+            a small-grid scan winner to a larger interactive run, e.g.
+            sim, kw = import_run(path, N=512). All other init parameters
+            (lut, egenome, density, alive layout, food, metaparams) are
+            unchanged.
 
     Usage:
         import_run()                    # list available recipes
         sim, kw = import_run('Runs/2026-03-15_my_run.evoca')
+        sim, kw = import_run(path, N=512)
         run_with_controls(sim, **kw)
     """
     import json
@@ -986,7 +992,8 @@ def import_run(filepath=None, recipe='init', lib_path=None):
         mp = data['metaparams']  # v1 fallback
 
     sim = EvoCA(lib_path=lib_path)
-    sim.init(data['N'], **mp)
+    grid_N = int(N) if N is not None else int(data['N'])
+    sim.init(grid_N, **mp)
 
     # Build state params — map v2 key names to v3 if needed
     init_raw = data.get('initialization', {})

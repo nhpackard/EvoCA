@@ -100,6 +100,24 @@ sim, kw = import_run(top[0][1])
 run_with_controls(sim, **kw)
 ```
 
+### Promoting a scan winner to a larger grid
+
+Scans are run at a smaller grid (e.g. N=256) for speed. To watch a
+winner at higher resolution, pass an `N` override to `import_run`:
+
+```python
+sim, kw = import_run(top[0][1], N=512)
+run_with_controls(sim, **kw)
+```
+
+The recipe's metaparams (food_inc, tax, gdiff, mu_lut, …) and
+initialisation (lut, egenome, density, alive layout, food field) are
+unchanged — only the grid size scales up. Note that since the scan's
+scoring metrics are dimensionless ratios at scan-N, the *relative*
+spatial scale of patches will look smaller at higher N (e.g. a 50-cell
+correlation length is 20% of the window at N=256 but 10% at N=512).
+The qualitative dynamics usually carry over.
+
 ## Composite score used by `evoca_from_scan_top`
 
 After filtering out runs that went extinct or saturated above 95%
