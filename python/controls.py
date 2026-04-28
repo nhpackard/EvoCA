@@ -1140,7 +1140,11 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
 
             # Update status label (infrequent — tolerate ZMQ non-safety)
             if sc % 100 == 0:
-                status_lbl.value = f"t={sc}  fps={fps:.1f}"
+                bits = [f"t={sc}", f"fps={fps:.1f}"]
+                if neutral_enabled:
+                    p90 = float(sim._lib.evoca_get_n_p90())
+                    bits.append(f"N_p90={p90:.0f}")
+                status_lbl.value = "  ".join(bits)
 
         # Cleanup — also called by atexit if this thread doesn't finish in time
         st['running'] = False

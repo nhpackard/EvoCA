@@ -113,6 +113,15 @@ int  evoca_n_activity_get(uint32_t *keys, uint64_t *activities,
 void evoca_set_n_act_ymax(int y);
 int  evoca_get_n_act_ymax(void);
 
+/* N-overlay alpha (percent, 0..100). 100 = opaque white. */
+void   evoca_set_n_overlay_alpha(int pct);
+int    evoca_get_n_overlay_alpha(void);
+
+/* Latest N-activity top-decile value, computed each
+ * evoca_n_activity_render_col() call. Useful for displaying the
+ * threshold-line value in the UI. 0 if no live shadow buckets yet. */
+double evoca_get_n_p90(void);
+
 /* Nq-activity: 9 deciles of N-activity (p10..p90). */
 void evoca_nq_activity_deciles(float *deciles_out);
 

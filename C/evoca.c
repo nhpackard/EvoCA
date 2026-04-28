@@ -1355,8 +1355,26 @@ int evoca_neutral_get_population(void) { return neut_enabled ? neut_n : 0; }
 int evoca_get_births_last(void)        { return g_births_last; }
 int evoca_get_deaths_last(void)        { return g_deaths_last; }
 
+/* Alpha for the N-overlay tint, percent. Settable at runtime via
+ * evoca_set_n_overlay_alpha(). Default 100 = fully opaque white. */
+static int    n_overlay_alpha_pct = 100;
+
+/* Cached value of N's top-decile activity, updated each render call;
+ * exposed via evoca_get_n_p90() so the controls layer can display it. */
+static double g_nact_p90 = 0.0;
+
 void evoca_set_n_act_ymax(int y) { if (y > 0) nact_ymax = y; }
 int  evoca_get_n_act_ymax(void)  { return nact_ymax; }
+
+void evoca_set_n_overlay_alpha(int pct)
+{
+    if (pct < 0)   pct = 0;
+    if (pct > 100) pct = 100;
+    n_overlay_alpha_pct = pct;
+}
+int evoca_get_n_overlay_alpha(void) { return n_overlay_alpha_pct; }
+
+double evoca_get_n_p90(void) { return g_nact_p90; }
 
 void evoca_n_activity_update(void)
 {
@@ -1401,7 +1419,6 @@ void evoca_n_activity_update(void)
  * N is drawn as a presence-per-row tint (one alpha-blend per y, regardless
  * of how many N buckets land on that row), so dense clusters don't
  * compound to near-white. */
-#define N_OVERLAY_ALPHA_PCT 10
 #define NACT_LOG_REF        1.0e6   /* activities approach top as they near this */
 
 static inline int nact_act_to_y_log(double act, double inv_log_ref, int height)
@@ -1442,6 +1459,7 @@ void evoca_n_activity_render_col(int32_t *col, int height)
             }
         }
     }
+    g_nact_p90 = n_p90;   /* cache for evoca_get_n_p90() */
 
     const double inv_log_ref = 1.0 / log(NACT_LOG_REF + 1.0);
 
@@ -1493,7 +1511,7 @@ void evoca_n_activity_render_col(int32_t *col, int height)
                                        inv_log_ref, height);
             n_present[y] = 1;
         }
-        const uint32_t a_pct = N_OVERLAY_ALPHA_PCT;
+        const uint32_t a_pct = (uint32_t)n_overlay_alpha_pct;
         const uint32_t inv   = 100 - a_pct;
         for (int y = 0; y < height; y++) {
             if (!n_present[y]) continue;

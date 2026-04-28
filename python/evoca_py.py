@@ -226,6 +226,12 @@ class EvoCA:
         L.evoca_set_n_act_ymax.restype         = None
         L.evoca_get_n_act_ymax.argtypes        = []
         L.evoca_get_n_act_ymax.restype         = ctypes.c_int
+        L.evoca_set_n_overlay_alpha.argtypes   = [ctypes.c_int]
+        L.evoca_set_n_overlay_alpha.restype    = None
+        L.evoca_get_n_overlay_alpha.argtypes   = []
+        L.evoca_get_n_overlay_alpha.restype    = ctypes.c_int
+        L.evoca_get_n_p90.argtypes             = []
+        L.evoca_get_n_p90.restype              = ctypes.c_double
         L.evoca_nq_activity_deciles.argtypes   = [ctypes.POINTER(ctypes.c_float)]
         L.evoca_nq_activity_deciles.restype    = None
         # Activity flux probe
