@@ -1792,7 +1792,20 @@ void evoca_colorize(int32_t *pixels, int colormode)
             break;
         case 1:
             for (size_t i = 0; i < cells; i++) {
-                float fv = F_food[i]; if (fv > 1.0f) fv = 1.0f;
+                /* Dead cells show env food (F_food) on the green channel —
+                 * useful because no consumers means F accumulates.
+                 * Alive cells show f_priv (private food, the cell's own
+                 * reserve) instead, since F_food is eaten to ~0 wherever
+                 * organisms live so it carries no information there.
+                 * Red=180 marks "alive". */
+                float fv;
+                if (alive[i]) {
+                    fv = f_priv[i];
+                } else {
+                    fv = F_food[i];
+                }
+                if (fv > 1.0f) fv = 1.0f;
+                if (fv < 0.0f) fv = 0.0f;
                 uint8_t g = (uint8_t)(fv * 255.0f);
                 uint8_t r = alive[i] ? 180 : 0;
                 pixels[i] = (int32_t)(0xFF000000u
