@@ -443,14 +443,38 @@ model.md) with the new entries and the renamed `mu_egene`.
 
 ## Status
 
-- [ ] Item 1 — Rename `mu_egenome` → `mu_egene`
-- [ ] Item 2 — Multi-slot storage
-- [ ] Item 3 — Max-match eating
-- [ ] Item 4 — Two-rate mutation + dup-on-activate
-- [ ] Item 5 — Tax: per-egene + LUT-popcount
-- [ ] Item 6 — Species hash sorted-active
-- [ ] Item 7 — `eg_pop` histogram redefinition
-- [ ] Item 8 — Python plumbing
-- [ ] Item 9 — SDL/controls sliders
-- [ ] Item 10 — `Docs/model.md` update
-- [ ] Item 11 — Validation
+- [x] Item 1 — Rename `mu_egenome` → `mu_egene`
+- [x] Item 2 — Multi-slot storage
+- [x] Item 3 — Max-match eating
+- [x] Item 4 — Two-rate mutation + dup-on-activate
+- [x] Item 5 — Tax: per-egene + LUT-popcount
+- [x] Item 6 — Species hash sorted-active
+- [x] Item 7 — `eg_pop` histogram redefinition
+- [x] Item 8 — Python plumbing
+- [x] Item 9 — SDL/controls sliders
+- [x] Item 10 — `Docs/model.md` update
+- [x] Item 11 — Validation
+
+## Validation results (2026-04-28)
+
+Four checks at the scan-3 productive corner (`food_inc=0.013, m_scale=1.2,
+gdiff=0.06, mu_lut=0.001, mu_egene=0.003, tax=0.035, restricted_mu=True`),
+N=128 unless noted, 2000 steps:
+
+1. **Backward compat** (all new knobs zero, `p_dup_on_activate=0`):
+   `negene_mean = 1.00` exactly. `alive_density_mean = 0.276`,
+   `correlation_length = 33.1`, `n_distinct_genomes = 966`. System
+   alive, plausible regime.
+2. **Negene drift unbounded** (`mu_egenome=0.005`, `p_dup=1.0`,
+   `tax_per_egene=0`): `negene_mean = 3.64`, final = 4.32 — Negene
+   drifts up as expected from the breadth-bonus pressure of max-match
+   eating without a metabolic counterweight.
+3. **Negene bounded** (`mu_egenome=0.005`, `tax_per_egene=0.020`):
+   `negene_mean = 1.21`, final = 1.31. The per-egene tax cleanly
+   pulls Negene back to a low intermediate value.
+4. **Eating-loop timing** at N=256, 500 timed steps after a 1000-step
+   warmup: 1009 steps/s at `Negene = 1.00`, 557 steps/s at
+   `Negene = 4.37`. Ratio 1.81× — within the "≤2× current"
+   target. (Max-match short-circuits less than the worst-case 8×
+   suggests because cells with Negene < NEGENOME_MAX skip the
+   inactive slots, and bucket-population variance helps too.)
