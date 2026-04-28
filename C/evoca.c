@@ -115,6 +115,8 @@ static float  gp_dup_on_activate = 0.0f; /* prob that a 0→1 active flip
                                     * triggers copy of a random
                                     * currently-active egene byte */
 static float  gtax        = 0.0f; /* priv food decrement per step */
+static float  gtax_per_egene = 0.0f; /* additional decrement per active egene */
+static float  gtax_lut    = 0.0f; /* additional decrement per LUT '1' bit */
 static int    grestricted_mu = 0; /* 0=random mutation, 1=restricted to active bits */
 static int    g_diag        = 0; /* diagnostic prints */
 
@@ -609,7 +611,11 @@ float evoca_get_p_dup_on_activate(void) { return gp_dup_on_activate; }
 void  evoca_set_restricted_mu(int r) { grestricted_mu = r; }
 int   evoca_get_restricted_mu(void)  { return grestricted_mu; }
 void  evoca_set_tax(float t)      { gtax       = t; }
+void  evoca_set_tax_per_egene(float t) { gtax_per_egene = t; }
+void  evoca_set_tax_lut(float t)  { gtax_lut   = t; }
 float evoca_get_tax(void)         { return gtax;      }
+float evoca_get_tax_per_egene(void) { return gtax_per_egene; }
+float evoca_get_tax_lut(void)     { return gtax_lut;  }
 void  evoca_set_diag(int d)      { g_diag     = d; }
 int   evoca_get_diag(void)       { return g_diag;    }
 
@@ -831,11 +837,25 @@ void evoca_step(void)
         if (frac > 0.0f) diffuse_food_partial(frac);
     }
 
-    /* Phase 2c: Tax — decrement private food; death if depleted */
-    if (gtax > 0.0f) {
+    /* Phase 2c: Tax — decrement private food; death if depleted.
+     * Differentiated tax: tax = gtax + gtax_per_egene × Negene
+     *                          + gtax_lut × popcount(LUT bytes).
+     * gtax is the unconditional baseline; the other two coefficients
+     * default to 0 so we reproduce single-rate-tax behaviour. */
+    if (gtax > 0.0f || gtax_per_egene > 0.0f || gtax_lut > 0.0f) {
         for (size_t i = 0; i < cells; i++) {
             if (!alive[i]) continue;
-            f_priv[i] -= gtax;
+            float t = gtax;
+            if (gtax_per_egene > 0.0f)
+                t += gtax_per_egene * (float)cell_negene((int)i);
+            if (gtax_lut > 0.0f) {
+                int pc = 0;
+                const uint8_t *lb = lut + i * LUT_BYTES;
+                for (int k = 0; k < LUT_BYTES; k++)
+                    pc += __builtin_popcount(lb[k]);
+                t += gtax_lut * (float)pc;
+            }
+            f_priv[i] -= t;
             if (f_priv[i] <= 0.0f) {
                 f_priv[i] = 0.0f;
                 alive[i] = 0;
