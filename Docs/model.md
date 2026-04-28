@@ -253,23 +253,104 @@ The `births` array is set for each child cell (used by colormode 3).
 
 ## Visualization (Color Modes)
 
-Five modes, selectable via dropdown or the `colormode` parameter:
+Five modes, selectable via dropdown or the `colormode` parameter. Each
+mode uses ARGB pixel values; alpha is always `0xFF`. All `[0, 1]` floats
+are clamped before the `× 255` cast.
 
-| Mode | Name       | Channel mapping (ARGB)                                        |
-|------|------------|---------------------------------------------------------------|
-| 0    | `state`    | alive+v=1: genome color, alive+v=0: dark grey (#111111), dead: black |
-| 1    | `env-food` | Green = F(x)*255, Red = 180 if alive else 0                   |
-| 2    | `priv-food`| Dead: black. Alive: Blue = f(x)*255, Red = 180 if v=1         |
-| 3    | `births`   | Dead: black. Alive: birth events colored, no-birth v=1: dim grey, v=0: dark grey |
+| Mode | Name         | Encodes |
+|------|--------------|---------|
+| 0    | `state`      | alive flag × CA dynamical state, with genome-hash colour |
+| 1    | `env-food`   | Environmental food on dead cells, private food on alive cells |
+| 2    | `priv-food`  | Private food on alive cells (blue), CA state (red) |
+| 3    | `births`     | Birth events highlighted, modulated by CA state |
+| 4    | `age`        | Cell age via cool→hot log gradient |
 
-All food values are clamped to [0, 1] before the float-to-uint8 cast.
+### Mode 0: `state` — genome colour by CA state
 
-### Genome coloring (mode 0)
+| | dead | alive, v=0 | alive, v=1 |
+|---|---|---|---|
+| pixel | `0xFF000000` (black) | `0xFF333333` (dark grey) | `lut_color[i]` |
 
-Each cell caches an ARGB color derived from an FNV-1a hash of its 32-byte
-LUT.  The hash computed by `set_lut_all()` is stored as the **wild-type hash**;
-any cell whose LUT hashes to this value displays as white.  Mutant genomes
-get pseudo-random colors from the lower 24 bits of their hash.
+`lut_color[i]` is cached on each cell from an FNV-1a hash of its 32-byte
+LUT. `set_lut_all()` stores the hash of the LUT it loads as the
+**wild-type hash**; any cell whose LUT still hashes to that value
+displays as white (`0xFFFFFFFF`). Mutant LUTs hash to other values and
+get pseudo-random colours from the lower 24 bits of the hash. White
+on screen therefore means "unmutated wild-type" — useful for tracking
+how fast the original LUT decays under mutation.
+
+### Mode 1: `env-food` — food field with hunger overlay on alive cells
+
+The green channel encodes **environmental food** for dead cells and
+**private food (cell's reserve)** for alive cells, since `F_food` is
+eaten down to ~0 wherever organisms are sustained and so carries no
+information there.
+
+| | f_priv = 0 | f_priv = 0.5 | f_priv = 1 |
+|---|---|---|---|
+| **alive** (red=180, green=`f_priv`×255) | (180, 0, 0) red — starving | (180, 128, 0) orange | (180, 255, 0) yellow — about to reproduce |
+
+| | F_food = 0 | F_food = 0.5 | F_food = 1 |
+|---|---|---|---|
+| **dead** (red=0, green=`F_food`×255) | (0, 0, 0) black | (0, 128, 0) mid-green | (0, 255, 0) bright green |
+
+Visual story: dead cells brighten from black to green as environmental
+food accumulates (at rate `food_inc`); alive cells flash red→orange→
+yellow as their private reserve fills up between reproduction events.
+
+### Mode 2: `priv-food` — private food + CA state on alive cells
+
+Dead cells are black. Alive cells encode private food on the **blue**
+channel; the **red** channel marks CA state (red=180 if v=1, else 0).
+
+| | f_priv = 0 | f_priv = 0.5 | f_priv = 1 |
+|---|---|---|---|
+| **alive, v=0** (red=0, blue=`f_priv`×255) | (0, 0, 0) black | (0, 0, 128) mid-blue | (0, 0, 255) bright blue |
+| **alive, v=1** (red=180, blue=`f_priv`×255) | (180, 0, 0) red | (180, 0, 128) magenta | (180, 0, 255) bright magenta |
+
+Dead cells are pure black `0xFF000000` regardless of food.
+
+### Mode 3: `births` — birth events highlighted
+
+Highlights cells that have just reproduced this step. Mutant births
+(LUT or egenome bits flipped) get magenta; clean copy births get
+yellow; cells alive but with no birth this step are dim grey. The CA
+state v_curr modulates brightness (v=1 → bright, v=0 → dim).
+
+| | dead | alive, no birth | normal birth (`births=1`) | mutant birth (`births=2`) |
+|---|---|---|---|---|
+| **v=0** | `0xFF000000` black | `0xFF222222` dark grey | `0xFF808000` dim yellow | `0xFF800080` dim magenta |
+| **v=1** | `0xFF000000` black | `0xFF444444` grey | `0xFFFFFF00` bright yellow | `0xFFFF00FF` bright magenta |
+
+Useful for watching reproduction "fronts" advance and identifying
+where mutation is most active.
+
+### Mode 4: `age` — cool → hot log gradient
+
+For each alive cell, age is `g_step − last_event_step[i]`, the number
+of ticks since this cell was last replaced (born or reproduced into).
+Dead cells are black.
+
+A scale `g_age_scale` tracks the maximum observed alive-cell age,
+ratcheting up instantly to any new max and decaying slowly (×0.995 per
+tick, floor 10) so the gradient adapts to each run's age range without
+wild jumps. The per-cell intensity is
+
+$$v = \frac{\log(1 + \text{age})}{\log(1 + g_{\text{age scale}})} \in [0, 1].$$
+
+Pixel channels are then
+
+$$R = 80 + 175\,v,\quad G = 60 + 560\,v\,(1-v),\quad B = 40 + 180\,(1-v).$$
+
+| age | $v$ | (R, G, B) | colour |
+|--:|--:|---|---|
+| 0 (just born / replaced) | 0.00 | (80, 60, 220) | cool blue-violet |
+| ≈ scale × 0.1 | 0.50 | (167, 200, 130) | yellow-green |
+| ≈ scale | 1.00 | (255, 60, 40) | hot red |
+| dead | — | (0, 0, 0) | black |
+
+Useful for spotting long-lived structures vs constant-turnover regions
+in the same window.
 
 ---
 
