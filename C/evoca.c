@@ -120,7 +120,14 @@ static int     n_active = 0;
 static uint8_t *v_curr = NULL;   /* [N*N]            */
 static uint8_t *v_next = NULL;   /* [N*N]            */
 static uint8_t *lut    = NULL;   /* [N*N * LUT_BYTES] */
-static uint8_t *egenome = NULL;   /* [N*N]            */
+/* Multi-egene cell genome:
+ *   egenes : [N*N*NEGENOME_MAX]  per-cell egene bytes (8 slots × 6-bit)
+ *   active : [N*N]                per-cell presence mask (1 bit per slot)
+ *   egenome_scratch : [N*N]       rebuilt-on-demand back-compat view
+ *                                  (lowest-index active slot's egene byte) */
+static uint8_t *egenes          = NULL;
+static uint8_t *active          = NULL;
+static uint8_t *egenome_scratch = NULL;
 static float   *f_priv = NULL;   /* [N*N]            */
 static float   *F_food = NULL;   /* [N*N]            */
 static float   *F_temp = NULL;   /* [N*N] scratch for diffusion */
@@ -480,6 +487,33 @@ static void evoca_activity_free(void)
     flux_t  = 0;
 }
 
+/* ── Multi-egene helpers ────────────────────────────────────────── */
+
+/* Lowest-index active slot in cell idx, or 0 if none active.
+ * Returning 0 (slot 0's egene byte) on an empty active mask is a
+ * defensive fallback; alive cells should always have ≥1 active slot. */
+static inline int cell_first_active(int idx)
+{
+    uint8_t a = active[idx];
+    if (a == 0) return 0;
+    return __builtin_ctz(a);
+}
+
+static inline int cell_negene(int idx) __attribute__((unused));
+static inline int cell_negene(int idx)
+{
+    return __builtin_popcount(active[idx]);
+}
+
+/* Copy genome data from src cell to dst cell: all 8 egenes + active byte. */
+static inline void cell_genome_copy(int dst, int src)
+{
+    memcpy(egenes + (size_t)dst * NEGENOME_MAX,
+           egenes + (size_t)src * NEGENOME_MAX,
+           NEGENOME_MAX);
+    active[dst] = active[src];
+}
+
 /* ── Lifecycle ──────────────────────────────────────────────────── */
 
 void evoca_init(int N, float food_inc, float m_scale)
@@ -493,7 +527,9 @@ void evoca_init(int N, float food_inc, float m_scale)
     v_curr = calloc(cells,               sizeof(uint8_t));
     v_next = calloc(cells,               sizeof(uint8_t));
     lut    = calloc(cells * LUT_BYTES,   sizeof(uint8_t));
-    egenome = calloc(cells,               sizeof(uint8_t));
+    egenes = calloc(cells * NEGENOME_MAX, sizeof(uint8_t));
+    active = calloc(cells,               sizeof(uint8_t));
+    egenome_scratch = calloc(cells,      sizeof(uint8_t));
     f_priv = calloc(cells,               sizeof(float));
     F_food = calloc(cells,               sizeof(float));
     F_temp = calloc(cells,               sizeof(float));
@@ -505,6 +541,13 @@ void evoca_init(int N, float food_inc, float m_scale)
     memset(env_mask, 1, cells);   /* default: all sites regenerate */
     alive = malloc(cells * sizeof(uint8_t));
     memset(alive, 1, cells);      /* default: all cells alive */
+    /* Genome arrays are zero-initialised by calloc above; that means
+     * Negene=0 for every cell until the caller invokes
+     * evoca_set_egenome_all or evoca_set_egenome_random_all. The
+     * Python state() entry point always runs one of those, so callers
+     * never see the all-zero state. We deliberately consume no RNG
+     * draws here so results stay bitwise-identical to pre-Item-2 code
+     * once Negene=1 init is applied. */
     memset(repro_age_hist, 0, sizeof(repro_age_hist));
     g_step = 0;
     g_births_last = 0;
@@ -521,7 +564,9 @@ void evoca_free(void)
     free(v_curr); v_curr = NULL;
     free(v_next); v_next = NULL;
     free(lut);    lut    = NULL;
-    free(egenome); egenome = NULL;
+    free(egenes); egenes = NULL;
+    free(active); active = NULL;
+    free(egenome_scratch); egenome_scratch = NULL;
     free(f_priv); f_priv = NULL;
     free(F_food); F_food = NULL;
     free(F_temp); F_temp = NULL;
@@ -587,8 +632,21 @@ void evoca_set_lut(int idx, const uint8_t *lb)
 }
 
 void evoca_set_egenome_all(uint8_t eg) {
-    memset(egenome, eg, (size_t)gN * gN);
+    size_t cells = (size_t)gN * gN;
+    /* All NEGENOME_MAX slots = eg; only slot 0 active. Negene = 1. */
+    memset(egenes, eg, cells * NEGENOME_MAX);
+    memset(active, 0x01, cells);
     eg_init_colors(eg);
+}
+
+void evoca_set_egenome_random_all(uint8_t wt) {
+    size_t cells = (size_t)gN * gN;
+    for (size_t i = 0; i < cells; i++) {
+        for (int s = 0; s < NEGENOME_MAX; s++)
+            egenes[i * NEGENOME_MAX + s] = (uint8_t)(rng_next() & 0x3F);
+        active[i] = (uint8_t)(1u << (rng_next() & 7));
+    }
+    eg_init_colors(wt);
 }
 
 void evoca_set_f_all(float f)
@@ -768,7 +826,8 @@ void evoca_step(void)
         for (int col = 0; col < N; col++) {
             int   idx      = row * N + col;
             if (!alive[idx]) continue;
-            int   matches  = fiducial_matches(row, col, egenome[idx]);
+            int   matches  = fiducial_matches(row, col,
+                egenes[(size_t)idx * NEGENOME_MAX + cell_first_active(idx)]);
             float mouthful = (gm_scale / 25.0f) * matches * F_food[idx];
             float headroom = 1.0f - f_priv[idx];
             if (mouthful > headroom) mouthful = headroom;
@@ -822,7 +881,7 @@ void evoca_step(void)
 
             memcpy(lut + (size_t)child * LUT_BYTES,
                    lut + (size_t)idx   * LUT_BYTES, LUT_BYTES);
-            egenome[child] = egenome[idx];
+            cell_genome_copy(child, idx);
             /* Mutate child's LUT */
             uint8_t *child_lut = lut + (size_t)child * LUT_BYTES;
             int nf;
@@ -836,10 +895,14 @@ void evoca_step(void)
                     lut_flip(child_lut, rng_next() % LUT_BITS);
             }
 
-            /* Mutate child's egenome */
+            /* Mutate child's egene at the (single) active slot.
+             * Item 4 will replace this with a multi-rate pass over all
+             * 8 slots + the active mask. */
             int nc = poisson_sample(gmu_egene * 6);
+            int eg_slot = cell_first_active(child);
+            uint8_t *eg_byte = &egenes[(size_t)child * NEGENOME_MAX + eg_slot];
             for (int f = 0; f < nc; f++)
-                egenome[child] ^= (uint8_t)(1u << (rng_next() % 6));
+                *eg_byte ^= (uint8_t)(1u << (rng_next() % 6));
 
             /* births: 1 = normal, 2 = mutant */
             births[child] = (nf > 0 || nc > 0) ? 2 : 1;
@@ -1598,11 +1661,15 @@ void evoca_nq_activity_deciles(float *deciles_out)
 
 void evoca_eg_activity_update(void)
 {
+    /* Per-cell, single-active-slot histogram. Item 7 redefines this
+     * to count active egene slots across all cells (sum over slots,
+     * not over cells). */
     size_t cells = (size_t)gN * gN;
     memset(eg_pop, 0, sizeof(eg_pop));
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) continue;
-        uint8_t eg = egenome[i] & 0x3F;
+        int s = cell_first_active((int)i);
+        uint8_t eg = egenes[i * NEGENOME_MAX + s] & 0x3F;
         eg_pop[eg]++;
         eg_act[eg]++;
     }
@@ -1889,7 +1956,19 @@ void evoca_colorize(int32_t *pixels, int colormode)
 uint8_t *evoca_get_v(void)      { return v_curr; }
 float   *evoca_get_F(void)      { return F_food; }
 float   *evoca_get_f(void)      { return f_priv; }
-uint8_t *evoca_get_egenome(void) { return egenome; }
+uint8_t *evoca_get_egenome(void)
+{
+    /* Rebuild scratch with the lowest-index active slot's egene byte
+     * for every cell. Read-only; for Python display use. */
+    size_t cells = (size_t)gN * gN;
+    for (size_t i = 0; i < cells; i++) {
+        int s = cell_first_active((int)i);
+        egenome_scratch[i] = egenes[i * NEGENOME_MAX + s];
+    }
+    return egenome_scratch;
+}
+uint8_t *evoca_get_egenes(void) { return egenes; }
+uint8_t *evoca_get_active(void) { return active; }
 uint8_t *evoca_get_lut(void)    { return lut;    }
 uint8_t *evoca_get_births(void) { return births; }
 uint8_t *evoca_get_alive(void)  { return alive;  }

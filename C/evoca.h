@@ -27,6 +27,12 @@
 #define LUT_BITS   250   /* 2*5*5*5 */
 #define LUT_BYTES   32   /* ceil(250/8) */
 
+/* Multi-egene cell genome: each cell carries up to NEGENOME_MAX egenes
+ * (each a 6-bit fiducial pattern), with a per-cell 8-bit `active` mask
+ * marking which slots are live. Negene = popcount(active). Inactive
+ * slots' egene bits drift under mutation (pseudogenes). */
+#define NEGENOME_MAX 8
+
 /* Display scale: screen pixels per simulation cell.  Change and recompile. */
 #define CELL_PX  2
 
@@ -62,7 +68,14 @@ void evoca_set_lut_all(const uint8_t *lut_bytes);
 /* Set one cell's LUT. */
 void evoca_set_lut(int idx, const uint8_t *lut_bytes);
 
+/* Set every cell to: all NEGENOME_MAX slots = `eg`, only slot 0 active.
+ * Negene = 1 everywhere. Used by Python set_egenome_all path. */
 void evoca_set_egenome_all(uint8_t eg);
+
+/* Set every cell to: all NEGENOME_MAX slots = independent random 6-bit
+ * values, exactly one random slot active per cell. Negene = 1
+ * everywhere; the inactive slots act as a pseudogene reservoir. */
+void evoca_set_egenome_random_all(uint8_t wt);
 void evoca_set_f_all(float f);
 void evoca_set_F_all(float F);
 void     evoca_set_env_mask(const uint8_t *mask);
@@ -186,7 +199,18 @@ void evoca_colorize(int32_t *pixels, int colormode);
 uint8_t *evoca_get_v(void);
 float   *evoca_get_F(void);
 float   *evoca_get_f(void);
+/* Returns pointer to a [N*N] scratch array holding, for each cell, the
+ * lowest-index active slot's egene byte (0 if no slot is active). The
+ * scratch is rebuilt on each call. Read-only; for Python display use. */
 uint8_t *evoca_get_egenome(void);
+
+/* Returns pointer to the live [N*N*NEGENOME_MAX] egene-bytes array. */
+uint8_t *evoca_get_egenes(void);
+
+/* Returns pointer to the live [N*N] active-mask byte array (one byte
+ * per cell, bit i = slot i is active). */
+uint8_t *evoca_get_active(void);
+
 uint8_t *evoca_get_lut(void);    /* [N*N * LUT_BYTES] */
 uint8_t *evoca_get_births(void); /* [N*N] 0=none, 1=birth, 2=mutant birth */
 uint8_t *evoca_get_alive(void);  /* [N*N] 1=alive organism, 0=dead slot */

@@ -122,6 +122,12 @@ class EvoCA:
         L.evoca_set_lut.restype         = None
         L.evoca_set_egenome_all.argtypes = [ctypes.c_uint8]
         L.evoca_set_egenome_all.restype  = None
+        L.evoca_set_egenome_random_all.argtypes = [ctypes.c_uint8]
+        L.evoca_set_egenome_random_all.restype  = None
+        L.evoca_get_egenes.argtypes      = []
+        L.evoca_get_egenes.restype       = ctypes.POINTER(ctypes.c_uint8)
+        L.evoca_get_active.argtypes      = []
+        L.evoca_get_active.restype       = ctypes.POINTER(ctypes.c_uint8)
         L.evoca_set_f_all.argtypes      = [ctypes.c_float]
         L.evoca_set_f_all.restype       = None
         L.evoca_set_F_all.argtypes      = [ctypes.c_float]
@@ -484,12 +490,10 @@ class EvoCA:
         self._state_params['egenome_value'] = self.egenome
 
     def set_egenome_random(self):
-        """Set each cell's egenome to a random value in [0, 63].
-        No wild-type: all 64 egenomes get distinct hash-based colors."""
-        self._lib.evoca_set_egenome_all(0xFF)   # wt=0xFF → no match → all colored
-        ptr = self._lib.evoca_get_egenome()
-        arr = np.ctypeslib.as_array(ptr, shape=(self._N * self._N,))
-        arr[:] = np.random.randint(0, 64, self._N * self._N, dtype=np.uint8)
+        """Random egene init: each cell gets 8 independent random 6-bit
+        egenes and exactly one random active slot (Negene = 1).
+        wt=0xFF so all 64 egene values get distinct hash-based colors."""
+        self._lib.evoca_set_egenome_random_all(0xFF)
         self._state_params['egenome'] = 'random'
         self._state_params.pop('egenome_value', None)
 
