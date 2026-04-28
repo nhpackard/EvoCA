@@ -707,6 +707,24 @@ static int fiducial_matches(int row, int col, uint8_t eg)
     return matches;
 }
 
+/* Best (maximum) match count across the cell's active egenes.
+ * Returns 0 if the cell has no active slot (defensive; alive cells
+ * always have ≥1 active slot once Item 4 enforces Negene≥1). */
+static int fiducial_matches_best(int row, int col, int idx)
+{
+    uint8_t a = active[idx];
+    if (a == 0) return 0;
+    int best = 0;
+    while (a) {
+        int s = __builtin_ctz(a);
+        a &= a - 1;
+        int m = fiducial_matches(row, col,
+            egenes[(size_t)idx * NEGENOME_MAX + s]);
+        if (m > best) best = m;
+    }
+    return best;
+}
+
 /* ── Food diffusion (3×3 box blur, periodic) ───────────────────── */
 
 static void diffuse_food_once(void)
@@ -826,8 +844,7 @@ void evoca_step(void)
         for (int col = 0; col < N; col++) {
             int   idx      = row * N + col;
             if (!alive[idx]) continue;
-            int   matches  = fiducial_matches(row, col,
-                egenes[(size_t)idx * NEGENOME_MAX + cell_first_active(idx)]);
+            int   matches  = fiducial_matches_best(row, col, idx);
             float mouthful = (gm_scale / 25.0f) * matches * F_food[idx];
             float headroom = 1.0f - f_priv[idx];
             if (mouthful > headroom) mouthful = headroom;
