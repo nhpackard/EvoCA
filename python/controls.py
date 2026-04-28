@@ -595,10 +595,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     sl_mu_lut = widgets.FloatSlider(
         value=sim.mu_lut, min=0.0, max=mul_max, step=mul_step,
         description="mu_lut:",    readout_format=".6f", **sl_kw)
-    mue_max, mue_step = _flt_lims(sim.mu_egenome, 1e-4)
-    sl_mu_egenome = widgets.FloatSlider(
-        value=sim.mu_egenome, min=0.0, max=mue_max, step=mue_step,
-        description="mu_egenome:", readout_format=".4f", **sl_kw)
+    mue_max, mue_step = _flt_lims(sim.mu_egene, 1e-4)
+    sl_mu_egene = widgets.FloatSlider(
+        value=sim.mu_egene, min=0.0, max=mue_max, step=mue_step,
+        description="mu_egene:", readout_format=".4f", **sl_kw)
     tx_max, tx_step = _flt_lims(sim.tax,        1e-4)
     sl_tax = widgets.FloatSlider(
         value=sim.tax, min=0.0, max=tx_max, step=tx_step,
@@ -652,7 +652,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         widgets.HBox([btn_pause, btn_restart, btn_step, btn_step200,
                       btn_quit, btn_save, txt_descriptor, btn_export]),
         sl_food_inc, sl_m_scale, sl_gdiff,
-        sl_mu_lut, sl_mu_egenome, sl_tax,
+        sl_mu_lut, sl_mu_egene, sl_tax,
     ]
     if _ymax_btns:
         _rows.append(widgets.HBox(_ymax_btns))
@@ -861,7 +861,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         sim._lib.evoca_init(N, sim.food_inc, sim.m_scale)
         sim._lib.evoca_set_gdiff(sim.gdiff)
         sim._lib.evoca_set_mu_lut(sim.mu_lut)
-        sim._lib.evoca_set_mu_egenome(sim.mu_egenome)
+        sim._lib.evoca_set_mu_egene(sim.mu_egene)
         sim._lib.evoca_set_tax(sim.tax)
         sim._lib.evoca_set_restricted_mu(sim.restricted_mu)
         if pat_enabled:
@@ -964,7 +964,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     _make_slider_cb("m_scale",    sl_m_scale)
     _make_slider_cb("gdiff",      sl_gdiff)
     _make_slider_cb("mu_lut",     sl_mu_lut)
-    _make_slider_cb("mu_egenome",  sl_mu_egenome)
+    _make_slider_cb("mu_egene",  sl_mu_egene)
     _make_slider_cb("tax",        sl_tax)
 
     # ── Simulation thread ─────────────────────────────────────────

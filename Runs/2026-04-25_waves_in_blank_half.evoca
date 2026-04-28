@@ -8,7 +8,7 @@
     "m_scale": 0.4,
     "gdiff": 0,
     "mu_lut": 0.05,
-    "mu_egenome": 0.2,
+    "mu_egene": 0.2,
     "tax": 0.03,
     "restricted_mu": 1
   },
@@ -17,7 +17,7 @@
     "m_scale": 0.4,
     "gdiff": 0,
     "mu_lut": 0.05,
-    "mu_egenome": 0.2,
+    "mu_egene": 0.2,
     "tax": 0.0204,
     "restricted_mu": 1
   },

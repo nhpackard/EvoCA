@@ -107,7 +107,7 @@ static float  ggdiff      = 0.0f; /* diffusion strength per step
                                    * gdiff < 1 lets the user dial diffusion
                                    * below the previous integer minimum. */
 static float  gmu_lut     = 0.0f; /* per-bit LUT mutation rate */
-static float  gmu_egenome  = 0.0f; /* per-bit egenome mutation rate */
+static float  gmu_egene    = 0.0f; /* per-bit egene mutation rate */
 static float  gtax        = 0.0f; /* priv food decrement per step */
 static int    grestricted_mu = 0; /* 0=random mutation, 1=restricted to active bits */
 static int    g_diag        = 0; /* diagnostic prints */
@@ -548,9 +548,9 @@ void evoca_set_m_scale(float m)    { gm_scale    = m; }
 void  evoca_set_gdiff(float d)     { ggdiff      = d; }
 float evoca_get_gdiff(void)        { return ggdiff;   }
 void  evoca_set_mu_lut(float m)    { gmu_lut     = m; }
-void  evoca_set_mu_egenome(float m) { gmu_egenome  = m; }
+void  evoca_set_mu_egene(float m)   { gmu_egene    = m; }
 float evoca_get_mu_lut(void)       { return gmu_lut;    }
-float evoca_get_mu_egenome(void)    { return gmu_egenome;  }
+float evoca_get_mu_egene(void)      { return gmu_egene;    }
 void  evoca_set_restricted_mu(int r) { grestricted_mu = r; }
 int   evoca_get_restricted_mu(void)  { return grestricted_mu; }
 void  evoca_set_tax(float t)      { gtax       = t; }
@@ -837,7 +837,7 @@ void evoca_step(void)
             }
 
             /* Mutate child's egenome */
-            int nc = poisson_sample(gmu_egenome * 6);
+            int nc = poisson_sample(gmu_egene * 6);
             for (int f = 0; f < nc; f++)
                 egenome[child] ^= (uint8_t)(1u << (rng_next() % 6));
 

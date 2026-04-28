@@ -51,7 +51,7 @@ from evoca_explore import run_sim
 
 metrics = run_sim(
     params={'food_inc': 0.015, 'm_scale': 0.6, 'gdiff': 0.05,
-            'mu_lut': 0.003, 'mu_egenome': 0.01,
+            'mu_lut': 0.003, 'mu_egene': 0.01,
             'tax': 0.035, 'restricted_mu': True},
     n_steps=5000, sample_every=100, N=256, seed=0,
     shadow=True, init='halfplane',

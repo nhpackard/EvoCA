@@ -51,7 +51,7 @@ All metaparameters can be set at init or adjusted at runtime via sliders.
 | `m_scale`       | float | 1.0     | [0, 10]        | Mouthful scale factor for eating                      |
 | `gdiff`         | int   | 0       | [0, 10]        | Food diffusion passes (3x3 box blur) per step         |
 | `mu_lut`        | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction      |
-| `mu_egenome`     | float | 0.0     | [0, 0.05]      | Per-bit egenome mutation probability on reproduction   |
+| `mu_egene`     | float | 0.0     | [0, 0.05]      | Per-bit egenome mutation probability on reproduction   |
 | `tax`           | float | 0.0     | [0, 0.1]       | Private food decrement per step; death if depleted    |
 | `restricted_mu` | int   | 0       | checkbox       | If 1, restrict LUT mutations to dynamically active bits |
 
@@ -242,7 +242,7 @@ For each alive cell where `f(x) >= 1.0`:
 3. **Mutate child's LUT**: if `restricted_mu`, draw n_flips ~
    Poisson(mu_lut * n_active) and flip only active bits; otherwise
    draw n_flips ~ Poisson(mu_lut * 250) and flip random bits.
-4. **Mutate child's egenome**: draw n_flips ~ Poisson(mu_egenome * 6),
+4. **Mutate child's egenome**: draw n_flips ~ Poisson(mu_egene * 6),
    flip that many random bits in the child's egenome.
 5. Update child's cached genome color (FNV-1a hash of LUT).
 6. Split food: `f(parent) = f(child) = f(parent) / 2`
@@ -381,7 +381,7 @@ sim = EvoCA(lib_path=None)
     # Load the shared library (auto-finds C/libevoca.dylib or .so)
 
 sim.init(N, food_inc=0.0, m_scale=1.0, gdiff=0,
-         mu_lut=0.0, mu_egenome=0.0, tax=0.0, restricted_mu=0)
+         mu_lut=0.0, mu_egene=0.0, tax=0.0, restricted_mu=0)
     # Allocate N x N lattice, set metaparameters.
     # All grids initialized to zero.
 
@@ -396,7 +396,7 @@ sim.update_food_inc(f)       # float
 sim.update_m_scale(m)        # float
 sim.update_gdiff(d)          # int
 sim.update_mu_lut(m)         # float, per-bit LUT mutation rate
-sim.update_mu_egenome(m)      # float, per-bit egenome mutation rate
+sim.update_mu_egene(m)      # float, per-bit egenome mutation rate
 sim.update_tax(t)            # float, priv food decrement per step
 sim.update_restricted_mu(r)  # int (0 or 1)
 sim.update_act_ymax(y)       # int, Y-scale for LUT activity chart
@@ -520,7 +520,7 @@ dict at runtime.
 A separate state call **resets the lattice**: it overwrites the LUT
 on every cell with the chosen rule, so any prior mutations are wiped.
 If you want to start from GoL but **keep** the simulation actually
-running as GoL, set `mu_lut=0` and `mu_egenome=0` first (or switch
+running as GoL, set `mu_lut=0` and `mu_egene=0` first (or switch
 them off after `sim.state(...)` via `sim.update_mu_lut(0.0)`); otherwise
 the per-birth Poisson mutation will drift the LUT away from the GoL
 bytes within tens of generations.
@@ -609,7 +609,7 @@ After `init()` or the corresponding setter, these Python attributes
 reflect current values:
 
     sim.food_inc, sim.m_scale, sim.gdiff,
-    sim.mu_lut, sim.mu_egenome, sim.tax, sim.restricted_mu, sim.egenome
+    sim.mu_lut, sim.mu_egene, sim.tax, sim.restricted_mu, sim.egenome
 
 ---
 
@@ -646,7 +646,7 @@ notebook cell.  Returns immediately (non-blocking).
 - **m_scale** slider: [0, 10], step 0.1
 - **gdiff** slider: [0, 10], step 1
 - **mu_lut** slider: [0, 0.001], step 0.00001
-- **mu_egenome** slider: [0, 0.05], step 0.001
+- **mu_egene** slider: [0, 0.05], step 0.001
 - **tax** slider: [0, 0.1], step 0.001
 - **act_ymax** / **eg_act_ymax** / **pat_act_ymax**: halve/double buttons (`<| name |>`)
 - **restricted_mu** checkbox: toggle restricted mutation

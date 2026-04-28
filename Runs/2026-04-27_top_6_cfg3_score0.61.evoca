@@ -1,6 +1,6 @@
 {
   "version": 3,
-  "created": "2026-04-27T11:13:37",
+  "created": "2026-04-27T14:54:06",
   "descriptor": "top_6_cfg3_score0.61",
   "source_scan": "2026-04-27_initial",
   "source_config_idx": 3,
@@ -10,7 +10,7 @@
     "m_scale": 0.6,
     "gdiff": 0.01,
     "mu_lut": 0.003,
-    "mu_egenome": 0.001,
+    "mu_egene": 0.001,
     "tax": 0.02,
     "restricted_mu": false
   },
@@ -19,7 +19,7 @@
     "m_scale": 0.6,
     "gdiff": 0.01,
     "mu_lut": 0.003,
-    "mu_egenome": 0.001,
+    "mu_egene": 0.001,
     "tax": 0.02,
     "restricted_mu": false
   },

@@ -117,7 +117,7 @@ def _spatial_metrics(alive_2d, F_2d):
 
 # ── Main entry point ──────────────────────────────────────────────────
 
-_PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff', 'mu_lut', 'mu_egenome',
+_PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff', 'mu_lut', 'mu_egene',
                'tax', 'restricted_mu')
 
 
@@ -345,7 +345,7 @@ def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
         raise ValueError(f"config_idx={config_idx} not found in {scan_dir}/results.csv")
 
     metaparams = {}
-    for k in ('food_inc', 'm_scale', 'gdiff', 'mu_lut', 'mu_egenome',
+    for k in ('food_inc', 'm_scale', 'gdiff', 'mu_lut', 'mu_egene',
               'tax', 'restricted_mu'):
         v = _row_param_value(row, k)
         if v != '':
