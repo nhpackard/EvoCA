@@ -107,7 +107,13 @@ static float  ggdiff      = 0.0f; /* diffusion strength per step
                                    * gdiff < 1 lets the user dial diffusion
                                    * below the previous integer minimum. */
 static float  gmu_lut     = 0.0f; /* per-bit LUT mutation rate */
-static float  gmu_egene    = 0.0f; /* per-bit egene mutation rate */
+static float  gmu_egene    = 0.0f; /* per-egene-bit flip rate (across
+                                    * all 8×6 = 48 bits per cell) */
+static float  gmu_egenome = 0.0f; /* per-active-bit flip rate
+                                    * (across the 8 presence bits) */
+static float  gp_dup_on_activate = 0.0f; /* prob that a 0→1 active flip
+                                    * triggers copy of a random
+                                    * currently-active egene byte */
 static float  gtax        = 0.0f; /* priv food decrement per step */
 static int    grestricted_mu = 0; /* 0=random mutation, 1=restricted to active bits */
 static int    g_diag        = 0; /* diagnostic prints */
@@ -594,8 +600,12 @@ void  evoca_set_gdiff(float d)     { ggdiff      = d; }
 float evoca_get_gdiff(void)        { return ggdiff;   }
 void  evoca_set_mu_lut(float m)    { gmu_lut     = m; }
 void  evoca_set_mu_egene(float m)   { gmu_egene    = m; }
+void  evoca_set_mu_egenome(float m) { gmu_egenome = m; }
+void  evoca_set_p_dup_on_activate(float p) { gp_dup_on_activate = p; }
 float evoca_get_mu_lut(void)       { return gmu_lut;    }
 float evoca_get_mu_egene(void)      { return gmu_egene;    }
+float evoca_get_mu_egenome(void)   { return gmu_egenome; }
+float evoca_get_p_dup_on_activate(void) { return gp_dup_on_activate; }
 void  evoca_set_restricted_mu(int r) { grestricted_mu = r; }
 int   evoca_get_restricted_mu(void)  { return grestricted_mu; }
 void  evoca_set_tax(float t)      { gtax       = t; }
@@ -912,17 +922,61 @@ void evoca_step(void)
                     lut_flip(child_lut, rng_next() % LUT_BITS);
             }
 
-            /* Mutate child's egene at the (single) active slot.
-             * Item 4 will replace this with a multi-rate pass over all
-             * 8 slots + the active mask. */
-            int nc = poisson_sample(gmu_egene * 6);
-            int eg_slot = cell_first_active(child);
-            uint8_t *eg_byte = &egenes[(size_t)child * NEGENOME_MAX + eg_slot];
-            for (int f = 0; f < nc; f++)
-                *eg_byte ^= (uint8_t)(1u << (rng_next() % 6));
+            /* Egenome mutation pass.
+             * Two rates: gmu_egene (per-egene-bit) and gmu_egenome
+             * (per-active-bit). The egene-bit pass walks all 8×6 bits
+             * uniformly, so inactive-slot bytes also drift (pseudo-
+             * gene reservoir for future activations). The active-bit
+             * pass flips presence bits, with rejection of any flip
+             * that would take Negene to 0. Newly-activated slots may
+             * be overwritten with a copy of a random currently-active
+             * egene (gene duplication) before the egene-bit pass
+             * applies; the duplicated copy then picks up fresh
+             * independent point mutations. */
+            uint8_t active_before = active[child];
+
+            /* Active-bit pass. */
+            int na = poisson_sample(gmu_egenome * NEGENOME_MAX);
+            for (int f = 0; f < na; f++) {
+                int b = (int)(rng_next() & 7);
+                uint8_t new_active =
+                    active[child] ^ (uint8_t)(1u << b);
+                if (new_active != 0)            /* reject Negene→0 */
+                    active[child] = new_active;
+            }
+
+            /* Dup-on-activate: for each newly-on bit, with probability
+             * gp_dup_on_activate, copy a random currently-active
+             * slot's egene byte into the new slot. */
+            uint8_t newly_on = active[child] & ~active_before;
+            while (newly_on) {
+                int s = __builtin_ctz(newly_on);
+                newly_on &= newly_on - 1;
+                uint32_t r16 = rng_next() & 0xFFFFu;
+                uint32_t thr = (uint32_t)(gp_dup_on_activate * 65536.0f);
+                if (r16 < thr) {
+                    int n_act = __builtin_popcount(active[child]);
+                    int pick  = (int)(rng_next() % (uint32_t)n_act);
+                    uint8_t a2 = active[child];
+                    while (pick-- > 0) a2 &= a2 - 1;
+                    int src = __builtin_ctz(a2);
+                    egenes[(size_t)child * NEGENOME_MAX + s] =
+                        egenes[(size_t)child * NEGENOME_MAX + src];
+                }
+            }
+
+            /* Egene-bit pass: flip every-bit-uniform across all 8
+             * slots × 6 bits. */
+            int ne = poisson_sample(gmu_egene * NEGENOME_MAX * 6);
+            for (int f = 0; f < ne; f++) {
+                int slot = (int)(rng_next() & 7);
+                int bit  = (int)(rng_next() % 6);
+                egenes[(size_t)child * NEGENOME_MAX + slot] ^=
+                    (uint8_t)(1u << bit);
+            }
 
             /* births: 1 = normal, 2 = mutant */
-            births[child] = (nf > 0 || nc > 0) ? 2 : 1;
+            births[child] = (nf > 0 || na > 0 || ne > 0) ? 2 : 1;
 
             /* Update cached genome color + hash (skip if unchanged) */
             if (nf > 0) {
