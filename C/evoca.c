@@ -1355,9 +1355,12 @@ int evoca_neutral_get_population(void) { return neut_enabled ? neut_n : 0; }
 int evoca_get_births_last(void)        { return g_births_last; }
 int evoca_get_deaths_last(void)        { return g_deaths_last; }
 
-/* Alpha for the N-overlay tint, percent. Settable at runtime via
- * evoca_set_n_overlay_alpha(). Default 100 = fully opaque white. */
-static int    n_overlay_alpha_pct = 100;
+/* Alpha for the optional N-presence overlay tint, percent. Default 0
+ * (disabled): the only N-derived element shown is the single white
+ * threshold line at N_p90. Set >0 with evoca_set_n_overlay_alpha() to
+ * also paint every y row containing any shadow bucket (high values
+ * obscure the G colours; 5–20 is usually plenty if used). */
+static int    n_overlay_alpha_pct = 0;
 
 /* Cached value of N's top-decile activity, updated each render call;
  * exposed via evoca_get_n_p90() so the controls layer can display it. */
@@ -1400,10 +1403,10 @@ void evoca_n_activity_update(void)
 
 /* Combined activity + neutral-shadow strip-chart column.
  *
- * Renders G-activity (real run) plus an N-activity (Channon shadow) overlay
- * on a fixed-reference log y-axis (NACT_LOG_REF). Same scale used in every
- * column, so older columns and newer columns are directly comparable — no
- * warping as the simulation evolves.
+ * Renders G-activity (real run) on a fixed-reference log y-axis
+ * (NACT_LOG_REF). Same scale used in every column, so older columns and
+ * newer columns are directly comparable — no warping as the simulation
+ * evolves.
  *
  *   y = (h-1) * (1 - log(act+1) / log(REF+1))
  *
@@ -1411,14 +1414,20 @@ void evoca_n_activity_update(void)
  *   act = REF    → y = 0   (top)
  *   act > REF    → clipped at top
  *
- * The white threshold line is drawn at the y for the current N_p90, so as
- * the shadow's top-decile activity grows over time the line traces a curve
- * from low (right when first written) to higher (right when written later)
- * — visualising the calibration threshold's evolution across the window.
+ * Two N-shadow elements are drawn on top of the G layer:
  *
- * N is drawn as a presence-per-row tint (one alpha-blend per y, regardless
- * of how many N buckets land on that row), so dense clusters don't
- * compound to near-white. */
+ *   1. A single white horizontal line at the y for the current N_p90 —
+ *      the calibration threshold. As the shadow's top-decile activity
+ *      grows over time, this line traces a curve from low at the right
+ *      when first written to higher at the right when written later.
+ *      Always on (when shadow is enabled).
+ *
+ *   2. An optional per-row presence tint (alpha-blended white wherever
+ *      any shadow bucket lives). DISABLED by default
+ *      (n_overlay_alpha_pct = 0); enable with evoca_set_n_overlay_alpha()
+ *      to inspect the full shadow distribution. Even modest alpha values
+ *      (~10–20) tend to obscure the G layer because the shadow has
+ *      buckets at most y rows. */
 #define NACT_LOG_REF        1.0e6   /* activities approach top as they near this */
 
 static inline int nact_act_to_y_log(double act, double inv_log_ref, int height)
@@ -1500,8 +1509,12 @@ void evoca_n_activity_render_col(int32_t *col, int height)
         }
     }
 
-    /* ── Layer 2: N-activity overlay (presence-per-row, alpha-blend once) ── */
-    if (nact_keys && nact_cnt > 0) {
+    /* ── Layer 2: optional N-activity presence overlay ──────────────────
+     * Disabled when n_overlay_alpha_pct == 0 (the default). When enabled,
+     * each y row containing any live shadow bucket is alpha-blended with
+     * white. Useful for seeing the *shape* of the shadow distribution but
+     * tends to drown out G even at modest alpha. */
+    if (n_overlay_alpha_pct > 0 && nact_keys && nact_cnt > 0) {
         uint8_t n_present[height];
         memset(n_present, 0, (size_t)height);
         for (int i = 0; i < nact_cap; i++) {
