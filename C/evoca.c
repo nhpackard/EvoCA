@@ -72,6 +72,31 @@ static uint32_t lut_hash_fn(const uint8_t *b)
     return h;
 }
 
+/* FNV-1a hash of arbitrary byte buffer; used to fold sorted active
+ * egene bytes into the genome hash. */
+static uint32_t fnv1a_bytes(const uint8_t *b, int n, uint32_t seed)
+{
+    uint32_t h = seed;
+    for (int i = 0; i < n; i++) {
+        h ^= b[i];
+        h *= 0x01000193u;
+    }
+    return h;
+}
+
+/* Genome hash from raw LUT bytes + sorted active egene bytes.
+ * Order-independent over egene set when active_egenes is pre-sorted.
+ * Used for both wild-type hash computation and per-cell rehash. */
+static uint32_t genome_hash_static(const uint8_t *lut_bytes,
+                                   const uint8_t *sorted_active_egenes,
+                                   int n_active)
+{
+    uint32_t h = lut_hash_fn(lut_bytes);
+    return fnv1a_bytes(sorted_active_egenes, n_active, h);
+}
+
+/* cell_genome_hash defined later, after global state declarations. */
+
 /* Map LUT hash → ARGB color.  Wild-type hash maps to white. */
 static int32_t hash_to_color(uint32_t h, uint32_t wt)
 {
@@ -522,6 +547,39 @@ static inline void cell_genome_copy(int dst, int src)
     active[dst] = active[src];
 }
 
+/* Per-cell genome hash: order-independent over the cell's active
+ * egenes. Sorts active egene bytes (insertion sort, n ≤ 8), then
+ * folds them into the FNV-1a stream after the LUT bytes. */
+static uint32_t cell_genome_hash(int idx)
+{
+    uint8_t buf[NEGENOME_MAX];
+    int n = 0;
+    uint8_t a = active[idx];
+    while (a) {
+        int s = __builtin_ctz(a); a &= a - 1;
+        buf[n++] = egenes[(size_t)idx * NEGENOME_MAX + s] & 0x3F;
+    }
+    for (int i = 1; i < n; i++) {
+        uint8_t x = buf[i]; int j = i - 1;
+        while (j >= 0 && buf[j] > x) { buf[j+1] = buf[j]; j--; }
+        buf[j+1] = x;
+    }
+    return genome_hash_static(lut + (size_t)idx * LUT_BYTES, buf, n);
+}
+
+/* Update both per-cell caches:
+ *   lut_color[i]      = colour from LUT-only hash (visualisation;
+ *                        wt LUT → white, others → hash-derived ARGB)
+ *   lut_hash_cache[i] = full genome hash (LUT bytes ‖ sorted active
+ *                        egenes); used by Channon G-activity, the
+ *                        neutral shadow, and any species-ID probe. */
+static inline void cell_rehash(int i)
+{
+    uint32_t lh = lut_hash_fn(lut + (size_t)i * LUT_BYTES);
+    lut_color[i] = (uint32_t)hash_to_color(lh, wt_hash);
+    lut_hash_cache[i] = cell_genome_hash(i);
+}
+
 /* ── Lifecycle ──────────────────────────────────────────────────── */
 
 void evoca_init(int N, float food_inc, float m_scale)
@@ -632,19 +690,14 @@ void evoca_set_lut_all(const uint8_t *lb)
     for (size_t i = 0; i < cells; i++)
         memcpy(lut + i * LUT_BYTES, lb, LUT_BYTES);
     wt_hash = lut_hash_fn(lb);
-    int32_t wt_color = hash_to_color(wt_hash, wt_hash);  /* white */
-    for (size_t i = 0; i < cells; i++) {
-        lut_color[i] = (uint32_t)wt_color;
-        lut_hash_cache[i] = wt_hash;
-    }
+    for (size_t i = 0; i < cells; i++)
+        cell_rehash((int)i);
 }
 
 void evoca_set_lut(int idx, const uint8_t *lb)
 {
     memcpy(lut + (size_t)idx * LUT_BYTES, lb, LUT_BYTES);
-    uint32_t h = lut_hash_fn(lb);
-    lut_color[idx] = (uint32_t)hash_to_color(h, wt_hash);
-    lut_hash_cache[idx] = h;
+    cell_rehash(idx);
 }
 
 void evoca_set_egenome_all(uint8_t eg) {
@@ -653,6 +706,9 @@ void evoca_set_egenome_all(uint8_t eg) {
     memset(egenes, eg, cells * NEGENOME_MAX);
     memset(active, 0x01, cells);
     eg_init_colors(eg);
+    /* Genome hash now depends on egenes; refresh per-cell cache. */
+    for (size_t i = 0; i < cells; i++)
+        cell_rehash((int)i);
 }
 
 void evoca_set_egenome_random_all(uint8_t wt) {
@@ -663,6 +719,8 @@ void evoca_set_egenome_random_all(uint8_t wt) {
         active[i] = (uint8_t)(1u << (rng_next() & 7));
     }
     eg_init_colors(wt);
+    for (size_t i = 0; i < cells; i++)
+        cell_rehash((int)i);
 }
 
 void evoca_set_f_all(float f)
@@ -860,11 +918,11 @@ void evoca_step(void)
                 f_priv[i] = 0.0f;
                 alive[i] = 0;
                 g_deaths_last++;
-                /* Death: zero out LUT genome */
+                /* Death: zero out LUT and clear active mask so the
+                 * dead cell hashes into a known "no genome" bucket. */
                 memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
-                uint32_t dh = lut_hash_fn(lut + i * LUT_BYTES);
-                lut_color[i] = (uint32_t)hash_to_color(dh, wt_hash);
-                lut_hash_cache[i] = dh;
+                active[i] = 0;
+                cell_rehash((int)i);
             }
         }
     }
@@ -996,13 +1054,15 @@ void evoca_step(void)
             }
 
             /* births: 1 = normal, 2 = mutant */
-            births[child] = (nf > 0 || na > 0 || ne > 0) ? 2 : 1;
+            int mutated = (nf > 0 || na > 0 || ne > 0);
+            births[child] = mutated ? 2 : 1;
 
-            /* Update cached genome color + hash (skip if unchanged) */
-            if (nf > 0) {
-                uint32_t ch = lut_hash_fn(child_lut);
-                lut_color[child] = (uint32_t)hash_to_color(ch, wt_hash);
-                lut_hash_cache[child] = ch;
+            /* Refresh caches. Genome hash now depends on egenes too,
+             * so we must recompute on any egene mutation as well as
+             * any LUT mutation. The unchanged-from-parent fast-path
+             * is still safe when nothing mutated. */
+            if (mutated) {
+                cell_rehash(child);
             } else {
                 lut_color[child] = lut_color[idx];
                 lut_hash_cache[child] = lut_hash_cache[idx];
@@ -2086,9 +2146,8 @@ void evoca_set_alive(const uint8_t *arr)
             v_curr[i] = 0;
             f_priv[i] = 0.0f;
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
-            uint32_t dh = lut_hash_fn(lut + i * LUT_BYTES);
-            lut_color[i] = (uint32_t)hash_to_color(dh, wt_hash);
-            lut_hash_cache[i] = dh;
+            active[i] = 0;
+            cell_rehash((int)i);
         }
     }
 }
@@ -2109,9 +2168,8 @@ void evoca_set_alive_fraction(float frac)
             v_curr[i] = 0;
             f_priv[i] = 0.0f;
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
-            uint32_t dh = lut_hash_fn(lut + i * LUT_BYTES);
-            lut_color[i] = (uint32_t)hash_to_color(dh, wt_hash);
-            lut_hash_cache[i] = dh;
+            active[i] = 0;
+            cell_rehash((int)i);
         }
     }
 }
@@ -2135,9 +2193,8 @@ void evoca_set_alive_patch(int radius)
             v_curr[i] = 0;
             f_priv[i] = 0.0f;
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
-            uint32_t dh = lut_hash_fn(lut + i * LUT_BYTES);
-            lut_color[i] = (uint32_t)hash_to_color(dh, wt_hash);
-            lut_hash_cache[i] = dh;
+            active[i] = 0;
+            cell_rehash((int)i);
         }
     }
 }
@@ -2159,9 +2216,8 @@ void evoca_set_alive_halfplane(int axis)
             v_curr[i] = 0;
             f_priv[i] = 0.0f;
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
-            uint32_t dh = lut_hash_fn(lut + i * LUT_BYTES);
-            lut_color[i] = (uint32_t)hash_to_color(dh, wt_hash);
-            lut_hash_cache[i] = dh;
+            active[i] = 0;
+            cell_rehash((int)i);
         }
     }
 }
