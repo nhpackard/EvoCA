@@ -487,6 +487,44 @@ sim.set_egenome_random()
 sim.set_alive_halfplane(0)         # right half: dead
 ```
 
+#### One-shot lattice initialization with `sim.state()`
+
+`sim.state(**kwargs)` is a convenience that drives the LUT, egenome, v,
+f_priv, F_food, and alive setters in the correct order from a single
+keyword dict. Useful for parameter-sweep notebooks and as the
+canonical state-init format used by `.evoca` recipe files
+(`evoca_py.import_run` and the harness in `python/evoca_explore.py`).
+
+```python
+sim.state(
+    lut='gol',          # 'gol' or 'random'  (anything ≠ 'random' = GoL)
+    lut_n_init=3,       # if lut='random': 1=10 bits, 2=50, 3=250
+    egenome='uniform',  # 'uniform' or 'random'
+    egenome_value=0b000011,
+    v_density=0.5,      # fraction of cells with v_curr=1
+    f_init=0.5,         # initial private food
+    F='uniform',        # 'uniform' or 'random'
+    F_init=1.0,         # initial env food (when F='uniform')
+    F_range=None,       # [lo, hi] (when F='random')
+    alive='halfplane',  # 'all' | 'fraction' | 'patch' | 'halfplane'
+    alive_fraction=0.5, # alive='fraction'
+    alive_radius=64,    # alive='patch'
+    alive_axis=0,       # alive='halfplane', 0=left, 1=top
+)
+```
+
+All keys are optional and default to the values shown. Calling
+`evoca_py.available_state_init()` returns the same descriptions as a
+dict at runtime.
+
+A separate state call **resets the lattice**: it overwrites the LUT
+on every cell with the chosen rule, so any prior mutations are wiped.
+If you want to start from GoL but **keep** the simulation actually
+running as GoL, set `mu_lut=0` and `mu_egenome=0` first (or switch
+them off after `sim.state(...)` via `sim.update_mu_lut(0.0)`); otherwise
+the per-birth Poisson mutation will drift the LUT away from the GoL
+bytes within tens of generations.
+
 #### Step and Colorize
 
 ```python
