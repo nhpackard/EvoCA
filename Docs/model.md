@@ -51,8 +51,12 @@ All metaparameters can be set at init or adjusted at runtime via sliders.
 | `m_scale`       | float | 1.0     | [0, 10]        | Mouthful scale factor for eating                      |
 | `gdiff`         | int   | 0       | [0, 10]        | Food diffusion passes (3x3 box blur) per step         |
 | `mu_lut`        | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction      |
-| `mu_egene`     | float | 0.0     | [0, 0.05]      | Per-bit egenome mutation probability on reproduction   |
-| `tax`           | float | 0.0     | [0, 0.1]       | Private food decrement per step; death if depleted    |
+| `mu_egene`      | float | 0.0     | [0, 0.05]      | Per-egene-bit flip probability on reproduction (across all 8×6 = 48 bits per cell, including inactive slots — those drift as pseudogenes) |
+| `mu_egenome`    | float | 0.0     | [0, 0.05]      | Per-active-bit flip probability on reproduction (across the 8 presence bits). Flips that would take Negene to 0 are rejected |
+| `p_dup_on_activate` | float | 1.0 | [0, 1]          | Probability that a 0→1 active-bit flip overwrites the new slot's egene byte with a copy from a random currently-active slot (gene duplication). Copy happens before the egene-bit flip pass, so the new copy still receives fresh independent point mutations |
+| `tax`           | float | 0.0     | [0, 0.1]       | Constant private-food decrement per step; death if depleted |
+| `tax_per_egene` | float | 0.0     | [0, 0.01]      | Additional decrement per active egene per step. Bounds Negene against the unbounded "more is better" pressure of max-match eating |
+| `tax_lut`       | float | 0.0     | [0, 0.001]     | Additional decrement per LUT '1' bit per step. Penalises rule complexity |
 | `restricted_mu` | int   | 0       | checkbox       | If 1, restrict LUT mutations to dynamically active bits |
 
 ---
@@ -119,8 +123,28 @@ to 3 rings.
 
 ## Fiducial Pattern c(x) and egenome
 
-Each cell's eating behavior is governed by a **fiducial configuration
-pattern** — a D4-symmetric 5x5 binary pattern encoded in 6 bits.
+Each cell carries a small **list of egenes** — up to `NEGENOME_MAX = 8`
+slots — and an **active mask** marking which slots are live.
+
+- `egenes[NEGENOME_MAX][6 bits]` per cell — each slot is a 6-bit
+  D4-symmetric fiducial pattern (same encoding as the legacy single
+  egenome).
+- `active[8]` per cell — 1 bit per slot. `Negene = popcount(active)`.
+  An alive cell always has Negene ≥ 1.
+
+Inactive slots' egene bytes are still mutated at the per-egene-bit
+rate, accumulating drift like pseudogenes; if an inactive slot is
+later activated by a presence-bit flip, its drifted bits become live
+genome (and may be overwritten by a duplicated copy of an existing
+active egene first — see `p_dup_on_activate`).
+
+The list of slots is **unordered** for purposes of identity: the
+species hash sorts active egene bytes lex before folding them into the
+genome hash. Two cells with the same LUT and the same set of active
+egenes are the same species, regardless of slot positions.
+
+When the section below talks about "the egenome" it refers to a single
+slot. The next subsection covers how the cell uses *all* its slots.
 
 ### D4 Orbits
 
@@ -168,14 +192,26 @@ print(pat)
 
 ### How egenome affects eating
 
-The **fiducial match count** compares the actual cell states in the 5x5
-neighborhood against the fiducial pattern:
+The **fiducial match count** for a single egene compares the actual
+cell states in the 5x5 neighborhood against the fiducial pattern:
 
-    matches = sum over all 25 positions of (v_actual == c_fiducial)
+    matches(egene) = sum over all 25 positions of (v_actual == c_fiducial)
 
-The cell's **mouthful** is then:
+With multiple egenes per cell, eating uses the **best (maximum)** match
+across the cell's active egenes:
 
-    M(x) = (m_scale / 25) * matches
+    matches(cell) = max over active s of matches(egene[s])
+
+The cell's **mouthful** is:
+
+    M(x) = (m_scale / 25) * matches(cell) * F(x)
+
+(capped to `1 - f_priv` so private food can't exceed 1).
+
+The max-match rule is a "breadth bonus": more active egenes can only
+increase mouthful, never decrease it. Without the per-egene tax
+(`tax_per_egene`) this bonus would drive `Negene → NEGENOME_MAX` for
+free; the tax provides the metabolic counterweight.
 
 With egenome=0 (all-zero fiducial), matches counts **dead** neighbors.
 With egenome=0b111111 (all-one), matches counts **alive** neighbors.
@@ -213,14 +249,23 @@ Periodic boundary conditions.
 
 ### Phase 2c: Tax and Death
 
-If `tax > 0`, for each alive cell:
+For each alive cell, the per-step decrement is the sum of three terms:
 
-    f(x) -= tax,   clamped to 0
+    t = tax  +  tax_per_egene * Negene  +  tax_lut * popcount(LUT bytes)
+    f(x) -= t,   clamped to 0
+
+- `tax` is the unconditional baseline.
+- `tax_per_egene` makes wider egenomes metabolically more expensive,
+  which combined with max-match eating gives Negene a finite optimum.
+- `tax_lut` taxes "1" bits in the LUT, penalising rule complexity so
+  innovations that don't pay for themselves get pruned.
+
+Defaulting `tax_per_egene = tax_lut = 0` reproduces the previous
+single-rate tax exactly.
 
 If `f(x)` reaches 0, the cell dies: `alive(x)` is set to 0, its LUT is
-zeroed, and `f(x)` is cleared.  Dead cells are skipped by subsequent
-phases.  This creates survival pressure: cells must eat enough to offset
-the tax or die.
+zeroed, the active mask is cleared (so `Negene = 0`), and `f(x)` is
+cleared. Dead cells are skipped by subsequent phases.
 
 ### Phase 3: Eating
 
@@ -237,14 +282,28 @@ Private food f(x) is hard-capped at 1.0.
 For each alive cell where `f(x) >= 1.0`:
 1. Find the Moore neighbor (8 cells) with the lowest f(x').
    Ties broken by uniform random (xorshift32 PRNG).
-2. Set `alive(child) = 1`. Copy parent genome to child: LUT, egenome.
-   (v_curr is dynamical state, NOT copied.)
+2. Set `alive(child) = 1`. Copy parent genome to child: LUT, all 8
+   egene slots, active mask. (v_curr is dynamical state, NOT copied.)
 3. **Mutate child's LUT**: if `restricted_mu`, draw n_flips ~
    Poisson(mu_lut * n_active) and flip only active bits; otherwise
    draw n_flips ~ Poisson(mu_lut * 250) and flip random bits.
-4. **Mutate child's egenome**: draw n_flips ~ Poisson(mu_egene * 6),
-   flip that many random bits in the child's egenome.
-5. Update child's cached genome color (FNV-1a hash of LUT).
+4. **Mutate child's egenome** (three sub-steps run in this order):
+   - **Active-bit pass**: draw `na ~ Poisson(mu_egenome * 8)` flips
+     across the 8 presence bits. Reject any flip that would make
+     Negene = 0.
+   - **Dup-on-activate**: for each presence bit that just went 0→1,
+     with probability `p_dup_on_activate`, overwrite that slot's
+     egene byte with a copy from a uniformly random
+     currently-active slot.
+   - **Egene-bit pass**: draw `ne ~ Poisson(mu_egene * 8 * 6)` flips,
+     each picking a uniformly random slot and a uniformly random
+     bit in [0, 6). Inactive slots get mutated too (pseudogenes).
+   The duplicated copy from sub-step 2 sees fresh independent
+   point mutations from sub-step 3, so duplication is followed by
+   divergence.
+5. Update child's caches: `lut_color` (LUT-only hash → ARGB) and
+   `lut_hash_cache` (full genome hash = FNV-1a over LUT bytes ‖
+   sorted active egene bytes).
 6. Split food: `f(parent) = f(child) = f(parent) / 2`
 
 The `births` array is set for each child cell (used by colormode 3).
@@ -381,7 +440,10 @@ sim = EvoCA(lib_path=None)
     # Load the shared library (auto-finds C/libevoca.dylib or .so)
 
 sim.init(N, food_inc=0.0, m_scale=1.0, gdiff=0,
-         mu_lut=0.0, mu_egene=0.0, tax=0.0, restricted_mu=0)
+         mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
+         p_dup_on_activate=1.0,
+         tax=0.0, tax_per_egene=0.0, tax_lut=0.0,
+         restricted_mu=0)
     # Allocate N x N lattice, set metaparameters.
     # All grids initialized to zero.
 
@@ -396,8 +458,12 @@ sim.update_food_inc(f)       # float
 sim.update_m_scale(m)        # float
 sim.update_gdiff(d)          # int
 sim.update_mu_lut(m)         # float, per-bit LUT mutation rate
-sim.update_mu_egene(m)      # float, per-bit egenome mutation rate
-sim.update_tax(t)            # float, priv food decrement per step
+sim.update_mu_egene(m)       # float, per-egene-bit flip rate (across all 8×6 bits)
+sim.update_mu_egenome(m)     # float, per-active-bit flip rate (across 8 presence bits)
+sim.update_p_dup_on_activate(p)  # float in [0,1], dup-on-activate probability
+sim.update_tax(t)            # float, constant priv-food decrement per step
+sim.update_tax_per_egene(t)  # float, additional decrement per active egene
+sim.update_tax_lut(t)        # float, additional decrement per LUT '1' bit
 sim.update_restricted_mu(r)  # int (0 or 1)
 sim.update_act_ymax(y)       # int, Y-scale for LUT activity chart
 sim.update_eg_act_ymax(y)    # int, Y-scale for egenome activity chart
