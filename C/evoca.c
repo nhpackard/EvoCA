@@ -1812,17 +1812,22 @@ void evoca_nq_activity_deciles(float *deciles_out)
 
 void evoca_eg_activity_update(void)
 {
-    /* Per-cell, single-active-slot histogram. Item 7 redefines this
-     * to count active egene slots across all cells (sum over slots,
-     * not over cells). */
+    /* Active-egene-slot histogram: for each alive cell, every active
+     * slot contributes one count to its egene-value bucket. So the
+     * sum across buckets equals (sum over alive cells of Negene), not
+     * the alive count. At Negene=1 everywhere this reduces to the
+     * old per-cell histogram. */
     size_t cells = (size_t)gN * gN;
     memset(eg_pop, 0, sizeof(eg_pop));
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) continue;
-        int s = cell_first_active((int)i);
-        uint8_t eg = egenes[i * NEGENOME_MAX + s] & 0x3F;
-        eg_pop[eg]++;
-        eg_act[eg]++;
+        uint8_t a = active[i];
+        while (a) {
+            int s = __builtin_ctz(a); a &= a - 1;
+            uint8_t eg = egenes[i * NEGENOME_MAX + s] & 0x3F;
+            eg_pop[eg]++;
+            eg_act[eg]++;
+        }
     }
 }
 
