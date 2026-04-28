@@ -117,8 +117,10 @@ def _spatial_metrics(alive_2d, F_2d):
 
 # ── Main entry point ──────────────────────────────────────────────────
 
-_PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff', 'mu_lut', 'mu_egene',
-               'tax', 'restricted_mu')
+_PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff',
+               'mu_lut', 'mu_egene', 'mu_egenome', 'p_dup_on_activate',
+               'tax', 'tax_per_egene', 'tax_lut',
+               'restricted_mu')
 
 
 def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
@@ -170,6 +172,18 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
             for k, v in spatial.items():
                 samples[k].append(v)
 
+            # Mean Negene over alive cells (popcount of active byte).
+            active_view = np.ctypeslib.as_array(
+                sim._lib.evoca_get_active(),
+                shape=(N * N,))
+            alive_flat = alive_view.ravel() == 1
+            if alive_flat.any():
+                bits = np.unpackbits(
+                    active_view[alive_flat][:, None], axis=1)
+                samples['negene'].append(float(bits.sum(axis=1).mean()))
+            else:
+                samples['negene'].append(0.0)
+
             sim._lib.evoca_activity_update()
             G = sim.get_activity(max_n=200000)
             gp = G['pop_count'] > 0
@@ -218,6 +232,7 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
     _agg('n_patches', 'n_patches')
     _agg('alive_density', 'alive_density')
     _agg('n_distinct_genomes', 'n_distinct_genomes')
+    _agg('negene', 'negene')
 
     out['unique_top_genomes'] = len(dominator_history)
 
@@ -345,8 +360,7 @@ def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
         raise ValueError(f"config_idx={config_idx} not found in {scan_dir}/results.csv")
 
     metaparams = {}
-    for k in ('food_inc', 'm_scale', 'gdiff', 'mu_lut', 'mu_egene',
-              'tax', 'restricted_mu'):
+    for k in _PARAM_KEYS:
         v = _row_param_value(row, k)
         if v != '':
             metaparams[k] = v
