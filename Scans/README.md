@@ -11,10 +11,17 @@ Each subdirectory `<YYYY-MM-DD>_<name>/` is one scan campaign:
   notes.md           — hypothesis, axes, post-hoc observations
 ```
 
+Top-level cross-scan analyses live as standalone markdown files at
+`Scans/<YYYY-MM-DD>_<name>.md` (e.g. `2026-04-27_three_scan_analysis.md` — a
+writeup comparing three iterations of a scan campaign with full metric
+definitions, results tables, and diminishing-returns analysis).
+
 The harness module is `python/evoca_explore.py`. `run_sim(params, ...)` runs
 one configuration headless and returns a dict of summary metrics. Drivers
 import that and feed configurations through it; results are gathered to
-CSV.
+CSV. Most public helpers in `evoca_explore` accept `scan_dir=None` and
+will default to the most-recently-modified subdirectory of `Scans/`, so
+you usually don't need to pass it when actively iterating on a campaign.
 
 ## Running a scan from the shell
 
@@ -93,12 +100,38 @@ run_with_controls(sim, **kw)
 Or grab the top-K by composite score automatically:
 
 ```python
-top = evoca_from_scan_top('Scans/2026-04-27_initial', top_k=5,
-                          probes={...}, colormode=4)
+top = evoca_from_scan_top(top_k=5,             # scan_dir optional;
+                          probes={...},        # defaults to most-recent
+                          colormode=4)
 # top is a list of (config_idx, filepath); index 0 = highest score
 sim, kw = import_run(top[0][1])
 run_with_controls(sim, **kw)
 ```
+
+### Ranking by a single axis (evolution-only or spatial-only)
+
+The default composite score balances spatial and evolution metrics
+(see "Composite score" section below). To rank by evolution alone,
+pass `score_keys=EVO_METRICS`; for spatial alone, `score_keys=SPATIAL_METRICS`:
+
+```python
+from evoca_explore import evoca_from_scan_top, EVO_METRICS, SPATIAL_METRICS
+
+# Top-K by evolution only (diversity, turnover, excess activity)
+r_evo = evoca_from_scan_top(top_k=5, score_keys=EVO_METRICS,
+                            descriptor_prefix='top_evo',
+                            probes={...}, colormode=4)
+
+# Top-K by spatial only (correlation length, patches, F heterogeneity)
+r_spatial = evoca_from_scan_top(top_k=5, score_keys=SPATIAL_METRICS,
+                                descriptor_prefix='top_spatial',
+                                probes={...}, colormode=4)
+```
+
+`EVO_METRICS` and `SPATIAL_METRICS` are also the default metric sets
+for `nearest_evo` and `nearest_spatial` respectively. Pass any custom
+list of metric column names via `score_keys=[...]` for fully arbitrary
+ranking.
 
 ### Finding configs near a target row
 
