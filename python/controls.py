@@ -74,6 +74,12 @@ _AVAILABLE_PROBES = {
     'births':         'Mean +/- std of births array',
     'activity':       'LUT genome activity (scrolling hash-colored strip)',
     'eg_activity':    'Egenome activity (scrolling hash-colored strip)',
+    'eg_food':        'Egene food intake (scrolling hash-colored strip; '
+                      'cumulative food per egene byte, mouthfuls split '
+                      'across max-match-tied winners)',
+    'egenome':        ('Egenome stats: mean Negene with +/- std band '
+                       '(top) plus three sub-strips for distinct egene '
+                       'values, mean max-match, and frac at Negene_max'),
     'lut_complexity': 'Stacked area: LUT ring-dependency level',
     'eg_pop':         'Stacked area: egenome population fractions',
     'entropy':        'Local-pattern Shannon entropy',
@@ -184,6 +190,47 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                                 buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4)
         ega_m_ymax = np.ndarray((1,), dtype=np.int32,
                                 buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4*2)
+
+    # ── Egenome food intake probe setup ──────────────────────────────
+    eg_food_enabled = bool((probes or {}).get('eg_food'))
+    eg_food_shm     = None
+    eg_food_cursor  = None
+    eg_food_pixels  = None
+    eg_food_col     = None
+    if eg_food_enabled:
+        egf_shm_size = 4 + PROBE_W * ACT_H * 4
+        eg_food_shm = SharedMemory(create=True, size=egf_shm_size)
+        _egfbuf = np.ndarray((egf_shm_size,), dtype=np.uint8,
+                              buffer=eg_food_shm.buf)
+        _egfbuf[:] = 0
+        eg_food_cursor = np.ndarray((1,), dtype=np.int32,
+                                     buffer=eg_food_shm.buf)
+        eg_food_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                     buffer=eg_food_shm.buf, offset=4)
+        eg_food_col = np.zeros(ACT_H, dtype=np.int32)
+
+    # ── Egenome stats probe setup ────────────────────────────────────
+    # Five float32[PROBE_W] traces packed back-to-back behind a cursor:
+    #   0=mean Negene, 1=std Negene, 2=distinct egene values,
+    #   3=mean max-match, 4=frac at Negene_max
+    egn_enabled = bool((probes or {}).get('egenome'))
+    egn_shm     = None
+    egn_cursor  = None
+    egn_bufs    = None
+    if egn_enabled:
+        EGN_TRACES = 5
+        egn_shm_size = 4 + EGN_TRACES * PROBE_W * 4
+        egn_shm = SharedMemory(create=True, size=egn_shm_size)
+        _egnbuf = np.ndarray((egn_shm_size,), dtype=np.uint8,
+                              buffer=egn_shm.buf)
+        _egnbuf[:] = 0
+        egn_cursor = np.ndarray((1,), dtype=np.int32, buffer=egn_shm.buf)
+        egn_bufs = []
+        off = 4
+        for _ in range(EGN_TRACES):
+            egn_bufs.append(np.ndarray((PROBE_W,), dtype=np.float32,
+                                         buffer=egn_shm.buf, offset=off))
+            off += PROBE_W * 4
 
     # ── Entropy probe setup ──────────────────────────────────────────
     entropy_enabled      = bool((probes or {}).get('entropy'))
@@ -405,6 +452,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         cmd += ["--activity=" + activity_shm.name]
     if eg_activity_enabled:
         cmd += ["--eg-activity=" + eg_activity_shm.name]
+    if eg_food_enabled:
+        cmd += ["--eg-food=" + eg_food_shm.name]
+    if egn_enabled:
+        cmd += ["--egenome=" + egn_shm.name]
     if lut_complexity_enabled:
         cmd += ["--lut-complexity=" + lut_complexity_shm.name]
     if entropy_enabled:
@@ -502,6 +553,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             all_shm.append(activity_shm)
         if eg_activity_shm is not None:
             all_shm.append(eg_activity_shm)
+        if eg_food_shm is not None:
+            all_shm.append(eg_food_shm)
+        if egn_shm is not None:
+            all_shm.append(egn_shm)
         if lut_complexity_shm is not None:
             all_shm.append(lut_complexity_shm)
         if entropy_shm is not None:
@@ -651,6 +706,9 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     if eg_activity_enabled:
         _ymax_btns.append(_make_ymax_btns(
             "eg_act_ymax", 2000, sim.update_eg_act_ymax))
+    if eg_food_enabled:
+        _ymax_btns.append(_make_ymax_btns(
+            "eg_food_ymax", 1000000, sim.update_eg_food_ymax))
     if pat_activity_enabled:
         _ymax_btns.append(_make_ymax_btns(
             "pat_act_ymax", 2000, sim.update_pat_act_ymax))
@@ -739,8 +797,23 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             for di in range(QA_N_DECILES):
                 nq_activity_deciles[di][nq_cur] = nq_activity_col[di]
             nq_activity_cursor[0] = (nq_cur + 1) % PROBE_W
-        if eg_activity_enabled or eg_pop_enabled:
+        if eg_activity_enabled or eg_pop_enabled or eg_food_enabled:
             sim._lib.evoca_eg_activity_update()
+        if eg_food_enabled:
+            egf_cur = int(eg_food_cursor[0])
+            egf_col_ptr = eg_food_col.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_int32))
+            sim._lib.evoca_eg_food_render_col(egf_col_ptr, ACT_H)
+            eg_food_pixels[:, egf_cur] = eg_food_col
+            eg_food_cursor[0] = (egf_cur + 1) % PROBE_W
+        if egn_enabled:
+            egn_out = np.zeros(5, dtype=np.float32)
+            sim._lib.evoca_egenome_stats(
+                egn_out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+            egn_cur = int(egn_cursor[0])
+            for ti in range(5):
+                egn_bufs[ti][egn_cur] = egn_out[ti]
+            egn_cursor[0] = (egn_cur + 1) % PROBE_W
         if eg_activity_enabled:
             ega_cur = int(eg_activity_cursor[0])
             ega_col_ptr = eg_activity_col.ctypes.data_as(
@@ -908,6 +981,13 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         if eg_activity_enabled:
             eg_activity_cursor[0] = 0
             eg_activity_pixels[:] = 0
+        if eg_food_enabled:
+            eg_food_cursor[0] = 0
+            eg_food_pixels[:] = 0
+        if egn_enabled:
+            egn_cursor[0] = 0
+            for buf in egn_bufs:
+                buf[:] = 0
         if lut_complexity_enabled:
             lut_complexity_cursor[0] = 0
             lut_complexity_pixels[:] = 0
@@ -1086,9 +1166,24 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
 
             _t3 = time.perf_counter() if diag else 0
 
-            # Record egenome activity / population
-            if eg_activity_enabled or eg_pop_enabled:
+            # Record egenome activity / population / food / stats
+            if eg_activity_enabled or eg_pop_enabled or eg_food_enabled:
                 sim._lib.evoca_eg_activity_update()
+            if eg_food_enabled:
+                egf_cur = int(eg_food_cursor[0])
+                egf_col_ptr = eg_food_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_int32))
+                sim._lib.evoca_eg_food_render_col(egf_col_ptr, ACT_H)
+                eg_food_pixels[:, egf_cur] = eg_food_col
+                eg_food_cursor[0] = (egf_cur + 1) % PROBE_W
+            if egn_enabled:
+                egn_out = np.zeros(5, dtype=np.float32)
+                sim._lib.evoca_egenome_stats(
+                    egn_out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+                egn_cur = int(egn_cursor[0])
+                for ti in range(5):
+                    egn_bufs[ti][egn_cur] = egn_out[ti]
+                egn_cursor[0] = (egn_cur + 1) % PROBE_W
             if eg_activity_enabled:
                 ega_cur = int(eg_activity_cursor[0])
                 ega_col_ptr = eg_activity_col.ctypes.data_as(

@@ -286,6 +286,25 @@ class EvoCA:
         L.evoca_set_eg_act_ymax.restype  = None
         L.evoca_get_eg_act_ymax.argtypes = []
         L.evoca_get_eg_act_ymax.restype  = ctypes.c_int
+        # Egene food intake probe
+        L.evoca_eg_food_render_col.argtypes = [
+            ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
+        L.evoca_eg_food_render_col.restype  = None
+        L.evoca_eg_food_get.argtypes = [
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_int32),
+        ]
+        L.evoca_eg_food_get.restype  = ctypes.c_int
+        L.evoca_set_eg_food_ymax.argtypes = [ctypes.c_int]
+        L.evoca_set_eg_food_ymax.restype  = None
+        L.evoca_get_eg_food_ymax.argtypes = []
+        L.evoca_get_eg_food_ymax.restype  = ctypes.c_int
+        # Egenome scalar stats: out[0..4] =
+        #   [mean Negene, std Negene, distinct egene values,
+        #    mean max-match, frac at Negene_max]
+        L.evoca_egenome_stats.argtypes = [ctypes.POINTER(ctypes.c_float)]
+        L.evoca_egenome_stats.restype  = None
         # LUT complexity
         L.evoca_lut_complexity_counts.argtypes = [
             ctypes.POINTER(ctypes.c_uint32)]
@@ -430,6 +449,9 @@ class EvoCA:
 
     def update_eg_act_ymax(self, y):
         self._lib.evoca_set_eg_act_ymax(int(y))
+
+    def update_eg_food_ymax(self, y):
+        self._lib.evoca_set_eg_food_ymax(int(y))
 
     def update_pat_act_ymax(self, y):
         self._lib.evoca_set_pat_act_ymax(int(y))
@@ -746,6 +768,34 @@ class EvoCA:
             pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
             cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
         return {'activity': acts, 'pop_count': pops, 'color': cols}
+
+    def get_eg_food(self):
+        """Return egene food-intake table as dict of arrays (64 entries).
+        `food` values are uint64 scaled by 1e6 (so divide by 1e6 to get
+        food units)."""
+        food = np.zeros(64, dtype=np.uint64)
+        pops = np.zeros(64, dtype=np.uint32)
+        cols = np.zeros(64, dtype=np.int32)
+        self._lib.evoca_eg_food_get(
+            food.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+            pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
+        return {'food': food, 'pop_count': pops, 'color': cols}
+
+    def egenome_stats(self):
+        """Return scalar Negene-distribution stats over alive cells:
+        {'mean_negene', 'std_negene', 'distinct_egene_values',
+         'mean_max_match', 'frac_at_max'}."""
+        out = np.zeros(5, dtype=np.float32)
+        self._lib.evoca_egenome_stats(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+        return {
+            'mean_negene':           float(out[0]),
+            'std_negene':            float(out[1]),
+            'distinct_egene_values': int(out[2]),
+            'mean_max_match':        float(out[3]),
+            'frac_at_max':           float(out[4]),
+        }
 
     def population(self):
         """Total alive cells."""

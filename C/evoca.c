@@ -208,6 +208,17 @@ static uint32_t  repro_age_t0 = 0;        /* start accumulating after this step 
 static uint64_t eg_act[EGENOME_COUNT];        /* cumulative activity */
 static uint32_t eg_pop[EGENOME_COUNT];        /* current population */
 static int32_t  eg_color[EGENOME_COUNT];      /* ARGB color per egenome */
+/* Per-egene cumulative food intake.  During eating, each cell's
+ * mouthful is split equally across the egenes that tied for best
+ * match; each share is added to eg_food[that egene byte] scaled by
+ * EG_FOOD_SCALE so it can live in a uint64. */
+#define EG_FOOD_SCALE 1000000ULL
+static uint64_t eg_food[EGENOME_COUNT];
+static int      eg_food_ymax = 1000000;      /* ≈ 1 unit of food */
+/* Per-step accumulators for mean max-match (used by the egenome
+ * stats probe). Reset at the start of each eating phase. */
+static double   g_sum_max_match = 0.0;
+static int      g_eat_count     = 0;
 static uint8_t  wt_egenome_val = 0;           /* wild-type egenome */
 static int      eg_act_ymax = 2000;          /* Y-scale for egenome activity */
 
@@ -624,6 +635,9 @@ void evoca_init(int N, float food_inc, float m_scale)
     nact_reset();
     memset(eg_act, 0, sizeof(eg_act));
     memset(eg_pop, 0, sizeof(eg_pop));
+    memset(eg_food, 0, sizeof(eg_food));
+    g_sum_max_match = 0.0;
+    g_eat_count = 0;
     evoca_set_n_ent(g_n_ent);   /* reset pattern arrays, keep current n_ent */
 }
 
@@ -649,6 +663,7 @@ void evoca_free(void)
     neut_free_all();
     memset(eg_act,  0, sizeof(eg_act));
     memset(eg_pop,  0, sizeof(eg_pop));
+    memset(eg_food, 0, sizeof(eg_food));
     memset(pat_act, 0, sizeof(pat_act));
     memset(pat_pop, 0, sizeof(pat_pop));
     gN = 0;
@@ -784,21 +799,33 @@ static int fiducial_matches(int row, int col, uint8_t eg)
 }
 
 /* Best (maximum) match count across the cell's active egenes.
- * Returns 0 if the cell has no active slot (defensive; alive cells
- * always have ≥1 active slot once Item 4 enforces Negene≥1). */
-static int fiducial_matches_best(int row, int col, int idx)
+ * `*winners_out` (if non-NULL) returns the bitmask of slots that
+ * achieved the max — used by the eg_food probe to split mouthful
+ * across all tied winners. Returns 0 if the cell has no active slot. */
+static int fiducial_matches_best(int row, int col, int idx,
+                                 uint8_t *winners_out)
 {
     uint8_t a = active[idx];
-    if (a == 0) return 0;
-    int best = 0;
+    if (a == 0) {
+        if (winners_out) *winners_out = 0;
+        return 0;
+    }
+    int best = -1;
+    uint8_t winners = 0;
     while (a) {
         int s = __builtin_ctz(a);
         a &= a - 1;
         int m = fiducial_matches(row, col,
             egenes[(size_t)idx * NEGENOME_MAX + s]);
-        if (m > best) best = m;
+        if (m > best) {
+            best = m;
+            winners = (uint8_t)(1u << s);
+        } else if (m == best) {
+            winners |= (uint8_t)(1u << s);
+        }
     }
-    return best;
+    if (winners_out) *winners_out = winners;
+    return best < 0 ? 0 : best;
 }
 
 /* ── Food diffusion (3×3 box blur, periodic) ───────────────────── */
@@ -930,16 +957,36 @@ void evoca_step(void)
     }
 
     /* Phase 3: Eating (alive cells only) */
+    g_sum_max_match = 0.0;
+    g_eat_count     = 0;
     for (int row = 0; row < N; row++) {
         for (int col = 0; col < N; col++) {
             int   idx      = row * N + col;
             if (!alive[idx]) continue;
-            int   matches  = fiducial_matches_best(row, col, idx);
+            uint8_t winners = 0;
+            int   matches  = fiducial_matches_best(row, col, idx, &winners);
             float mouthful = (gm_scale / 25.0f) * matches * F_food[idx];
             float headroom = 1.0f - f_priv[idx];
             if (mouthful > headroom) mouthful = headroom;
             F_food[idx] -= mouthful;
             f_priv[idx] += mouthful;
+            /* eg_food: split mouthful equally across max-match
+             * winners. (Option-c attribution: ties contribute to
+             * every tied egene's food bucket.) */
+            int n_w = __builtin_popcount(winners);
+            if (mouthful > 0.0f && n_w > 0) {
+                uint64_t share =
+                    (uint64_t)((mouthful * (double)EG_FOOD_SCALE) / n_w);
+                uint8_t a = winners;
+                while (a) {
+                    int s = __builtin_ctz(a); a &= a - 1;
+                    uint8_t eg =
+                        egenes[(size_t)idx * NEGENOME_MAX + s] & 0x3F;
+                    eg_food[eg] += share;
+                }
+            }
+            g_sum_max_match += matches;
+            g_eat_count++;
         }
     }
 
@@ -1885,6 +1932,125 @@ int evoca_eg_activity_get(uint64_t *activities, uint32_t *pop_counts,
 
 void evoca_set_eg_act_ymax(int y) { eg_act_ymax = y > 1 ? y : 1; }
 int  evoca_get_eg_act_ymax(void)  { return eg_act_ymax; }
+
+/* ── Egene food intake probe ────────────────────────────────────────
+ *
+ * eg_food[v] is a cumulative tally (scaled by EG_FOOD_SCALE = 1e6)
+ * of food obtained by every active egene with byte value v during
+ * eating. Mouthfuls are split equally across all max-match-tied
+ * winners, so a cell with two egenes tied for best contributes
+ * mouthful/2 to each. Behaves like eg_activity but indexed by food
+ * earned rather than presence.
+ *
+ * No per-step update step is needed — accumulation happens during
+ * the eating phase. The render and get functions below mirror the
+ * eg_activity counterparts so the SDL renderer can reuse the same
+ * stacking machinery. */
+
+void evoca_eg_food_render_col(int32_t *col, int height)
+{
+    for (int y = 0; y < height; y++)
+        col[y] = (int32_t)0xFF111111u;
+
+    uint64_t ymax = (uint64_t)eg_food_ymax;
+
+    uint32_t ypop[height];
+    memset(ypop, 0, (size_t)height * sizeof(uint32_t));
+
+    /* Pass 1: egenes that earned food but currently extinct — dimmed. */
+    for (int i = 0; i < EGENOME_COUNT; i++) {
+        if (eg_food[i] == 0 || eg_pop[i] > 0) continue;
+        uint64_t f = eg_food[i];
+        int y = (height - 1) - (int)((uint64_t)(height - 1) * f / (f + ymax));
+        if (y < 0) y = 0;
+        if (y >= height) y = height - 1;
+        uint32_t c = (uint32_t)eg_color[i];
+        uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
+        uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
+        uint8_t b = (uint8_t)(( c        & 0xFF) * 15 / 100);
+        col[y] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                           | ((uint32_t)g << 8) | b);
+    }
+
+    /* Pass 2: still-present egenes — full colour, higher pop wins. */
+    for (int i = 0; i < EGENOME_COUNT; i++) {
+        if (eg_pop[i] == 0) continue;
+        uint64_t f = eg_food[i];
+        int y = (height - 1) - (int)((uint64_t)(height - 1) * f / (f + ymax));
+        if (y < 0) y = 0;
+        if (y >= height) y = height - 1;
+        if (eg_pop[i] >= ypop[y]) {
+            col[y] = eg_color[i];
+            ypop[y] = eg_pop[i];
+        }
+    }
+}
+
+int evoca_eg_food_get(uint64_t *food_out, uint32_t *pop_counts,
+                       int32_t *colors)
+{
+    for (int i = 0; i < EGENOME_COUNT; i++) {
+        food_out[i]   = eg_food[i];
+        pop_counts[i] = eg_pop[i];
+        colors[i]     = eg_color[i];
+    }
+    return EGENOME_COUNT;
+}
+
+void evoca_set_eg_food_ymax(int y) { eg_food_ymax = y > 1 ? y : 1; }
+int  evoca_get_eg_food_ymax(void)  { return eg_food_ymax; }
+
+/* ── Egenome scalar stats probe ─────────────────────────────────────
+ *
+ * Fills out[0..4] with:
+ *   [0] mean Negene over alive cells
+ *   [1] std  Negene over alive cells
+ *   [2] number of distinct egene values (out of 64) present in any
+ *       active slot of any alive cell
+ *   [3] mean max-match across alive cells eaten this step (0..25)
+ *   [4] fraction of alive cells with Negene = NEGENOME_MAX
+ *
+ * Computed on demand (cheap; one O(N²) pass for the active-mask
+ * popcounts and one for the egene-presence set). */
+void evoca_egenome_stats(float *out)
+{
+    size_t cells = (size_t)gN * gN;
+    int alive_cnt    = 0;
+    int sum_negene   = 0;
+    int sum_negene_sq = 0;
+    int n_at_max     = 0;
+    uint8_t present[EGENOME_COUNT] = {0};
+
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) continue;
+        alive_cnt++;
+        int neg = __builtin_popcount(active[i]);
+        sum_negene    += neg;
+        sum_negene_sq += neg * neg;
+        if (neg == NEGENOME_MAX) n_at_max++;
+        uint8_t a = active[i];
+        while (a) {
+            int s = __builtin_ctz(a); a &= a - 1;
+            present[egenes[i * NEGENOME_MAX + s] & 0x3F] = 1;
+        }
+    }
+    int distinct = 0;
+    for (int i = 0; i < EGENOME_COUNT; i++) if (present[i]) distinct++;
+
+    float mean = alive_cnt > 0 ? (float)sum_negene / (float)alive_cnt : 0.0f;
+    float var  = alive_cnt > 0
+                 ? (float)sum_negene_sq / (float)alive_cnt - mean * mean
+                 : 0.0f;
+    if (var < 0.0f) var = 0.0f;
+    float std  = sqrtf(var);
+
+    out[0] = mean;
+    out[1] = std;
+    out[2] = (float)distinct;
+    out[3] = g_eat_count > 0
+             ? (float)(g_sum_max_match / (double)g_eat_count) : 0.0f;
+    out[4] = alive_cnt > 0 ? (float)n_at_max / (float)alive_cnt : 0.0f;
+}
 
 /* ── LUT complexity classification ─────────────────────────────── */
 

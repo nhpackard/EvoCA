@@ -318,6 +318,103 @@ def _render_ts(dst, bufs, cursor):
             dst[y0 + PROBE_H - 1, :PROBE_W] = TS_SEP_COLOR
 
 
+# ── Egenome stats probe ─────────────────────────────────────────
+#
+# Four stacked sub-strips (each PROBE_H/2 px tall, 2*PROBE_H total):
+#   strip 0: mean Negene line + ±std band, fixed y in [0, NEGENOME_MAX=8]
+#   strip 1: distinct egene values, fixed y in [0, 64]
+#   strip 2: mean max-match, fixed y in [0, 25]
+#   strip 3: frac at Negene_max, fixed y in [0, 1]
+#
+# Fixed y-ranges so the user can read absolute values at a glance and
+# compare runs directly. Inputs are 5 float32[PROBE_W] buffers in the
+# order: [mean_negene, std_negene, distinct, max_match, frac_max].
+
+EGN_SUB_H      = PROBE_H // 2          # 64
+EGN_TOTAL_H    = 4 * EGN_SUB_H         # 256 = ACT_H
+_EGN_LINE_COL  = _c(0xFFA0FFA0)        # green
+_EGN_BAND_COL  = _c(0xFF306030)        # darker green
+_EGN_DIV_COL   = _c(0xFFFFC080)        # orange
+_EGN_MM_COL    = _c(0xFF80C0FF)        # blue
+_EGN_FRAC_COL  = _c(0xFFFFFFFF)        # white
+_EGN_GUIDE_COL = _c(0xFF303030)
+
+
+def _render_egenome(dst, bufs, cursor):
+    """Render the 4-strip egenome stats probe.
+
+    `dst`  : pixel array shape (EGN_TOTAL_H, W+).
+    `bufs` : list of 5 float32[PROBE_W] views in the order
+             [mean_negene, std_negene, distinct, max_match, frac_max].
+    """
+    import numpy as np
+
+    dst[:EGN_TOTAL_H, :PROBE_W] = BG_COLOR
+    H = EGN_SUB_H
+
+    rolled = [np.roll(b, -cursor) for b in bufs]
+    mean = rolled[0]
+    std  = rolled[1]
+    dist = rolled[2]
+    mm   = rolled[3]
+    frac = rolled[4]
+    filled = (mean != 0.0) | (std != 0.0) | (dist != 0.0) \
+             | (mm != 0.0) | (frac != 0.0)
+    if not filled.any():
+        for s in range(1, 4):
+            dst[s * H, :PROBE_W] = _EGN_GUIDE_COL
+        return
+
+    # Strip 0 — mean Negene + ±std band, y in [0, NEGENOME_MAX=8].
+    NEGENOME_MAX_F = 8.0
+    scale0 = (H - 1) / NEGENOME_MAX_F
+    for x in range(PROBE_W):
+        if not filled[x]: continue
+        m = mean[x]; s = std[x]
+        y_mean = int((H - 1) - m * scale0)
+        y_lo   = int((H - 1) - (m + s) * scale0)
+        y_hi   = int((H - 1) - (m - s) * scale0)
+        y_lo = max(0, min(H - 1, y_lo))
+        y_hi = max(0, min(H - 1, y_hi))
+        y_mean = max(0, min(H - 1, y_mean))
+        for y in range(y_lo, y_hi + 1):
+            dst[y, x] = _EGN_BAND_COL
+        dst[y_mean, x] = _EGN_LINE_COL
+
+    # Strip 1 — distinct egene values, y in [0, 64].
+    base1 = H
+    scale1 = (H - 1) / 64.0
+    for x in range(PROBE_W):
+        if not filled[x]: continue
+        y = int((H - 1) - dist[x] * scale1)
+        y = max(0, min(H - 1, y))
+        dst[base1 + y, x] = _EGN_DIV_COL
+
+    # Strip 2 — mean max-match, y in [0, 25].
+    base2 = 2 * H
+    scale2 = (H - 1) / 25.0
+    for x in range(PROBE_W):
+        if not filled[x]: continue
+        y = int((H - 1) - mm[x] * scale2)
+        y = max(0, min(H - 1, y))
+        dst[base2 + y, x] = _EGN_MM_COL
+
+    # Strip 3 — frac at Negene_max, y in [0, 1].
+    base3 = 3 * H
+    scale3 = (H - 1) / 1.0
+    for x in range(PROBE_W):
+        if not filled[x]: continue
+        y = int((H - 1) - frac[x] * scale3)
+        y = max(0, min(H - 1, y))
+        dst[base3 + y, x] = _EGN_FRAC_COL
+
+    # Sub-strip separators + cursor.
+    for s in range(1, 4):
+        dst[s * H, :PROBE_W] = _EGN_GUIDE_COL
+    for s in range(4):
+        dst[s * H:(s + 1) * H, PROBE_W - 1] = CURSOR_COLOR
+
+
 def main():
     if len(sys.argv) < 5:
         print("EvoCA SDL: bad args", flush=True)
@@ -337,6 +434,8 @@ def main():
     # Optional activity probe (--activity=<shm_name>)
     activity_shm_name = None
     eg_activity_shm_name = None
+    eg_food_shm_name = None
+    egn_shm_name = None
     lut_complexity_shm_name = None
     entropy_shm_name = None
     pat_activity_shm_name = None
@@ -350,6 +449,10 @@ def main():
             activity_shm_name = arg[len("--activity="):]
         elif arg.startswith("--eg-activity="):
             eg_activity_shm_name = arg[len("--eg-activity="):]
+        elif arg.startswith("--eg-food="):
+            eg_food_shm_name = arg[len("--eg-food="):]
+        elif arg.startswith("--egenome="):
+            egn_shm_name = arg[len("--egenome="):]
         elif arg.startswith("--lut-complexity="):
             lut_complexity_shm_name = arg[len("--lut-complexity="):]
         elif arg.startswith("--entropy="):
@@ -457,6 +560,45 @@ def main():
             print(f"EvoCA SDL: eg_activity SharedMemory open failed: {e}",
                   flush=True)
             eg_activity_shm_name = None
+
+    # Open eg_food shared memory
+    eg_food_shm     = None
+    eg_food_cursor  = None
+    eg_food_pixels  = None
+    if eg_food_shm_name:
+        try:
+            eg_food_shm = SharedMemory(name=eg_food_shm_name)
+            eg_food_cursor = np.ndarray((1,), dtype=np.int32,
+                                         buffer=eg_food_shm.buf)
+            eg_food_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                         buffer=eg_food_shm.buf, offset=4)
+            print(f"EvoCA SDL: eg_food shm opened ({ACT_H}x{PROBE_W})",
+                  flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: eg_food SharedMemory open failed: {e}",
+                  flush=True)
+            eg_food_shm_name = None
+
+    # Open egenome stats shared memory
+    egn_shm     = None
+    egn_cursor  = None
+    egn_bufs    = None    # list of 5 float32[PROBE_W] views
+    if egn_shm_name:
+        try:
+            egn_shm = SharedMemory(name=egn_shm_name)
+            egn_cursor = np.ndarray((1,), dtype=np.int32,
+                                      buffer=egn_shm.buf)
+            egn_bufs = []
+            off = 4
+            for _ in range(5):
+                egn_bufs.append(np.ndarray((PROBE_W,), dtype=np.float32,
+                                             buffer=egn_shm.buf, offset=off))
+                off += PROBE_W * 4
+            print(f"EvoCA SDL: egenome shm opened (5x{PROBE_W})", flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: egenome SharedMemory open failed: {e}",
+                  flush=True)
+            egn_shm_name = None
 
     # Open LUT complexity shared memory
     lut_complexity_shm     = None
@@ -770,6 +912,75 @@ def main():
                 sdl2.SDL_DestroyWindow(caw)
         else:
             print("EvoCA SDL: eg_activity window creation failed", flush=True)
+
+    # ── Egenome food intake window ─────────────────────────────
+    eg_food_window_p  = None
+    eg_food_surface_p = None
+    eg_food_dst       = None
+    if eg_food_shm is not None:
+        efw_x = main_x - PROBE_W
+        efw = sdl2.SDL_CreateWindow(
+            b"eg_food",
+            efw_x, next_probe_y,
+            PROBE_W, ACT_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if efw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(efw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + ACT_H + real_title_h
+            efps = sdl2.SDL_GetWindowSurface(efw)
+            if efps:
+                sdl2.SDL_SetSurfaceBlendMode(efps, sdl2.SDL_BLENDMODE_NONE)
+                efsurf  = efps.contents
+                efp_i32 = efsurf.pitch // 4
+                efp_ptr = ctypes.cast(efsurf.pixels,
+                                       ctypes.POINTER(ctypes.c_int32))
+                efd_flat = np.ctypeslib.as_array(efp_ptr,
+                                                  shape=(ACT_H * efp_i32,))
+                eg_food_dst       = efd_flat.reshape(ACT_H, efp_i32)
+                eg_food_window_p  = efw
+                eg_food_surface_p = efps
+                print("EvoCA SDL: eg_food window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(efw)
+        else:
+            print("EvoCA SDL: eg_food window creation failed", flush=True)
+
+    # ── Egenome stats window ───────────────────────────────────
+    egn_window_p  = None
+    egn_surface_p = None
+    egn_dst       = None
+    EGN_H = ACT_H   # 4 sub-strips × PROBE_H/2 = ACT_H
+    if egn_shm is not None:
+        egnw_x = main_x - PROBE_W
+        egnw = sdl2.SDL_CreateWindow(
+            b"egenome",
+            egnw_x, next_probe_y,
+            PROBE_W, EGN_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if egnw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(egnw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + EGN_H + real_title_h
+            egnps = sdl2.SDL_GetWindowSurface(egnw)
+            if egnps:
+                sdl2.SDL_SetSurfaceBlendMode(egnps, sdl2.SDL_BLENDMODE_NONE)
+                egnsurf  = egnps.contents
+                egnp_i32 = egnsurf.pitch // 4
+                egnp_ptr = ctypes.cast(egnsurf.pixels,
+                                        ctypes.POINTER(ctypes.c_int32))
+                egnd_flat = np.ctypeslib.as_array(egnp_ptr,
+                                                   shape=(EGN_H * egnp_i32,))
+                egn_dst       = egnd_flat.reshape(EGN_H, egnp_i32)
+                egn_window_p  = egnw
+                egn_surface_p = egnps
+                print("EvoCA SDL: egenome window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(egnw)
+        else:
+            print("EvoCA SDL: egenome window creation failed", flush=True)
 
     # ── LUT complexity window ──────────────────────────────────
     lc_window_p  = None
@@ -1280,6 +1491,24 @@ def main():
                         eg_act_dst[y0:y0+EG_CELL_PX, x0:x0+EG_CELL_PX] = px_col
             sdl2.SDL_UnlockSurface(eg_act_surface_p)
             sdl2.SDL_UpdateWindowSurface(eg_act_window_p)
+
+        # Render eg_food window (same scrolling-strip rendering as
+        # eg_activity; column data is computed C-side)
+        if eg_food_window_p is not None and eg_food_pixels is not None:
+            sdl2.SDL_LockSurface(eg_food_surface_p)
+            cur_egf = int(eg_food_cursor[0])
+            eg_food_dst[:ACT_H, :PROBE_W] = np.roll(eg_food_pixels,
+                                                     -cur_egf, axis=1)
+            sdl2.SDL_UnlockSurface(eg_food_surface_p)
+            sdl2.SDL_UpdateWindowSurface(eg_food_window_p)
+
+        # Render egenome stats window (4 sub-strips: mean ± std band,
+        # distinct egene values, mean max-match, frac at Negene_max)
+        if egn_window_p is not None and egn_bufs is not None:
+            sdl2.SDL_LockSurface(egn_surface_p)
+            _render_egenome(egn_dst, egn_bufs, int(egn_cursor[0]))
+            sdl2.SDL_UnlockSurface(egn_surface_p)
+            sdl2.SDL_UpdateWindowSurface(egn_window_p)
 
         # Render LUT complexity window
         if lc_window_p is not None and lut_complexity_pixels is not None:

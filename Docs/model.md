@@ -719,7 +719,7 @@ notebook cell.  Returns immediately (non-blocking).
 - **tax** slider: [0, 0.1], step 0.001
 - **tax_per_egene** slider: [0, 0.01], step 0.0001
 - **tax_lut** slider: [0, 0.001], step 0.00001
-- **act_ymax** / **eg_act_ymax** / **pat_act_ymax**: halve/double buttons (`<| name |>`)
+- **act_ymax** / **eg_act_ymax** / **eg_food_ymax** / **pat_act_ymax**: halve/double buttons (`<| name |>`)
 - **restricted_mu** checkbox: toggle restricted mutation
 - **Color** dropdown: state / env-food / priv-food / births
 - **Save Plots** button: saves probe strip charts to PNG (when paused)

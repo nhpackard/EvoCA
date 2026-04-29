@@ -21,6 +21,8 @@ available_probes()
 | `births`         | 512 x 128     | Mean +/- std of births array over time                 |
 | `activity`       | 512 x 256     | LUT genome activity (scrolling hash-colored strip)     |
 | `eg_activity`    | 512 x 256     | Egenome activity (scrolling hash-colored strip)        |
+| `eg_food`        | 512 x 256     | Cumulative food per egene byte (mouthful split across max-match-tied winners) |
+| `egenome`        | 512 x 256     | 4-strip Negene/eating diagnostics: mean ± std band, distinct egene values, mean max-match, frac at Negene_max |
 | `lut_complexity` | 512 x 128     | Stacked area: green=n1 only, yellow=n1+n2, red=all     |
 | `eg_pop`         | 512 x 128     | Stacked area: population fraction per egenome value    |
 | `q_activity`     | 512 x 128     | Activity quantile deciles (log-scaled strip chart)     |
@@ -101,6 +103,65 @@ Colors match those used by the `eg_activity` probe (white = wild-type,
 FNV-1a hash colors for mutants).  Internally reads `eg_pop[]` which is
 populated by `evoca_eg_activity_update()` -- the probe ensures this update
 runs even when `eg_activity` is not enabled.
+
+---
+
+## Egene Food Intake Probe (eg_food)
+
+Same scrolling-strip layout as `eg_activity`, but the per-egene quantity
+is **cumulative food obtained**, not presence.  At every eating step, a
+cell's mouthful (after the headroom clamp) is split equally across the
+egenes that tied for the best match — option-c attribution.  If a cell's
+slot 3 and slot 5 both achieved match=18, each of their egene-byte
+buckets gets `mouthful / 2`.
+
+Stored internally as `uint64_t eg_food[64]` scaled by `1e6`, so 6 decimal
+digits of resolution per food unit (mouthful is bounded by 1.0 by
+construction).  Rendered with the same hyperbolic Y-axis saturation as
+`eg_activity`:
+
+    y = (H-1) - (H-1) * f / (f + ymax)
+
+Tunable via `evoca_set_eg_food_ymax()` (default `1e6`, ≈ 1 unit of
+food).  Use `sim.get_eg_food()` from Python to retrieve the raw table.
+
+This probe answers "how much food has each egene actually fed into the
+population?" — complementary to `eg_activity` ("how often is each egene
+present?").  An egene that's common but in poor matching neighbourhoods
+will have high activity but low food; an egene that fits the local food
+field well shows the opposite.
+
+---
+
+## Egenome Stats Probe (egenome)
+
+Four stacked sub-strips (each 64 px tall, 256 px total) charting Negene
+distribution and eating efficiency over time.  All sub-strips have
+**fixed y-ranges** so values can be read directly without auto-scale
+context.
+
+| Sub-strip | Trace                              | Y range  | Colour |
+|-----------|------------------------------------|----------|--------|
+| 0 (top)   | Mean Negene with ± std band        | [0, 8]   | green line, dim-green band |
+| 1         | Distinct egene values (out of 64)  | [0, 64]  | orange |
+| 2         | Mean max-match (across alive cells eating this step, 0..25) | [0, 25] | blue |
+| 3 (bot)   | Fraction of alive cells at Negene = 8 | [0, 1]  | white |
+
+Source: `evoca_egenome_stats(out)` fills a 5-element float buffer with
+`[mean_negene, std_negene, distinct_egene_values, mean_max_match,
+frac_at_max]`; `sim.egenome_stats()` returns the same data as a dict.
+
+Reading the strips together:
+
+- Mean Negene rising while distinct egenes plateau ⇒ population is
+  consolidating around a fixed set of egene patterns and adding
+  duplicates / shifts within that set, not exploring new ones.
+- Mean max-match climbing without Negene rising ⇒ the LUT is evolving
+  toward neighbourhoods that better match the *existing* egenes
+  (eating gets better at fixed breadth).
+- `frac at max` > 0 with `tax_per_egene > 0` is a sign the per-egene
+  tax isn't strong enough to bound breadth; with `tax_per_egene = 0`
+  it's expected to climb toward 1.
 
 ---
 

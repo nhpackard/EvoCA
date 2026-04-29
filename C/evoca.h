@@ -167,6 +167,16 @@ void evoca_get_ages(int32_t *out);
 
 void evoca_eg_activity_update(void);
 void evoca_eg_activity_render_col(int32_t *col, int height);
+/* Egene food intake probe: cumulative food obtained per egene byte
+ * value (mouthful split equally across max-match-tied winners). */
+void evoca_eg_food_render_col(int32_t *col, int height);
+int  evoca_eg_food_get(uint64_t *food_out, uint32_t *pop_counts,
+                        int32_t *colors);
+void evoca_set_eg_food_ymax(int y);
+int  evoca_get_eg_food_ymax(void);
+/* Egenome scalar stats: fills out[0..4] = [mean Negene, std Negene,
+ * distinct egene values (out of 64), mean max-match, frac at max]. */
+void evoca_egenome_stats(float *out);
 int  evoca_eg_activity_get(uint64_t *activities, uint32_t *pop_counts,
                            int32_t *colors);
 void evoca_set_eg_act_ymax(int y);
