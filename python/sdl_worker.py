@@ -60,14 +60,55 @@ _TS_GROUPS  = ((0, 1, 2), (3, 4, 5))
 TS_STRIPS   = len(_TS_GROUPS)
 _TS_COLORS = (
     _c(0xFFFF4488),   # pop           — magenta
-    _c(0xFF00CC44),   # F_mean        — green
-    _c(0xFF4488FF),   # f_mean        — blue
+    _c(0xFF00CC44),   # F_env (mean of F)  — green
+    _c(0xFF4488FF),   # f_priv (mean of f) — blue
     _c(0xFFFFAA22),   # lut_div       — orange
     _c(0xFFCC66FF),   # eg_ent        — purple
     _c(0xFF22EEDD),   # activity_flux — cyan/teal
 )
-_TS_LABELS = ('pop', 'F_mean', 'f_mean', 'lut_div', 'eg_ent', 'flux')
+_TS_LABELS = ('pop', 'F_env', 'f_priv', 'lut_div', 'eg_ent', 'flux')
 TS_SEP_COLOR = _c(0xFF444444)
+
+
+# 3×5 minimal bitmap font shared by the ts and egenome legends.
+_FONT_3x5 = {
+    'p': ["###", "# #", "###", "#  ", "#  "],
+    'o': ["###", "# #", "# #", "# #", "###"],
+    'F': ["###", "#  ", "## ", "#  ", "#  "],
+    '_': ["   ", "   ", "   ", "   ", "###"],
+    'm': ["# #", "###", "###", "# #", "# #"],
+    'e': ["###", "#  ", "###", "#  ", "###"],
+    'a': [" ##", "# #", "###", "# #", "# #"],
+    'n': ["# #", "###", "###", "# #", "# #"],
+    'f': [" ##", "#  ", "###", "#  ", "#  "],
+    'l': ["#  ", "#  ", "#  ", "#  ", "###"],
+    'u': ["# #", "# #", "# #", "# #", "###"],
+    't': ["###", " # ", " # ", " # ", " # "],
+    'd': ["## ", "# #", "# #", "# #", "## "],
+    'i': ["#", "#", "#", "#", "#"],
+    'v': ["# #", "# #", "# #", "# #", " # "],
+    'x': ["# #", "# #", " # ", "# #", "# #"],
+    'g': ["###", "# #", "###", "  #", "###"],
+    'r': ["## ", "# #", "#  ", "#  ", "#  "],
+    'c': [" ##", "#  ", "#  ", "#  ", " ##"],
+    'h': ["#  ", "#  ", "###", "# #", "# #"],
+    's': [" ##", "#  ", " # ", "  #", "## "],
+    'N': ["# #", "###", "###", "# #", "# #"],
+    ' ': ["  ", "  ", "  ", "  ", "  "],
+}
+
+
+def _draw_label(dst, x, y, color, text):
+    """Draw `text` at (x, y) in `color`; returns the x past the label."""
+    ch_w = 4
+    for ch in text:
+        rows = _FONT_3x5.get(ch, _FONT_3x5[' '])
+        for rr, bits in enumerate(rows):
+            for cc, b in enumerate(bits):
+                if b == '#':
+                    dst[y + rr, x + cc] = color
+        x += ch_w
+    return x
 
 # Decile colors for q_activity (p10 blue → p50 green → p90 red)
 _QA_COLORS = [
@@ -206,46 +247,16 @@ def _render_probe(dst, pitch_i32, mean_buf, std_buf, cursor, color_mean, color_b
 def _draw_ts_legend(dst, y0, trace_idxs):
     """Paint a small color-coded legend block in the top-left of the
     strip starting at row y0. Each trace gets a 3-row swatch plus a
-    label drawn via a minimal 3x5 bitmap font."""
-    import numpy as np
-    # Minimal font — only chars we need for _TS_LABELS.
-    _F = {
-        'p': ["###", "# #", "###", "#  ", "#  "],
-        'o': ["###", "# #", "# #", "# #", "###"],
-        'F': ["###", "#  ", "## ", "#  ", "#  "],
-        '_': ["   ", "   ", "   ", "   ", "###"],
-        'm': ["# #", "###", "###", "# #", "# #"],
-        'e': ["###", "#  ", "###", "#  ", "###"],
-        'a': [" ##", "# #", "###", "# #", "# #"],
-        'n': ["# #", "###", "###", "# #", "# #"],
-        'f': [" ##", "#  ", "###", "#  ", "#  "],
-        'l': ["#  ", "#  ", "#  ", "#  ", "###"],
-        'u': ["# #", "# #", "# #", "# #", "###"],
-        't': ["###", " # ", " # ", " # ", " # "],
-        'd': ["## ", "# #", "# #", "# #", "## "],
-        'i': ["#", "#", "#", "#", "#"],
-        'v': ["# #", "# #", "# #", "# #", " # "],
-        'x': ["# #", "# #", " # ", "# #", "# #"],
-        'g': ["###", "# #", "###", "  #", "###"],
-        ' ': ["  ", "  ", "  ", "  ", "  "],
-    }
+    label drawn via the shared minimal 3x5 bitmap font."""
     ch_w = 4   # per-char width with 1px spacing
     sw_w = 8   # swatch width
-    line_h = 8
     x = 3
     y = y0 + 2
     for ti in trace_idxs:
         col = _TS_COLORS[ti]
         label = _TS_LABELS[ti]
         dst[y + 1:y + 4, x:x + sw_w] = col
-        lx = x + sw_w + 2
-        for ch in label:
-            rows = _F.get(ch, _F[' '])
-            for rr, bits in enumerate(rows):
-                for cc, b in enumerate(bits):
-                    if b == '#':
-                        dst[y + rr, lx + cc] = col
-            lx += ch_w
+        _draw_label(dst, x + sw_w + 2, y, col, label)
         x += sw_w + 2 + ch_w * len(label) + 5
         if x > 256:
             break
@@ -413,6 +424,26 @@ def _render_egenome(dst, bufs, cursor):
         dst[s * H, :PROBE_W] = _EGN_GUIDE_COL
     for s in range(4):
         dst[s * H:(s + 1) * H, PROBE_W - 1] = CURSOR_COLOR
+
+    # Per-strip label glyphs (3 px from left edge, 2 px from top of strip).
+    sw_w = 8
+    _strip_labels = (
+        ('Ngene',  _EGN_LINE_COL,   _EGN_BAND_COL),
+        ('distinct', _EGN_DIV_COL,  None),
+        ('match',  _EGN_MM_COL,     None),
+        ('frac max', _EGN_FRAC_COL, None),
+    )
+    for si, (text, line_col, band_col) in enumerate(_strip_labels):
+        ly = si * H + 2
+        lx = 3
+        # Swatch — for the top strip use the band colour as a 3-row block
+        # behind a 1-row line in line_col, mirroring how the data is drawn.
+        if band_col is not None:
+            dst[ly + 1:ly + 4, lx:lx + sw_w] = band_col
+            dst[ly + 2,        lx:lx + sw_w] = line_col
+        else:
+            dst[ly + 1:ly + 4, lx:lx + sw_w] = line_col
+        _draw_label(dst, lx + sw_w + 2, ly, line_col, text)
 
 
 def main():

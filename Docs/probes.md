@@ -223,8 +223,8 @@ Six scalar traces in two stacked strips of three traces each:
 | Strip | Trace           | Source                                              |
 |-------|-----------------|-----------------------------------------------------|
 | top   | `pop`           | alive-cell count                                    |
-| top   | `F_mean`        | mean of environmental food F over the whole lattice |
-| top   | `f_mean`        | mean of private food f over alive cells only        |
+| top   | `F_env`         | mean of environmental food F over the whole lattice |
+| top   | `f_priv`        | mean of private food f over alive cells only        |
 | bot   | `lut_div`       | distinct live LUT genomes (FNV-1a hash buckets)     |
 | bot   | `eg_ent`        | Shannon entropy (bits) of the 64-bucket egenome distribution |
 | bot   | `activity_flux` | flux-probe slope sum in the `[p20, p30]` activity band |

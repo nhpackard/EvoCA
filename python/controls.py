@@ -55,7 +55,7 @@ PROBE_H = 128    # pixel height of each strip chart
 
 # Grouped time-series probe: 6 traces in 2 stacked strips (3 each).
 # Order below must match _TS_COLORS / _TS_LABELS in sdl_worker.py.
-_TS_TRACES = ('pop', 'F_mean', 'f_mean',
+_TS_TRACES = ('pop', 'F_env', 'f_priv',
               'lut_div', 'eg_ent', 'activity_flux')
 TS_N_TRACES = len(_TS_TRACES)
 _TS_GROUPS  = ((0, 1, 2), (3, 4, 5))
@@ -87,7 +87,7 @@ _AVAILABLE_PROBES = {
     'q_activity':     'Activity quantile profile (decile strip chart)',
     'n_activity':     'N-activity: Channon shadow LUT-hash strip chart',
     'nq_activity':    'Nq-activity: shadow activity decile strip chart',
-    'ts':             ('Grouped time-series: pop, F_mean, f_mean '
+    'ts':             ('Grouped time-series: pop, F_env, f_priv '
                        '(top) / lut_div, eg_ent, activity_flux (bottom)'),
 }
 
