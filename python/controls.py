@@ -605,9 +605,9 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     sl_mu_egenome = widgets.FloatSlider(
         value=sim.mu_egenome, min=0.0, max=mug_max, step=mug_step,
         description="mu_egenome:", readout_format=".4f", **sl_kw)
-    sl_p_dup = widgets.FloatSlider(
-        value=sim.p_dup_on_activate, min=0.0, max=1.0, step=0.01,
-        description="p_dup_act:", readout_format=".2f", **sl_kw)
+    # p_dup_egene is non-GUI: defaults to 1.0 in C (every active-bit
+    # 0→1 flip triggers gene duplication) and is set via
+    # sim.update_p_dup_egene() if the user wants to vary it.
     tx_max, tx_step = _flt_lims(sim.tax,        1e-4)
     sl_tax = widgets.FloatSlider(
         value=sim.tax, min=0.0, max=tx_max, step=tx_step,
@@ -669,7 +669,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         widgets.HBox([btn_pause, btn_restart, btn_step, btn_step200,
                       btn_quit, btn_save, txt_descriptor, btn_export]),
         sl_food_inc, sl_m_scale, sl_gdiff,
-        sl_mu_lut, sl_mu_egene, sl_mu_egenome, sl_p_dup,
+        sl_mu_lut, sl_mu_egene, sl_mu_egenome,
         sl_tax, sl_tax_per_egene, sl_tax_lut,
     ]
     if _ymax_btns:
@@ -881,7 +881,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         sim._lib.evoca_set_mu_lut(sim.mu_lut)
         sim._lib.evoca_set_mu_egene(sim.mu_egene)
         sim._lib.evoca_set_mu_egenome(sim.mu_egenome)
-        sim._lib.evoca_set_p_dup_on_activate(sim.p_dup_on_activate)
+        sim._lib.evoca_set_p_dup_egene(sim.p_dup_egene)
         sim._lib.evoca_set_tax(sim.tax)
         sim._lib.evoca_set_tax_per_egene(sim.tax_per_egene)
         sim._lib.evoca_set_tax_lut(sim.tax_lut)
@@ -988,7 +988,6 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     _make_slider_cb("mu_lut",     sl_mu_lut)
     _make_slider_cb("mu_egene",   sl_mu_egene)
     _make_slider_cb("mu_egenome", sl_mu_egenome)
-    _make_slider_cb("p_dup_on_activate", sl_p_dup)
     _make_slider_cb("tax",        sl_tax)
     _make_slider_cb("tax_per_egene", sl_tax_per_egene)
     _make_slider_cb("tax_lut",    sl_tax_lut)

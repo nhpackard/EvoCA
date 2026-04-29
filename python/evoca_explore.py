@@ -118,7 +118,7 @@ def _spatial_metrics(alive_2d, F_2d):
 # ── Main entry point ──────────────────────────────────────────────────
 
 _PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff',
-               'mu_lut', 'mu_egene', 'mu_egenome', 'p_dup_on_activate',
+               'mu_lut', 'mu_egene', 'mu_egenome', 'p_dup_egene',
                'tax', 'tax_per_egene', 'tax_lut',
                'restricted_mu')
 

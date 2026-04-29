@@ -71,7 +71,7 @@ class EvoCA:
         self.mu_lut      = 0.0
         self.mu_egene   = 0.0
         self.mu_egenome  = 0.0      # per-active-bit flip rate
-        self.p_dup_on_activate = 1.0
+        self.p_dup_egene = 1.0
         self.tax         = 0.0
         self.tax_per_egene = 0.0
         self.tax_lut       = 0.0
@@ -102,16 +102,16 @@ class EvoCA:
         L.evoca_set_mu_egene.restype   = None
         L.evoca_set_mu_egenome.argtypes = [ctypes.c_float]
         L.evoca_set_mu_egenome.restype  = None
-        L.evoca_set_p_dup_on_activate.argtypes = [ctypes.c_float]
-        L.evoca_set_p_dup_on_activate.restype  = None
+        L.evoca_set_p_dup_egene.argtypes = [ctypes.c_float]
+        L.evoca_set_p_dup_egene.restype  = None
         L.evoca_get_mu_lut.argtypes     = []
         L.evoca_get_mu_lut.restype      = ctypes.c_float
         L.evoca_get_mu_egene.argtypes  = []
         L.evoca_get_mu_egene.restype   = ctypes.c_float
         L.evoca_get_mu_egenome.argtypes = []
         L.evoca_get_mu_egenome.restype  = ctypes.c_float
-        L.evoca_get_p_dup_on_activate.argtypes = []
-        L.evoca_get_p_dup_on_activate.restype  = ctypes.c_float
+        L.evoca_get_p_dup_egene.argtypes = []
+        L.evoca_get_p_dup_egene.restype  = ctypes.c_float
         L.evoca_set_tax.argtypes        = [ctypes.c_float]
         L.evoca_set_tax.restype         = None
         L.evoca_set_tax_per_egene.argtypes = [ctypes.c_float]
@@ -318,7 +318,7 @@ class EvoCA:
 
     def init(self, N, food_inc=0.0, m_scale=1.0, gdiff=0.0,
              mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
-             p_dup_on_activate=1.0,
+             p_dup_egene=1.0,
              tax=0.0, tax_per_egene=0.0, tax_lut=0.0,
              restricted_mu=0, n_ent=2):
         stop = getattr(self, '_stop_display', None)
@@ -332,7 +332,7 @@ class EvoCA:
         self.mu_lut     = float(mu_lut)
         self.mu_egene  = float(mu_egene)
         self.mu_egenome = float(mu_egenome)
-        self.p_dup_on_activate = float(p_dup_on_activate)
+        self.p_dup_egene = float(p_dup_egene)
         self.tax        = float(tax)
         self.tax_per_egene = float(tax_per_egene)
         self.tax_lut       = float(tax_lut)
@@ -343,7 +343,7 @@ class EvoCA:
         self._lib.evoca_set_mu_lut(self.mu_lut)
         self._lib.evoca_set_mu_egene(self.mu_egene)
         self._lib.evoca_set_mu_egenome(self.mu_egenome)
-        self._lib.evoca_set_p_dup_on_activate(self.p_dup_on_activate)
+        self._lib.evoca_set_p_dup_egene(self.p_dup_egene)
         self._lib.evoca_set_tax(self.tax)
         self._lib.evoca_set_tax_per_egene(self.tax_per_egene)
         self._lib.evoca_set_tax_lut(self.tax_lut)
@@ -357,7 +357,7 @@ class EvoCA:
             'mu_lut': self.mu_lut,
             'mu_egene': self.mu_egene,
             'mu_egenome': self.mu_egenome,
-            'p_dup_on_activate': self.p_dup_on_activate,
+            'p_dup_egene': self.p_dup_egene,
             'tax': self.tax,
             'tax_per_egene': self.tax_per_egene,
             'tax_lut': self.tax_lut,
@@ -405,9 +405,9 @@ class EvoCA:
         self.mu_egenome = float(m)
         self._lib.evoca_set_mu_egenome(self.mu_egenome)
 
-    def update_p_dup_on_activate(self, p):
-        self.p_dup_on_activate = float(p)
-        self._lib.evoca_set_p_dup_on_activate(self.p_dup_on_activate)
+    def update_p_dup_egene(self, p):
+        self.p_dup_egene = float(p)
+        self._lib.evoca_set_p_dup_egene(self.p_dup_egene)
 
     def update_tax(self, t):
         self.tax = float(t)

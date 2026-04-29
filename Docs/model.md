@@ -53,7 +53,7 @@ All metaparameters can be set at init or adjusted at runtime via sliders.
 | `mu_lut`        | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction      |
 | `mu_egene`      | float | 0.0     | [0, 0.05]      | Per-egene-bit flip probability on reproduction (across all 8×6 = 48 bits per cell, including inactive slots — those drift as pseudogenes) |
 | `mu_egenome`    | float | 0.0     | [0, 0.05]      | Per-active-bit flip probability on reproduction (across the 8 presence bits). Flips that would take Negene to 0 are rejected |
-| `p_dup_on_activate` | float | 1.0 | [0, 1]          | Probability that a 0→1 active-bit flip overwrites the new slot's egene byte with a copy from a random currently-active slot (gene duplication). Copy happens before the egene-bit flip pass, so the new copy still receives fresh independent point mutations |
+| `p_dup_egene` | float | 1.0 | [0, 1]          | Probability that a 0→1 active-bit flip overwrites the new slot's egene byte with a copy from a random currently-active slot (gene duplication). Copy happens before the egene-bit flip pass, so the new copy still receives fresh independent point mutations |
 | `tax`           | float | 0.0     | [0, 0.1]       | Constant private-food decrement per step; death if depleted |
 | `tax_per_egene` | float | 0.0     | [0, 0.01]      | Additional decrement per active egene per step. Bounds Negene against the unbounded "more is better" pressure of max-match eating |
 | `tax_lut`       | float | 0.0     | [0, 0.001]     | Additional decrement per LUT '1' bit per step. Penalises rule complexity |
@@ -136,7 +136,7 @@ Inactive slots' egene bytes are still mutated at the per-egene-bit
 rate, accumulating drift like pseudogenes; if an inactive slot is
 later activated by a presence-bit flip, its drifted bits become live
 genome (and may be overwritten by a duplicated copy of an existing
-active egene first — see `p_dup_on_activate`).
+active egene first — see `p_dup_egene`).
 
 The list of slots is **unordered** for purposes of identity: the
 species hash sorts active egene bytes lex before folding them into the
@@ -292,7 +292,7 @@ For each alive cell where `f(x) >= 1.0`:
      across the 8 presence bits. Reject any flip that would make
      Negene = 0.
    - **Dup-on-activate**: for each presence bit that just went 0→1,
-     with probability `p_dup_on_activate`, overwrite that slot's
+     with probability `p_dup_egene`, overwrite that slot's
      egene byte with a copy from a uniformly random
      currently-active slot.
    - **Egene-bit pass**: draw `ne ~ Poisson(mu_egene * 8 * 6)` flips,
@@ -441,7 +441,7 @@ sim = EvoCA(lib_path=None)
 
 sim.init(N, food_inc=0.0, m_scale=1.0, gdiff=0,
          mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
-         p_dup_on_activate=1.0,
+         p_dup_egene=1.0,
          tax=0.0, tax_per_egene=0.0, tax_lut=0.0,
          restricted_mu=0)
     # Allocate N x N lattice, set metaparameters.
@@ -460,7 +460,7 @@ sim.update_gdiff(d)          # int
 sim.update_mu_lut(m)         # float, per-bit LUT mutation rate
 sim.update_mu_egene(m)       # float, per-egene-bit flip rate (across all 8×6 bits)
 sim.update_mu_egenome(m)     # float, per-active-bit flip rate (across 8 presence bits)
-sim.update_p_dup_on_activate(p)  # float in [0,1], dup-on-activate probability
+sim.update_p_dup_egene(p)  # float in [0,1], dup-on-activate probability
 sim.update_tax(t)            # float, constant priv-food decrement per step
 sim.update_tax_per_egene(t)  # float, additional decrement per active egene
 sim.update_tax_lut(t)        # float, additional decrement per LUT '1' bit

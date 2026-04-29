@@ -136,9 +136,11 @@ static float  gmu_egene    = 0.0f; /* per-egene-bit flip rate (across
                                     * all 8×6 = 48 bits per cell) */
 static float  gmu_egenome = 0.0f; /* per-active-bit flip rate
                                     * (across the 8 presence bits) */
-static float  gp_dup_on_activate = 0.0f; /* prob that a 0→1 active flip
+static float  gp_dup_egene = 1.0f; /* prob that a 0→1 active flip
                                     * triggers copy of a random
-                                    * currently-active egene byte */
+                                    * currently-active egene byte
+                                    * (default 1: every activation
+                                    * is a gene-duplication event) */
 static float  gtax        = 0.0f; /* priv food decrement per step */
 static float  gtax_per_egene = 0.0f; /* additional decrement per active egene */
 static float  gtax_lut    = 0.0f; /* additional decrement per LUT '1' bit */
@@ -661,11 +663,11 @@ float evoca_get_gdiff(void)        { return ggdiff;   }
 void  evoca_set_mu_lut(float m)    { gmu_lut     = m; }
 void  evoca_set_mu_egene(float m)   { gmu_egene    = m; }
 void  evoca_set_mu_egenome(float m) { gmu_egenome = m; }
-void  evoca_set_p_dup_on_activate(float p) { gp_dup_on_activate = p; }
+void  evoca_set_p_dup_egene(float p) { gp_dup_egene = p; }
 float evoca_get_mu_lut(void)       { return gmu_lut;    }
 float evoca_get_mu_egene(void)      { return gmu_egene;    }
 float evoca_get_mu_egenome(void)   { return gmu_egenome; }
-float evoca_get_p_dup_on_activate(void) { return gp_dup_on_activate; }
+float evoca_get_p_dup_egene(void) { return gp_dup_egene; }
 void  evoca_set_restricted_mu(int r) { grestricted_mu = r; }
 int   evoca_get_restricted_mu(void)  { return grestricted_mu; }
 void  evoca_set_tax(float t)      { gtax       = t; }
@@ -1024,14 +1026,14 @@ void evoca_step(void)
             }
 
             /* Dup-on-activate: for each newly-on bit, with probability
-             * gp_dup_on_activate, copy a random currently-active
+             * gp_dup_egene, copy a random currently-active
              * slot's egene byte into the new slot. */
             uint8_t newly_on = active[child] & ~active_before;
             while (newly_on) {
                 int s = __builtin_ctz(newly_on);
                 newly_on &= newly_on - 1;
                 uint32_t r16 = rng_next() & 0xFFFFu;
-                uint32_t thr = (uint32_t)(gp_dup_on_activate * 65536.0f);
+                uint32_t thr = (uint32_t)(gp_dup_egene * 65536.0f);
                 if (r16 < thr) {
                     int n_act = __builtin_popcount(active[child]);
                     int pick  = (int)(rng_next() % (uint32_t)n_act);
