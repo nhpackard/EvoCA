@@ -140,12 +140,16 @@ distribution and eating efficiency over time.  All sub-strips have
 **fixed y-ranges** so values can be read directly without auto-scale
 context.
 
-| Sub-strip | Trace                              | Y range  | Colour |
-|-----------|------------------------------------|----------|--------|
-| 0 (top)   | Mean Negene with ± std band        | [0, 8]   | green line, dim-green band |
-| 1         | Distinct egene values (out of 64)  | [0, 64]  | orange |
-| 2         | Mean max-match (across alive cells eating this step, 0..25) | [0, 25] | blue |
-| 3 (bot)   | Fraction of alive cells at Negene = 8 | [0, 1]  | white |
+| Sub-strip | In-strip label | Trace                              | Y range  | Colour |
+|-----------|----------------|------------------------------------|----------|--------|
+| 0 (top)   | `Ngene`        | Mean Negene with ± std band        | [0, 8]   | green line, dim-green band |
+| 1         | `distinct`     | Distinct egene values (out of 64)  | [0, 64]  | orange |
+| 2         | `match`        | Mean max-match (across alive cells eating this step, 0..25) | [0, 25] | blue |
+| 3 (bot)   | `frac max`     | Fraction of alive cells at Negene = 8 | [0, 1]  | white |
+
+Each sub-strip has a small swatch + label glyph in its top-left so the
+chart is self-describing. Strips are separated by a light grey 1-px
+divider line.
 
 Source: `evoca_egenome_stats(out)` fills a 5-element float buffer with
 `[mean_negene, std_negene, distinct_egene_values, mean_max_match,
