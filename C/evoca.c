@@ -215,6 +215,10 @@ static int32_t  eg_color[EGENOME_COUNT];      /* ARGB color per egenome */
 #define EG_FOOD_SCALE 1000000ULL
 static uint64_t eg_food[EGENOME_COUNT];
 static int      eg_food_ymax = 1000000;      /* ≈ 1 unit of food */
+/* Per-egene previous-column y for the eg_food strip's vertical-gap
+ * fill (makes the trace continuous instead of dotted). */
+static int      eg_food_prev_y[EGENOME_COUNT];
+static int      eg_food_prev_y_init = 0;
 /* Per-step accumulators for mean max-match (used by the egenome
  * stats probe). Reset at the start of each eating phase. */
 static double   g_sum_max_match = 0.0;
@@ -636,6 +640,7 @@ void evoca_init(int N, float food_inc, float m_scale)
     memset(eg_act, 0, sizeof(eg_act));
     memset(eg_pop, 0, sizeof(eg_pop));
     memset(eg_food, 0, sizeof(eg_food));
+    eg_food_prev_y_init = 0;   /* drop bridge-history from prior run */
     g_sum_max_match = 0.0;
     g_eat_count = 0;
     evoca_set_n_ent(g_n_ent);   /* reset pattern arrays, keep current n_ent */
@@ -1947,43 +1952,91 @@ int  evoca_get_eg_act_ymax(void)  { return eg_act_ymax; }
  * eg_activity counterparts so the SDL renderer can reuse the same
  * stacking machinery. */
 
+/* eg_food_prev_y / eg_food_prev_y_init are declared near eg_food
+ * itself so init/free can clear them; the reset helper lives here. */
+static void eg_food_prev_y_reset(void)
+{
+    for (int i = 0; i < EGENOME_COUNT; i++) eg_food_prev_y[i] = -1;
+    eg_food_prev_y_init = 1;
+}
+
 void evoca_eg_food_render_col(int32_t *col, int height)
 {
+    if (!eg_food_prev_y_init) eg_food_prev_y_reset();
+
     for (int y = 0; y < height; y++)
         col[y] = (int32_t)0xFF111111u;
 
     uint64_t ymax = (uint64_t)eg_food_ymax;
 
+    int      curr_y[EGENOME_COUNT];
+    int32_t  egene_col[EGENOME_COUNT];
+    uint8_t  egene_alive[EGENOME_COUNT] = {0};
+    for (int i = 0; i < EGENOME_COUNT; i++) curr_y[i] = -1;
+
     uint32_t ypop[height];
     memset(ypop, 0, (size_t)height * sizeof(uint32_t));
 
-    /* Pass 1: egenes that earned food but currently extinct — dimmed. */
+    /* Compute curr_y + intended draw colour for every egene with food. */
     for (int i = 0; i < EGENOME_COUNT; i++) {
-        if (eg_food[i] == 0 || eg_pop[i] > 0) continue;
+        if (eg_food[i] == 0) continue;
         uint64_t f = eg_food[i];
         int y = (height - 1) - (int)((uint64_t)(height - 1) * f / (f + ymax));
         if (y < 0) y = 0;
         if (y >= height) y = height - 1;
-        uint32_t c = (uint32_t)eg_color[i];
-        uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
-        uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
-        uint8_t b = (uint8_t)(( c        & 0xFF) * 15 / 100);
-        col[y] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
-                           | ((uint32_t)g << 8) | b);
+        curr_y[i] = y;
+        if (eg_pop[i] > 0) {
+            egene_alive[i] = 1;
+            egene_col[i]   = eg_color[i];
+        } else {
+            uint32_t c = (uint32_t)eg_color[i];
+            uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
+            uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
+            uint8_t b = (uint8_t)(( c        & 0xFF) * 15 / 100);
+            egene_col[i] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                                     | ((uint32_t)g << 8) | b);
+        }
     }
 
-    /* Pass 2: still-present egenes — full colour, higher pop wins. */
+    /* Pass 1: extinct egenes write their endpoint pixels (priority is
+     * later overwritten by alive egenes via ypop[]). */
     for (int i = 0; i < EGENOME_COUNT; i++) {
-        if (eg_pop[i] == 0) continue;
-        uint64_t f = eg_food[i];
-        int y = (height - 1) - (int)((uint64_t)(height - 1) * f / (f + ymax));
-        if (y < 0) y = 0;
-        if (y >= height) y = height - 1;
+        if (curr_y[i] < 0 || egene_alive[i]) continue;
+        col[curr_y[i]] = egene_col[i];
+    }
+
+    /* Pass 2: alive egenes — endpoint pixels with higher-pop priority. */
+    for (int i = 0; i < EGENOME_COUNT; i++) {
+        if (curr_y[i] < 0 || !egene_alive[i]) continue;
+        int y = curr_y[i];
         if (eg_pop[i] >= ypop[y]) {
-            col[y] = eg_color[i];
+            col[y]  = egene_col[i];
             ypop[y] = eg_pop[i];
         }
     }
+
+    /* Pass 3: bridge from prev_y to curr_y for each egene that has both,
+     * filling the interior pixels. Same priority rule: alive with higher
+     * eg_pop wins; extinct only fills empty pixels. */
+    for (int i = 0; i < EGENOME_COUNT; i++) {
+        int p = eg_food_prev_y[i];
+        int c = curr_y[i];
+        if (p < 0 || c < 0) continue;
+        int y_lo = p < c ? p : c;
+        int y_hi = p > c ? p : c;
+        for (int y = y_lo + 1; y < y_hi; y++) {
+            if (egene_alive[i]) {
+                if (eg_pop[i] >= ypop[y]) {
+                    col[y]  = egene_col[i];
+                    ypop[y] = eg_pop[i];
+                }
+            } else {
+                if (ypop[y] == 0) col[y] = egene_col[i];
+            }
+        }
+    }
+
+    memcpy(eg_food_prev_y, curr_y, sizeof(eg_food_prev_y));
 }
 
 int evoca_eg_food_get(uint64_t *food_out, uint32_t *pop_counts,

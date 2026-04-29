@@ -337,7 +337,7 @@ _EGN_BAND_COL  = _c(0xFF306030)        # darker green
 _EGN_DIV_COL   = _c(0xFFFFC080)        # orange
 _EGN_MM_COL    = _c(0xFF80C0FF)        # blue
 _EGN_FRAC_COL  = _c(0xFFFFFFFF)        # white
-_EGN_GUIDE_COL = _c(0xFF303030)
+_EGN_GUIDE_COL = _c(0xFF888888)
 
 
 def _render_egenome(dst, bufs, cursor):
