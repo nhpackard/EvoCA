@@ -569,10 +569,12 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                  layout=widgets.Layout(width="440px"))
 
     # Slider limits scale to the initialized parameter value: max = 2 × init,
-    # with a tiny floor so a zero-init slider isn't completely degenerate.
-    # Step gives ~100 increments, no finer than the floor.
+    # with a wide-enough floor so a zero-init slider has ~100 usable
+    # positions instead of two. floor is the smallest step we'd ever want
+    # to expose; range is at least 100 × floor so the slider is movable
+    # at init=0.
     def _flt_lims(init, floor):
-        mx = max(2.0 * float(init), floor)
+        mx = max(2.0 * float(init), 100.0 * floor)
         st = max(mx / 100.0, floor)
         return mx, st
 
