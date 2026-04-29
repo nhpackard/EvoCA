@@ -50,9 +50,16 @@ sys.path.insert(0, 'python')
 from evoca_explore import run_sim
 
 metrics = run_sim(
-    params={'food_inc': 0.015, 'm_scale': 0.6, 'gdiff': 0.05,
-            'mu_lut': 0.003, 'mu_egene': 0.01,
-            'tax': 0.035, 'restricted_mu': True},
+    params={
+        'food_inc': 0.015, 'm_scale': 0.6, 'gdiff': 0.05,
+        # mutation: per-egene-bit, per-active-bit (structural), and
+        # the per-LUT-bit rate
+        'mu_lut': 0.003, 'mu_egene': 0.01, 'mu_egenome': 0.005,
+        'p_dup_egene': 1.0,
+        # tax: constant + per-active-egene + per-LUT-'1'-bit
+        'tax': 0.035, 'tax_per_egene': 0.005, 'tax_lut': 0.0,
+        'restricted_mu': True,
+    },
     n_steps=5000, sample_every=100, N=256, seed=0,
     shadow=True, init='halfplane',
 )

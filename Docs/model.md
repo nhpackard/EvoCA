@@ -43,7 +43,9 @@ not eat or reproduce. Reproduction is the only way a dead cell becomes alive.
 
 ## Global Metaparameters
 
-All metaparameters can be set at init or adjusted at runtime via sliders.
+Most metaparameters are exposed as sliders in the controls panel; a
+few are non-GUI (settable at `sim.init(...)` or via `sim.update_*()`)
+and noted in the table below.
 
 | Name            | Type  | Default | Range (slider) | Description                                          |
 |-----------------|-------|---------|----------------|------------------------------------------------------|
@@ -53,7 +55,7 @@ All metaparameters can be set at init or adjusted at runtime via sliders.
 | `mu_lut`        | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction      |
 | `mu_egene`      | float | 0.0     | [0, 0.05]      | Per-egene-bit flip probability on reproduction (across all 8×6 = 48 bits per cell, including inactive slots — those drift as pseudogenes) |
 | `mu_egenome`    | float | 0.0     | [0, 0.05]      | Per-active-bit flip probability on reproduction (across the 8 presence bits). Flips that would take Negene to 0 are rejected |
-| `p_dup_egene` | float | 1.0 | [0, 1]          | Probability that a 0→1 active-bit flip overwrites the new slot's egene byte with a copy from a random currently-active slot (gene duplication). Copy happens before the egene-bit flip pass, so the new copy still receives fresh independent point mutations |
+| `p_dup_egene`   | float | 1.0     | non-GUI        | Probability that a 0→1 active-bit flip overwrites the new slot's egene byte with a copy from a random currently-active slot (gene duplication). Copy happens before the egene-bit flip pass, so the new copy receives fresh independent point mutations. No slider — set via `sim.update_p_dup_egene(p)` |
 | `tax`           | float | 0.0     | [0, 0.1]       | Constant private-food decrement per step; death if depleted |
 | `tax_per_egene` | float | 0.0     | [0, 0.01]      | Additional decrement per active egene per step. Bounds Negene against the unbounded "more is better" pressure of max-match eating |
 | `tax_lut`       | float | 0.0     | [0, 0.001]     | Additional decrement per LUT '1' bit per step. Penalises rule complexity |
@@ -713,7 +715,10 @@ notebook cell.  Returns immediately (non-blocking).
 - **gdiff** slider: [0, 10], step 1
 - **mu_lut** slider: [0, 0.001], step 0.00001
 - **mu_egene** slider: [0, 0.05], step 0.001
+- **mu_egenome** slider: [0, 0.05], step 0.001
 - **tax** slider: [0, 0.1], step 0.001
+- **tax_per_egene** slider: [0, 0.01], step 0.0001
+- **tax_lut** slider: [0, 0.001], step 0.00001
 - **act_ymax** / **eg_act_ymax** / **pat_act_ymax**: halve/double buttons (`<| name |>`)
 - **restricted_mu** checkbox: toggle restricted mutation
 - **Color** dropdown: state / env-food / priv-food / births
