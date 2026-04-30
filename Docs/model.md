@@ -60,6 +60,7 @@ and noted in the table below.
 | `tax_per_egene` | float | 0.0     | [0, 0.01]      | Additional decrement per active egene per step. Bounds Negene against the unbounded "more is better" pressure of max-match eating |
 | `tax_lut`       | float | 0.0     | [0, 0.001]     | Additional decrement per LUT '1' bit per step. Penalises rule complexity |
 | `restricted_mu` | int   | 0       | checkbox       | If 1, restrict LUT mutations to dynamically active bits |
+| `N_log_interval` | int  | 1       | non-GUI        | ProbeLogs CSV sampling interval (Python-side; the C library is unaware). 1 logs every tick; K logs every K-th sample. See `Docs/probes.md` "Probe Logging" |
 
 ---
 
@@ -445,7 +446,7 @@ sim.init(N, food_inc=0.0, m_scale=1.0, gdiff=0,
          mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
          p_dup_egene=1.0,
          tax=0.0, tax_per_egene=0.0, tax_lut=0.0,
-         restricted_mu=0)
+         restricted_mu=0, N_log_interval=1)
     # Allocate N x N lattice, set metaparameters.
     # All grids initialized to zero.
 
@@ -466,6 +467,7 @@ sim.update_p_dup_egene(p)  # float in [0,1], dup-on-activate probability
 sim.update_tax(t)            # float, constant priv-food decrement per step
 sim.update_tax_per_egene(t)  # float, additional decrement per active egene
 sim.update_tax_lut(t)        # float, additional decrement per LUT '1' bit
+sim.update_N_log_interval(n) # int, ProbeLogs sample interval (Python-side)
 sim.update_restricted_mu(r)  # int (0 or 1)
 sim.update_act_ymax(y)       # int, Y-scale for LUT activity chart
 sim.update_eg_act_ymax(y)    # int, Y-scale for egenome activity chart

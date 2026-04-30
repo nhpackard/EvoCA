@@ -78,6 +78,12 @@ class EvoCA:
         self.restricted_mu = 0
         self._n_ent      = 2
         self.egenome      = 0
+        # Diagnostic logger sample interval (Python-side; not a C
+        # parameter). 1 = log every tick. Used by run_with_controls
+        # to throttle ProbeLogs CSV writes.
+        self.N_log_interval = 1
+        # Origin recipe basename if loaded via import_run; tags log files.
+        self._origin_recipe = None
         self._state_params = {}
         self._setup_signatures()
 
@@ -339,7 +345,8 @@ class EvoCA:
              mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
              p_dup_egene=1.0,
              tax=0.0, tax_per_egene=0.0, tax_lut=0.0,
-             restricted_mu=0, n_ent=2):
+             restricted_mu=0, n_ent=2,
+             N_log_interval=1):
         stop = getattr(self, '_stop_display', None)
         if stop is not None:
             stop()
@@ -357,6 +364,7 @@ class EvoCA:
         self.tax_lut       = float(tax_lut)
         self.restricted_mu = int(restricted_mu)
         self._n_ent     = int(n_ent)
+        self.N_log_interval = max(1, int(N_log_interval))
         self._lib.evoca_init(N, self.food_inc, self.m_scale)
         self._lib.evoca_set_gdiff(self.gdiff)
         self._lib.evoca_set_mu_lut(self.mu_lut)
@@ -439,6 +447,11 @@ class EvoCA:
     def update_tax_lut(self, t):
         self.tax_lut = float(t)
         self._lib.evoca_set_tax_lut(self.tax_lut)
+
+    def update_N_log_interval(self, n):
+        """Set the ProbeLogs CSV sampling interval (Python-side; the C
+        library is unaware). 1 logs every tick; 5 logs every 5th, etc."""
+        self.N_log_interval = max(1, int(n))
 
     def update_restricted_mu(self, r):
         self.restricted_mu = int(r)
@@ -1105,6 +1118,8 @@ def import_run(filepath=None, recipe='init', lib_path=None, N=None):
     sim = EvoCA(lib_path=lib_path)
     grid_N = int(N) if N is not None else int(data['N'])
     sim.init(grid_N, **mp)
+    # Tag origin so the probe logger can label log files.
+    sim._origin_recipe = os.path.basename(filepath)
 
     # Build state params — map v2 key names to v3 if needed
     init_raw = data.get('initialization', {})

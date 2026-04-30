@@ -12,6 +12,9 @@ from python.controls import available_probes
 available_probes()
 ```
 
+The `ts` and `egenome` probes also write CSV log files to `ProbeLogs/`
+for long-term diagnostics — see "Probe Logging" below.
+
 ## Probe Summary
 
 | Probe name       | Window size   | What it shows                                          |
@@ -259,6 +262,46 @@ halve/double buttons (`<| name |>`) to adjust their Y-axis saturation
 scale (`act_ymax`, `eg_act_ymax`, `pat_act_ymax`).  These replace the
 previous slider widgets.  Halving makes waves rise faster; doubling
 spreads out low-activity entries.
+
+---
+
+## Probe Logging (ProbeLogs/)
+
+When `run_with_controls(sim, ...)` opens a session that includes the
+`ts` and/or `egenome` probe, it also opens one CSV per enabled probe
+under `ProbeLogs/`. These give long-term records of evolutionary
+diagnostics across multiple chart-window-fulls — useful for spotting
+slow drift (e.g. mean max-match climbing across thousands of ticks)
+that a 512-px-wide strip can't show at once.
+
+**File naming**:
+`ProbeLogs/<YYYY-MM-DD>_<HHMMSS>_<probe>_<descriptor>.csv`.
+The descriptor prefers `sim._origin_recipe` (set by `import_run` to the
+basename of the `.evoca` recipe), falls back to whatever's in the
+Export text field, and finally to `manual`. Non-alphanumerics get
+mapped to `_`.
+
+**Columns**:
+
+| Probe     | Columns                                                       |
+|-----------|---------------------------------------------------------------|
+| `ts`      | `t,pop,F_env,f_priv,lut_div,eg_ent,activity_flux`             |
+| `egenome` | `t,mean_negene,std_negene,distinct_egene_values,mean_max_match,frac_at_max` |
+
+`t` is the global step counter at sample time. Histogram-strip probes
+(`activity`, `eg_activity`, `eg_food`, etc.) are intentionally not
+logged — too wide for a useful CSV.
+
+**Sample rate**: every tick by default. Set `sim.N_log_interval = K`
+to log every `K`-th sample (still writes 1 row per chart sample). The
+chart itself still updates every tick. Useful when you want a
+1000-row time series from a 5000-tick run for downstream plotting.
+There is no UI control; set it before calling `run_with_controls`,
+or via `sim.update_N_log_interval(K)` during a session.
+
+**Restart behaviour**: pressing **Restart** closes the current CSVs
+and opens new ones with a fresh timestamp, matching the chart-buffer
+reset. Old logs are preserved on disk.
 
 ---
 

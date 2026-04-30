@@ -526,6 +526,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         for ti, v in enumerate(vals):
             ts_bufs[ti][ts_cur] = v
         ts_cursor[0] = (ts_cur + 1) % PROBE_W
+        _log_probe_sample('ts', int(sim.get_step()), vals)
 
     # ── Shared sim state ──────────────────────────────────────────
     st    = dict(paused=bool(paused), running=True, colormode=colormode, step_cnt=0)
@@ -582,6 +583,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 shm.close()
             except Exception:
                 pass
+        _close_probe_logs()
 
     atexit.register(_do_cleanup)
 
@@ -618,6 +620,83 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         placeholder='run descriptor', layout=widgets.Layout(width="200px"))
     btn_export = widgets.Button(
         description="Export", layout=widgets.Layout(width="70px"))
+
+    # ── Probe logger (ProbeLogs/) ────────────────────────────────────
+    # Opens one CSV per enabled time-series probe (ts and egenome) at
+    # session start and on Restart. File name carries a timestamp plus
+    # a descriptor: prefer sim._origin_recipe (set by import_run), else
+    # txt_descriptor.value, else 'manual'. Sample throttling honours
+    # sim.N_log_interval. Histogram-strip probes (eg_activity, eg_food)
+    # are intentionally not logged — too wide for useful CSV.
+    _probe_log_files = {}
+    _probe_log_dir   = os.path.normpath(os.path.join(
+        os.path.dirname(__file__), '..', 'ProbeLogs'))
+
+    def _probe_log_descriptor():
+        ori = getattr(sim, '_origin_recipe', None)
+        if ori:
+            d = os.path.splitext(ori)[0]
+        else:
+            d = (txt_descriptor.value or '').strip()
+        if not d:
+            d = 'manual'
+        return ''.join(c if (c.isalnum() or c in '-_.') else '_'
+                       for c in d)
+
+    def _close_probe_logs():
+        for f in list(_probe_log_files.values()):
+            try:
+                f.close()
+            except Exception:
+                pass
+        _probe_log_files.clear()
+
+    def _open_probe_logs():
+        _close_probe_logs()
+        if not (ts_enabled or egn_enabled):
+            return
+        try:
+            os.makedirs(_probe_log_dir, exist_ok=True)
+        except Exception as e:
+            print(f"EvoCA: ProbeLogs dir create failed: {e}", flush=True)
+            return
+        ts_now = time.strftime('%Y-%m-%d_%H%M%S')
+        desc = _probe_log_descriptor()
+        if ts_enabled:
+            path = os.path.join(_probe_log_dir,
+                                f'{ts_now}_ts_{desc}.csv')
+            try:
+                f = open(path, 'w', buffering=1)
+                f.write('t,pop,F_env,f_priv,lut_div,'
+                        'eg_ent,activity_flux\n')
+                _probe_log_files['ts'] = f
+                print(f"EvoCA: ts probe → {path}", flush=True)
+            except Exception as e:
+                print(f"EvoCA: ts log open failed: {e}", flush=True)
+        if egn_enabled:
+            path = os.path.join(_probe_log_dir,
+                                f'{ts_now}_egenome_{desc}.csv')
+            try:
+                f = open(path, 'w', buffering=1)
+                f.write('t,mean_negene,std_negene,'
+                        'distinct_egene_values,mean_max_match,'
+                        'frac_at_max\n')
+                _probe_log_files['egenome'] = f
+                print(f"EvoCA: egenome probe → {path}", flush=True)
+            except Exception as e:
+                print(f"EvoCA: egenome log open failed: {e}", flush=True)
+
+    def _log_probe_sample(probe, t, values):
+        f = _probe_log_files.get(probe)
+        if f is None:
+            return
+        n_log = max(1, int(getattr(sim, 'N_log_interval', 1)))
+        if n_log > 1 and (t % n_log) != 0:
+            return
+        try:
+            f.write(f'{t},' + ','.join(f'{v:g}' for v in values) + '\n')
+        except Exception:
+            pass
 
     sl_kw = dict(continuous_update=True,
                  style={"description_width": "90px"},
@@ -814,6 +893,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             for ti in range(5):
                 egn_bufs[ti][egn_cur] = egn_out[ti]
             egn_cursor[0] = (egn_cur + 1) % PROBE_W
+            _log_probe_sample('egenome', int(sim.get_step()),
+                              egn_out.tolist())
         if eg_activity_enabled:
             ega_cur = int(eg_activity_cursor[0])
             ega_col_ptr = eg_activity_col.ctypes.data_as(
@@ -988,6 +1069,9 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             egn_cursor[0] = 0
             for buf in egn_bufs:
                 buf[:] = 0
+        # Roll probe-log files: close current, open new with new timestamp
+        # so the CSV boundary matches the chart reset.
+        _open_probe_logs()
         if lut_complexity_enabled:
             lut_complexity_cursor[0] = 0
             lut_complexity_pixels[:] = 0
@@ -1184,6 +1268,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 for ti in range(5):
                     egn_bufs[ti][egn_cur] = egn_out[ti]
                 egn_cursor[0] = (egn_cur + 1) % PROBE_W
+                _log_probe_sample('egenome', int(sim.get_step()),
+                                  egn_out.tolist())
             if eg_activity_enabled:
                 ega_cur = int(eg_activity_cursor[0])
                 ega_col_ptr = eg_activity_col.ctypes.data_as(
@@ -1272,6 +1358,9 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             ctrl[_QUIT] = 1
         sdl_proc.wait(timeout=3)
         _do_cleanup()
+
+    # Open ProbeLogs CSVs (no-op if neither ts nor egenome enabled).
+    _open_probe_logs()
 
     t = threading.Thread(target=_sim_thread, name="evoca-sim", daemon=True)
     t.start()
