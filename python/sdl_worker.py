@@ -351,8 +351,63 @@ _EGN_FRAC_COL  = _c(0xFFFFFFFF)        # white
 _EGN_GUIDE_COL = _c(0xFF888888)
 
 
+def _autoscale_ys(vals, mask, H, lo_extra=None, hi_extra=None):
+    """Map `vals[mask]` into [0.1H, 0.9H] pixel space (top→bottom).
+    Returns ys (length len(vals), with -1 outside mask) and the (lo, hi)
+    actually used.  `lo_extra`/`hi_extra` (if given) are extra arrays
+    folded into the auto-scale range — used to make sure a mean line's
+    ±std band fits.  10% headroom top/bottom for visual breathing
+    room."""
+    import numpy as np
+
+    y_top = 0.1 * (H - 1)
+    y_bot = 0.9 * (H - 1)
+    n = len(vals)
+    ys = np.full(n, -1, dtype=np.int32)
+    if not mask.any():
+        return ys, (0.0, 0.0)
+    pool = [vals[mask]]
+    if lo_extra is not None:
+        pool.append(lo_extra[mask])
+    if hi_extra is not None:
+        pool.append(hi_extra[mask])
+    flat = np.concatenate(pool)
+    lo = float(flat.min())
+    hi = float(flat.max())
+    if hi <= lo:
+        ys[mask] = int((y_top + y_bot) * 0.5)
+        return ys, (lo, hi)
+    scale = (y_bot - y_top) / (hi - lo)
+    ys_valid = np.clip(
+        (y_bot - (vals[mask] - lo) * scale).astype(np.int32),
+        0, H - 1)
+    ys[mask] = ys_valid
+    return ys, (lo, hi)
+
+
+def _draw_strip_line(strip, ys, mask, color, H):
+    """Draw a continuous line by vertical-filling between adjacent ys.
+    Same trick as _render_ts: each column fills from min(prev, curr) to
+    max so single-pixel jumps look like a continuous trace."""
+    import numpy as np
+    H_grid = np.arange(H)[:, None]
+    prev_ys = np.roll(ys, 1)
+    prev_ys[0] = -1
+    both = (ys >= 0) & (prev_ys >= 0)
+    y_lo = np.minimum(ys, prev_ys)
+    y_hi = np.maximum(ys, prev_ys)
+    fill = ((H_grid >= y_lo[None, :])
+            & (H_grid <= y_hi[None, :])
+            & both[None, :])
+    strip[fill] = color
+    # Endpoints (no neighbour to bridge to).
+    isolated = mask & ~both
+    xs = np.arange(len(ys))
+    strip[ys[isolated], xs[isolated]] = color
+
+
 def _render_egenome(dst, bufs, cursor):
-    """Render the 4-strip egenome stats probe.
+    """Render the 4-strip egenome stats probe with per-strip auto-scale.
 
     `dst`  : pixel array shape (EGN_TOTAL_H, W+).
     `bufs` : list of 5 float32[PROBE_W] views in the order
@@ -376,48 +431,40 @@ def _render_egenome(dst, bufs, cursor):
             dst[s * H, :PROBE_W] = _EGN_GUIDE_COL
         return
 
-    # Strip 0 — mean Negene + ±std band, y in [0, NEGENOME_MAX=8].
-    NEGENOME_MAX_F = 8.0
-    scale0 = (H - 1) / NEGENOME_MAX_F
-    for x in range(PROBE_W):
-        if not filled[x]: continue
-        m = mean[x]; s = std[x]
-        y_mean = int((H - 1) - m * scale0)
-        y_lo   = int((H - 1) - (m + s) * scale0)
-        y_hi   = int((H - 1) - (m - s) * scale0)
-        y_lo = max(0, min(H - 1, y_lo))
-        y_hi = max(0, min(H - 1, y_hi))
-        y_mean = max(0, min(H - 1, y_mean))
-        for y in range(y_lo, y_hi + 1):
-            dst[y, x] = _EGN_BAND_COL
-        dst[y_mean, x] = _EGN_LINE_COL
+    # Strip 0 — mean Negene line + ±std band; auto-scale over (m-s, m+s).
+    strip0 = dst[0:H]
+    lo_arr = mean - std
+    hi_arr = mean + std
+    mask0 = (mean != 0.0) | (std != 0.0)
+    ys_mean, _ = _autoscale_ys(
+        mean, mask0, H, lo_extra=lo_arr, hi_extra=hi_arr)
+    ys_lo, _   = _autoscale_ys(
+        hi_arr, mask0, H, lo_extra=lo_arr, hi_extra=hi_arr)  # +std → top
+    ys_hi, _   = _autoscale_ys(
+        lo_arr, mask0, H, lo_extra=lo_arr, hi_extra=hi_arr)  # -std → bottom
+    # Band = solid fill between ys_lo and ys_hi
+    H_grid = np.arange(H)[:, None]
+    band_mask = (ys_lo >= 0) & (ys_hi >= 0)
+    yl = np.minimum(ys_lo, ys_hi)
+    yh = np.maximum(ys_lo, ys_hi)
+    band_fill = ((H_grid >= yl[None, :])
+                  & (H_grid <= yh[None, :])
+                  & band_mask[None, :])
+    strip0[band_fill] = _EGN_BAND_COL
+    _draw_strip_line(strip0, ys_mean, mask0, _EGN_LINE_COL, H)
 
-    # Strip 1 — distinct egene values, y in [0, 64].
-    base1 = H
-    scale1 = (H - 1) / 64.0
-    for x in range(PROBE_W):
-        if not filled[x]: continue
-        y = int((H - 1) - dist[x] * scale1)
-        y = max(0, min(H - 1, y))
-        dst[base1 + y, x] = _EGN_DIV_COL
-
-    # Strip 2 — mean max-match, y in [0, 25].
-    base2 = 2 * H
-    scale2 = (H - 1) / 25.0
-    for x in range(PROBE_W):
-        if not filled[x]: continue
-        y = int((H - 1) - mm[x] * scale2)
-        y = max(0, min(H - 1, y))
-        dst[base2 + y, x] = _EGN_MM_COL
-
-    # Strip 3 — frac at Negene_max, y in [0, 1].
-    base3 = 3 * H
-    scale3 = (H - 1) / 1.0
-    for x in range(PROBE_W):
-        if not filled[x]: continue
-        y = int((H - 1) - frac[x] * scale3)
-        y = max(0, min(H - 1, y))
-        dst[base3 + y, x] = _EGN_FRAC_COL
+    # Strips 1..3 — single-trace auto-scaled lines.
+    for si, (vals, color) in enumerate((
+        (dist, _EGN_DIV_COL),
+        (mm,   _EGN_MM_COL),
+        (frac, _EGN_FRAC_COL),
+    )):
+        base = (si + 1) * H
+        m = vals != 0.0
+        if not m.any():
+            continue
+        ys, _ = _autoscale_ys(vals, m, H)
+        _draw_strip_line(dst[base:base + H], ys, m, color, H)
 
     # Sub-strip separators + cursor.
     for s in range(1, 4):
@@ -436,8 +483,6 @@ def _render_egenome(dst, bufs, cursor):
     for si, (text, line_col, band_col) in enumerate(_strip_labels):
         ly = si * H + 2
         lx = 3
-        # Swatch — for the top strip use the band colour as a 3-row block
-        # behind a 1-row line in line_col, mirroring how the data is drawn.
         if band_col is not None:
             dst[ly + 1:ly + 4, lx:lx + sw_w] = band_col
             dst[ly + 2,        lx:lx + sw_w] = line_col
@@ -464,7 +509,8 @@ _EG_GUIDE_COL = _c(0xFF888888)
 
 
 def _render_egene(dst, bufs, cursor):
-    """Render the 3-sub-strip egene cognitive stats probe.
+    """Render the 3-sub-strip egene cognitive stats probe with
+    per-strip auto-scale.
 
     `dst`  : pixel array shape (EG_TOTAL_H, W+).
     `bufs` : list of 3 float32[PROBE_W] views in the order
@@ -485,32 +531,17 @@ def _render_egene(dst, bufs, cursor):
             dst[s * H, :PROBE_W] = _EG_GUIDE_COL
         return
 
-    # Strip 0: mean specificity, y in [0, 25].
-    base0 = 0
-    scale0 = (H - 1) / 25.0
-    for x in range(PROBE_W):
-        if not filled[x]: continue
-        y = int((H - 1) - spec[x] * scale0)
-        y = max(0, min(H - 1, y))
-        dst[base0 + y, x] = _EG_SPEC_COL
-
-    # Strip 1: mean load, y in [0, 200].
-    base1 = H
-    scale1 = (H - 1) / 200.0
-    for x in range(PROBE_W):
-        if not filled[x]: continue
-        y = int((H - 1) - load[x] * scale1)
-        y = max(0, min(H - 1, y))
-        dst[base1 + y, x] = _EG_LOAD_COL
-
-    # Strip 2: mean intake, y in [0, 1].
-    base2 = 2 * H
-    scale2 = (H - 1) / 1.0
-    for x in range(PROBE_W):
-        if not filled[x]: continue
-        y = int((H - 1) - food[x] * scale2)
-        y = max(0, min(H - 1, y))
-        dst[base2 + y, x] = _EG_FOOD_COL
+    for si, (vals, color) in enumerate((
+        (spec, _EG_SPEC_COL),
+        (load, _EG_LOAD_COL),
+        (food, _EG_FOOD_COL),
+    )):
+        base = si * H
+        m = vals != 0.0
+        if not m.any():
+            continue
+        ys, _ = _autoscale_ys(vals, m, H)
+        _draw_strip_line(dst[base:base + H], ys, m, color, H)
 
     # Sub-strip separators + cursor + per-strip glyph labels.
     for s in range(1, 3):
