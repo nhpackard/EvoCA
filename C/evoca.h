@@ -177,6 +177,13 @@ int  evoca_get_eg_food_ymax(void);
 /* Egenome scalar stats: fills out[0..4] = [mean Negene, std Negene,
  * distinct egene values (out of 64), mean max-match, frac at max]. */
 void evoca_egenome_stats(float *out);
+
+/* Egene cognitive stats: fills out[0..2] = [mean cognitive specificity
+ * (non-wildcard cell-positions per active egene, range 0..25),
+ * mean cognitive load (per-cell sum of cell-positions across active
+ * egenes, range 0..200), mean food intake per alive eater this step
+ * (range 0..1)]. */
+void evoca_egene_stats(float *out);
 int  evoca_eg_activity_get(uint64_t *activities, uint32_t *pop_counts,
                            int32_t *colors);
 void evoca_set_eg_act_ymax(int y);
@@ -218,8 +225,14 @@ float   *evoca_get_f(void);
  * scratch is rebuilt on each call. Read-only; for Python display use. */
 uint8_t *evoca_get_egenome(void);
 
-/* Returns pointer to the live [N*N*NEGENOME_MAX] egene-bytes array. */
+/* Returns pointer to the live [N*N*NEGENOME_MAX] egene-value-bytes array. */
 uint8_t *evoca_get_egenes(void);
+
+/* Returns pointer to the live [N*N*NEGENOME_MAX] egene-mask-bytes array.
+ * Bit i in mask byte = 1 means orbit i is non-wildcard (consults the
+ * value bit); bit i = 0 means orbit i is wildcard (no contribution to
+ * eating, no per-position tax). */
+uint8_t *evoca_get_egenes_mask(void);
 
 /* Returns pointer to the live [N*N] active-mask byte array (one byte
  * per cell, bit i = slot i is active). */

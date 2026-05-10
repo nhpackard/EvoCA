@@ -311,6 +311,16 @@ class EvoCA:
         #    mean max-match, frac at Negene_max]
         L.evoca_egenome_stats.argtypes = [ctypes.POINTER(ctypes.c_float)]
         L.evoca_egenome_stats.restype  = None
+        # Egene cognitive stats: out[0..2] =
+        #   [mean cognitive specificity (non-* cell-positions per
+        #    active egene), mean per-cell cognitive load,
+        #    mean intake per alive eater this step]
+        L.evoca_egene_stats.argtypes  = [ctypes.POINTER(ctypes.c_float)]
+        L.evoca_egene_stats.restype   = None
+        # Egene mask accessor: per-slot wildcard-mask byte (bit i = 1
+        # means orbit i is non-wildcard).
+        L.evoca_get_egenes_mask.argtypes = []
+        L.evoca_get_egenes_mask.restype  = ctypes.POINTER(ctypes.c_uint8)
         # LUT complexity
         L.evoca_lut_complexity_counts.argtypes = [
             ctypes.POINTER(ctypes.c_uint32)]
@@ -809,6 +819,29 @@ class EvoCA:
             'mean_max_match':        float(out[3]),
             'frac_at_max':           float(out[4]),
         }
+
+    def egene_stats(self):
+        """Return scalar cognitive stats over alive cells:
+        {'mean_specificity', 'mean_load', 'mean_intake'}.
+        - mean_specificity: non-wildcard cell-positions per active egene (0..25).
+        - mean_load: per-cell sum of cell-positions across active egenes (0..200).
+        - mean_intake: per-eater mouthful this step (0..1)."""
+        out = np.zeros(3, dtype=np.float32)
+        self._lib.evoca_egene_stats(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+        return {
+            'mean_specificity': float(out[0]),
+            'mean_load':        float(out[1]),
+            'mean_intake':      float(out[2]),
+        }
+
+    def get_egenes_mask(self):
+        """Return (N, N, NEGENOME_MAX) uint8 array of egene wildcard masks.
+        Bit i of mask byte = 1 means orbit i is non-wildcard."""
+        ptr = self._lib.evoca_get_egenes_mask()
+        return np.ctypeslib.as_array(
+            ptr, shape=(self._N * self._N * 8,)).copy().reshape(
+                self._N, self._N, 8)
 
     def population(self):
         """Total alive cells."""

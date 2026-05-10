@@ -446,6 +446,91 @@ def _render_egenome(dst, bufs, cursor):
         _draw_label(dst, lx + sw_w + 2, ly, line_col, text)
 
 
+# ── Egene cognitive stats probe ────────────────────────────────
+#
+# Three stacked sub-strips (each PROBE_H/2 = 64 px tall, 192 px total):
+#   strip 0: mean cognitive specificity (non-* cell-positions per
+#            active egene), fixed y in [0, 25]
+#   strip 1: mean per-cell cognitive load (sum of cell-positions
+#            across active egenes), fixed y in [0, 200]
+#   strip 2: mean intake (mouthful per alive eater this step),
+#            fixed y in [0, 1]
+EG_SUB_H   = PROBE_H // 2                # 64
+EG_TOTAL_H = 3 * EG_SUB_H                # 192
+_EG_SPEC_COL = _c(0xFF80FF80)            # bright green
+_EG_LOAD_COL = _c(0xFFFFC080)            # orange
+_EG_FOOD_COL = _c(0xFF80C0FF)            # blue
+_EG_GUIDE_COL = _c(0xFF888888)
+
+
+def _render_egene(dst, bufs, cursor):
+    """Render the 3-sub-strip egene cognitive stats probe.
+
+    `dst`  : pixel array shape (EG_TOTAL_H, W+).
+    `bufs` : list of 3 float32[PROBE_W] views in the order
+             [mean_specificity, mean_load, mean_intake].
+    """
+    import numpy as np
+
+    dst[:EG_TOTAL_H, :PROBE_W] = BG_COLOR
+    H = EG_SUB_H
+
+    rolled = [np.roll(b, -cursor) for b in bufs]
+    spec = rolled[0]
+    load = rolled[1]
+    food = rolled[2]
+    filled = (spec != 0.0) | (load != 0.0) | (food != 0.0)
+    if not filled.any():
+        for s in range(1, 3):
+            dst[s * H, :PROBE_W] = _EG_GUIDE_COL
+        return
+
+    # Strip 0: mean specificity, y in [0, 25].
+    base0 = 0
+    scale0 = (H - 1) / 25.0
+    for x in range(PROBE_W):
+        if not filled[x]: continue
+        y = int((H - 1) - spec[x] * scale0)
+        y = max(0, min(H - 1, y))
+        dst[base0 + y, x] = _EG_SPEC_COL
+
+    # Strip 1: mean load, y in [0, 200].
+    base1 = H
+    scale1 = (H - 1) / 200.0
+    for x in range(PROBE_W):
+        if not filled[x]: continue
+        y = int((H - 1) - load[x] * scale1)
+        y = max(0, min(H - 1, y))
+        dst[base1 + y, x] = _EG_LOAD_COL
+
+    # Strip 2: mean intake, y in [0, 1].
+    base2 = 2 * H
+    scale2 = (H - 1) / 1.0
+    for x in range(PROBE_W):
+        if not filled[x]: continue
+        y = int((H - 1) - food[x] * scale2)
+        y = max(0, min(H - 1, y))
+        dst[base2 + y, x] = _EG_FOOD_COL
+
+    # Sub-strip separators + cursor + per-strip glyph labels.
+    for s in range(1, 3):
+        dst[s * H, :PROBE_W] = _EG_GUIDE_COL
+    for s in range(3):
+        dst[s * H:(s + 1) * H, PROBE_W - 1] = CURSOR_COLOR
+
+    sw_w = 8
+    _eg_strip_labels = (
+        ('spec', _EG_SPEC_COL),   # cognitive specificity
+        ('load', _EG_LOAD_COL),   # per-cell cognitive load
+        ('food', _EG_FOOD_COL),   # mean intake (mouthful per eater)
+    )
+    for si, (text, line_col) in enumerate(_eg_strip_labels):
+        ly = si * H + 2
+        lx = 3
+        dst[ly + 1:ly + 4, lx:lx + sw_w] = line_col
+        _draw_label(dst, lx + sw_w + 2, ly, line_col, text)
+
+
 def main():
     if len(sys.argv) < 5:
         print("EvoCA SDL: bad args", flush=True)
@@ -467,6 +552,7 @@ def main():
     eg_activity_shm_name = None
     eg_food_shm_name = None
     egn_shm_name = None
+    eg_shm_name  = None
     lut_complexity_shm_name = None
     entropy_shm_name = None
     pat_activity_shm_name = None
@@ -484,6 +570,8 @@ def main():
             eg_food_shm_name = arg[len("--eg-food="):]
         elif arg.startswith("--egenome="):
             egn_shm_name = arg[len("--egenome="):]
+        elif arg.startswith("--egene="):
+            eg_shm_name = arg[len("--egene="):]
         elif arg.startswith("--lut-complexity="):
             lut_complexity_shm_name = arg[len("--lut-complexity="):]
         elif arg.startswith("--entropy="):
@@ -630,6 +718,27 @@ def main():
             print(f"EvoCA SDL: egenome SharedMemory open failed: {e}",
                   flush=True)
             egn_shm_name = None
+
+    # Open egene cognitive stats shared memory
+    eg_shm     = None
+    eg_cursor  = None
+    eg_bufs    = None     # list of 3 float32[PROBE_W] views
+    if eg_shm_name:
+        try:
+            eg_shm = SharedMemory(name=eg_shm_name)
+            eg_cursor = np.ndarray((1,), dtype=np.int32,
+                                     buffer=eg_shm.buf)
+            eg_bufs = []
+            off = 4
+            for _ in range(3):
+                eg_bufs.append(np.ndarray((PROBE_W,), dtype=np.float32,
+                                            buffer=eg_shm.buf, offset=off))
+                off += PROBE_W * 4
+            print(f"EvoCA SDL: egene shm opened (3x{PROBE_W})", flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: egene SharedMemory open failed: {e}",
+                  flush=True)
+            eg_shm_name = None
 
     # Open LUT complexity shared memory
     lut_complexity_shm     = None
@@ -1012,6 +1121,40 @@ def main():
                 sdl2.SDL_DestroyWindow(egnw)
         else:
             print("EvoCA SDL: egenome window creation failed", flush=True)
+
+    # ── Egene cognitive stats window ───────────────────────────
+    eg_window_p  = None
+    eg_surface_p = None
+    eg_dst       = None
+    if eg_shm is not None:
+        egw_x = main_x - PROBE_W
+        egw = sdl2.SDL_CreateWindow(
+            b"egene",
+            egw_x, next_probe_y,
+            PROBE_W, EG_TOTAL_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if egw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(egw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + EG_TOTAL_H + real_title_h
+            egps = sdl2.SDL_GetWindowSurface(egw)
+            if egps:
+                sdl2.SDL_SetSurfaceBlendMode(egps, sdl2.SDL_BLENDMODE_NONE)
+                egsurf  = egps.contents
+                egp_i32 = egsurf.pitch // 4
+                egp_ptr = ctypes.cast(egsurf.pixels,
+                                       ctypes.POINTER(ctypes.c_int32))
+                egd_flat = np.ctypeslib.as_array(egp_ptr,
+                                                  shape=(EG_TOTAL_H * egp_i32,))
+                eg_dst       = egd_flat.reshape(EG_TOTAL_H, egp_i32)
+                eg_window_p  = egw
+                eg_surface_p = egps
+                print("EvoCA SDL: egene window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(egw)
+        else:
+            print("EvoCA SDL: egene window creation failed", flush=True)
 
     # ── LUT complexity window ──────────────────────────────────
     lc_window_p  = None
@@ -1540,6 +1683,13 @@ def main():
             _render_egenome(egn_dst, egn_bufs, int(egn_cursor[0]))
             sdl2.SDL_UnlockSurface(egn_surface_p)
             sdl2.SDL_UpdateWindowSurface(egn_window_p)
+
+        # Render egene cognitive stats window
+        if eg_window_p is not None and eg_bufs is not None:
+            sdl2.SDL_LockSurface(eg_surface_p)
+            _render_egene(eg_dst, eg_bufs, int(eg_cursor[0]))
+            sdl2.SDL_UnlockSurface(eg_surface_p)
+            sdl2.SDL_UpdateWindowSurface(eg_window_p)
 
         # Render LUT complexity window
         if lc_window_p is not None and lut_complexity_pixels is not None:

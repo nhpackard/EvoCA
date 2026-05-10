@@ -80,6 +80,10 @@ _AVAILABLE_PROBES = {
     'egenome':        ('Egenome stats: mean Negene with +/- std band '
                        '(top) plus three sub-strips for distinct egene '
                        'values, mean max-match, and frac at Negene_max'),
+    'egene':          ('Egene cognitive stats: 3 sub-strips for mean '
+                       'cognitive specificity (non-* cell-positions per '
+                       'active egene), mean per-cell cognitive load, '
+                       'and mean food intake per eater'),
     'lut_complexity': 'Stacked area: LUT ring-dependency level',
     'eg_pop':         'Stacked area: egenome population fractions',
     'entropy':        'Local-pattern Shannon entropy',
@@ -230,6 +234,29 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         for _ in range(EGN_TRACES):
             egn_bufs.append(np.ndarray((PROBE_W,), dtype=np.float32,
                                          buffer=egn_shm.buf, offset=off))
+            off += PROBE_W * 4
+
+    # ── Egene cognitive stats probe setup ────────────────────────────
+    # Three float32[PROBE_W] traces:
+    #   0=mean cognitive specificity, 1=mean per-cell cognitive load,
+    #   2=mean intake per eater
+    eg_enabled = bool((probes or {}).get('egene'))
+    eg_shm     = None
+    eg_cursor  = None
+    eg_bufs    = None
+    if eg_enabled:
+        EG_TRACES = 3
+        eg_shm_size = 4 + EG_TRACES * PROBE_W * 4
+        eg_shm = SharedMemory(create=True, size=eg_shm_size)
+        _egbuf = np.ndarray((eg_shm_size,), dtype=np.uint8,
+                              buffer=eg_shm.buf)
+        _egbuf[:] = 0
+        eg_cursor = np.ndarray((1,), dtype=np.int32, buffer=eg_shm.buf)
+        eg_bufs = []
+        off = 4
+        for _ in range(EG_TRACES):
+            eg_bufs.append(np.ndarray((PROBE_W,), dtype=np.float32,
+                                       buffer=eg_shm.buf, offset=off))
             off += PROBE_W * 4
 
     # ── Entropy probe setup ──────────────────────────────────────────
@@ -456,6 +483,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         cmd += ["--eg-food=" + eg_food_shm.name]
     if egn_enabled:
         cmd += ["--egenome=" + egn_shm.name]
+    if eg_enabled:
+        cmd += ["--egene=" + eg_shm.name]
     if lut_complexity_enabled:
         cmd += ["--lut-complexity=" + lut_complexity_shm.name]
     if entropy_enabled:
@@ -558,6 +587,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             all_shm.append(eg_food_shm)
         if egn_shm is not None:
             all_shm.append(egn_shm)
+        if eg_shm is not None:
+            all_shm.append(eg_shm)
         if lut_complexity_shm is not None:
             all_shm.append(lut_complexity_shm)
         if entropy_shm is not None:
@@ -653,7 +684,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
 
     def _open_probe_logs():
         _close_probe_logs()
-        if not (ts_enabled or egn_enabled):
+        if not (ts_enabled or egn_enabled or eg_enabled):
             return
         try:
             os.makedirs(_probe_log_dir, exist_ok=True)
@@ -685,6 +716,16 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 print(f"EvoCA: egenome probe → {path}", flush=True)
             except Exception as e:
                 print(f"EvoCA: egenome log open failed: {e}", flush=True)
+        if eg_enabled:
+            path = os.path.join(_probe_log_dir,
+                                f'{ts_now}_egene_{desc}.csv')
+            try:
+                f = open(path, 'w', buffering=1)
+                f.write('t,mean_specificity,mean_load,mean_intake\n')
+                _probe_log_files['egene'] = f
+                print(f"EvoCA: egene probe → {path}", flush=True)
+            except Exception as e:
+                print(f"EvoCA: egene log open failed: {e}", flush=True)
 
     def _log_probe_sample(probe, t, values):
         f = _probe_log_files.get(probe)
@@ -895,6 +936,16 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             egn_cursor[0] = (egn_cur + 1) % PROBE_W
             _log_probe_sample('egenome', int(sim.get_step()),
                               egn_out.tolist())
+        if eg_enabled:
+            eg_out = np.zeros(3, dtype=np.float32)
+            sim._lib.evoca_egene_stats(
+                eg_out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+            eg_cur = int(eg_cursor[0])
+            for ti in range(3):
+                eg_bufs[ti][eg_cur] = eg_out[ti]
+            eg_cursor[0] = (eg_cur + 1) % PROBE_W
+            _log_probe_sample('egene', int(sim.get_step()),
+                              eg_out.tolist())
         if eg_activity_enabled:
             ega_cur = int(eg_activity_cursor[0])
             ega_col_ptr = eg_activity_col.ctypes.data_as(
@@ -1068,6 +1119,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         if egn_enabled:
             egn_cursor[0] = 0
             for buf in egn_bufs:
+                buf[:] = 0
+        if eg_enabled:
+            eg_cursor[0] = 0
+            for buf in eg_bufs:
                 buf[:] = 0
         # Roll probe-log files: close current, open new with new timestamp
         # so the CSV boundary matches the chart reset.
@@ -1270,6 +1325,16 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 egn_cursor[0] = (egn_cur + 1) % PROBE_W
                 _log_probe_sample('egenome', int(sim.get_step()),
                                   egn_out.tolist())
+            if eg_enabled:
+                eg_out = np.zeros(3, dtype=np.float32)
+                sim._lib.evoca_egene_stats(
+                    eg_out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+                eg_cur = int(eg_cursor[0])
+                for ti in range(3):
+                    eg_bufs[ti][eg_cur] = eg_out[ti]
+                eg_cursor[0] = (eg_cur + 1) % PROBE_W
+                _log_probe_sample('egene', int(sim.get_step()),
+                                  eg_out.tolist())
             if eg_activity_enabled:
                 ega_cur = int(eg_activity_cursor[0])
                 ega_col_ptr = eg_activity_col.ctypes.data_as(

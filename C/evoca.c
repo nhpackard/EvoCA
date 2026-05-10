@@ -47,6 +47,23 @@ static const int orbit_map[5][5] = {
     {4, 5, 2, 5, 4},
 };
 
+/* Cell-position count for each of the 6 D4 orbits. Orbit 0 = centre
+ * (1 cell); 1, 2, 3, 4 cover 4 cells each; orbit 5 (knight-move) covers
+ * 8 cells. Sum = 25 = the full 5×5 neighbourhood. */
+static const int orbit_positions[6] = {1, 4, 4, 4, 4, 8};
+
+/* Number of non-wildcard cell-positions covered by an egene with
+ * orbit-mask `m`. Used by the per-position tax (tax_per_egene). */
+static inline int mask_positions(uint8_t m)
+{
+    int p = 0;
+    while (m) {
+        int i = __builtin_ctz(m); m &= m - 1;
+        p += orbit_positions[i];
+    }
+    return p;
+}
+
 /* ── Bit-packed LUT helpers ─────────────────────────────────────── */
 
 static inline uint8_t lut_get(const uint8_t *b, int bit)
@@ -155,12 +172,19 @@ static int     n_active = 0;
 static uint8_t *v_curr = NULL;   /* [N*N]            */
 static uint8_t *v_next = NULL;   /* [N*N]            */
 static uint8_t *lut    = NULL;   /* [N*N * LUT_BYTES] */
-/* Multi-egene cell genome:
- *   egenes : [N*N*NEGENOME_MAX]  per-cell egene bytes (8 slots × 6-bit)
+/* Multi-egene cell genome (ternary 0/1/wildcard per orbit):
+ *   egenes      : [N*N*NEGENOME_MAX]  6-bit value per egene slot
+ *                                       (bit i = expected state for orbit i,
+ *                                        only consulted where egenes_mask
+ *                                        has the corresponding bit set)
+ *   egenes_mask : [N*N*NEGENOME_MAX]  6-bit mask per egene slot
+ *                                       (bit i = 1: orbit i is non-wildcard;
+ *                                        bit i = 0: orbit i is wildcard)
  *   active : [N*N]                per-cell presence mask (1 bit per slot)
  *   egenome_scratch : [N*N]       rebuilt-on-demand back-compat view
  *                                  (lowest-index active slot's egene byte) */
 static uint8_t *egenes          = NULL;
+static uint8_t *egenes_mask     = NULL;
 static uint8_t *active          = NULL;
 static uint8_t *egenome_scratch = NULL;
 static float   *f_priv = NULL;   /* [N*N]            */
@@ -219,10 +243,11 @@ static int      eg_food_ymax = 1000000;      /* ≈ 1 unit of food */
  * fill (makes the trace continuous instead of dotted). */
 static int      eg_food_prev_y[EGENOME_COUNT];
 static int      eg_food_prev_y_init = 0;
-/* Per-step accumulators for mean max-match (used by the egenome
- * stats probe). Reset at the start of each eating phase. */
-static double   g_sum_max_match = 0.0;
-static int      g_eat_count     = 0;
+/* Per-step accumulators for the egenome / egene probes. Reset at the
+ * start of each eating phase. */
+static double   g_sum_max_match = 0.0;     /* sum of max signed scores  */
+static double   g_sum_mouthful  = 0.0;     /* sum of clamped mouthfuls  */
+static int      g_eat_count     = 0;       /* alive cells that ate      */
 static uint8_t  wt_egenome_val = 0;           /* wild-type egenome */
 static int      eg_act_ymax = 2000;          /* Y-scale for egenome activity */
 
@@ -555,33 +580,54 @@ static inline int cell_negene(int idx)
     return __builtin_popcount(active[idx]);
 }
 
-/* Copy genome data from src cell to dst cell: all 8 egenes + active byte. */
+/* Copy genome data from src cell to dst cell: all 8 (value, mask) pairs
+ * + active byte. */
 static inline void cell_genome_copy(int dst, int src)
 {
     memcpy(egenes + (size_t)dst * NEGENOME_MAX,
            egenes + (size_t)src * NEGENOME_MAX,
            NEGENOME_MAX);
+    memcpy(egenes_mask + (size_t)dst * NEGENOME_MAX,
+           egenes_mask + (size_t)src * NEGENOME_MAX,
+           NEGENOME_MAX);
     active[dst] = active[src];
 }
 
 /* Per-cell genome hash: order-independent over the cell's active
- * egenes. Sorts active egene bytes (insertion sort, n ≤ 8), then
- * folds them into the FNV-1a stream after the LUT bytes. */
+ * (value, mask) ternary egene pairs. Pairs are packed value-then-mask
+ * into a 16-bit key, sorted lex (insertion sort, n ≤ 8), then the
+ * resulting 2*n bytes are folded into the FNV-1a stream after the LUT
+ * bytes. Two cells with the same LUT and the same set of active
+ * (value, mask) pairs are the same species. */
 static uint32_t cell_genome_hash(int idx)
 {
-    uint8_t buf[NEGENOME_MAX];
+    uint16_t key[NEGENOME_MAX];
     int n = 0;
     uint8_t a = active[idx];
     while (a) {
         int s = __builtin_ctz(a); a &= a - 1;
-        buf[n++] = egenes[(size_t)idx * NEGENOME_MAX + s] & 0x3F;
+        uint8_t v = egenes[(size_t)idx * NEGENOME_MAX + s] & 0x3F;
+        uint8_t m = egenes_mask[(size_t)idx * NEGENOME_MAX + s] & 0x3F;
+        /* Wildcard normalisation: bits in `v` whose mask is 0 are
+         * silent in eating, so they shouldn't shift species identity.
+         * Force them to 0 so two egenes that differ only in
+         * wildcard-position value bits hash identically. */
+        v &= m;
+        key[n++] = ((uint16_t)v << 8) | (uint16_t)m;
     }
     for (int i = 1; i < n; i++) {
-        uint8_t x = buf[i]; int j = i - 1;
-        while (j >= 0 && buf[j] > x) { buf[j+1] = buf[j]; j--; }
-        buf[j+1] = x;
+        uint16_t x = key[i]; int j = i - 1;
+        while (j >= 0 && key[j] > x) { key[j+1] = key[j]; j--; }
+        key[j+1] = x;
     }
-    return genome_hash_static(lut + (size_t)idx * LUT_BYTES, buf, n);
+    /* Pack as bytes (high=value, low=mask) into a contiguous buffer. */
+    uint8_t buf[2 * NEGENOME_MAX];
+    for (int i = 0; i < n; i++) {
+        buf[2*i]     = (uint8_t)(key[i] >> 8);
+        buf[2*i + 1] = (uint8_t)(key[i] & 0xFF);
+    }
+    return genome_hash_static(lut + (size_t)idx * LUT_BYTES,
+                              buf, 2 * n);
 }
 
 /* Update both per-cell caches:
@@ -610,7 +656,8 @@ void evoca_init(int N, float food_inc, float m_scale)
     v_curr = calloc(cells,               sizeof(uint8_t));
     v_next = calloc(cells,               sizeof(uint8_t));
     lut    = calloc(cells * LUT_BYTES,   sizeof(uint8_t));
-    egenes = calloc(cells * NEGENOME_MAX, sizeof(uint8_t));
+    egenes      = calloc(cells * NEGENOME_MAX, sizeof(uint8_t));
+    egenes_mask = calloc(cells * NEGENOME_MAX, sizeof(uint8_t));
     active = calloc(cells,               sizeof(uint8_t));
     egenome_scratch = calloc(cells,      sizeof(uint8_t));
     f_priv = calloc(cells,               sizeof(float));
@@ -642,6 +689,7 @@ void evoca_init(int N, float food_inc, float m_scale)
     memset(eg_food, 0, sizeof(eg_food));
     eg_food_prev_y_init = 0;   /* drop bridge-history from prior run */
     g_sum_max_match = 0.0;
+    g_sum_mouthful  = 0.0;
     g_eat_count = 0;
     evoca_set_n_ent(g_n_ent);   /* reset pattern arrays, keep current n_ent */
 }
@@ -652,6 +700,7 @@ void evoca_free(void)
     free(v_next); v_next = NULL;
     free(lut);    lut    = NULL;
     free(egenes); egenes = NULL;
+    free(egenes_mask); egenes_mask = NULL;
     free(active); active = NULL;
     free(egenome_scratch); egenome_scratch = NULL;
     free(f_priv); f_priv = NULL;
@@ -724,8 +773,12 @@ void evoca_set_lut(int idx, const uint8_t *lb)
 
 void evoca_set_egenome_all(uint8_t eg) {
     size_t cells = (size_t)gN * gN;
-    /* All NEGENOME_MAX slots = eg; only slot 0 active. Negene = 1. */
-    memset(egenes, eg, cells * NEGENOME_MAX);
+    /* All NEGENOME_MAX slots = eg with mask=0x3F (all orbits non-wildcard);
+     * only slot 0 active. Negene = 1. The mask=0x3F default reproduces
+     * the historical "every orbit specifies a value" behaviour, modulo
+     * the new ±1 scoring. */
+    memset(egenes,      eg,   cells * NEGENOME_MAX);
+    memset(egenes_mask, 0x3F, cells * NEGENOME_MAX);
     memset(active, 0x01, cells);
     eg_init_colors(eg);
     /* Genome hash now depends on egenes; refresh per-cell cache. */
@@ -736,8 +789,12 @@ void evoca_set_egenome_all(uint8_t eg) {
 void evoca_set_egenome_random_all(uint8_t wt) {
     size_t cells = (size_t)gN * gN;
     for (size_t i = 0; i < cells; i++) {
-        for (int s = 0; s < NEGENOME_MAX; s++)
-            egenes[i * NEGENOME_MAX + s] = (uint8_t)(rng_next() & 0x3F);
+        for (int s = 0; s < NEGENOME_MAX; s++) {
+            egenes[i * NEGENOME_MAX + s]      = (uint8_t)(rng_next() & 0x3F);
+            /* Random mask too: each orbit non-wildcard with prob 0.5.
+             * A "fully random" egene therefore has ~3 of 6 orbits non-*. */
+            egenes_mask[i * NEGENOME_MAX + s] = (uint8_t)(rng_next() & 0x3F);
+        }
         active[i] = (uint8_t)(1u << (rng_next() & 7));
     }
     eg_init_colors(wt);
@@ -787,26 +844,35 @@ static int compute_lut_bit(int row, int col)
     return LUT_IDX(v_x, n[0], n[1], n[2]);
 }
 
-/* Count matches between actual 5×5 config and fiducial pattern. */
-static int fiducial_matches(int row, int col, uint8_t eg)
+/* Score the cell's 5×5 config against a (value, mask) ternary fiducial.
+ * For each of the 25 cell positions:
+ *   - if the orbit's mask bit is 0, the orbit is wildcard → no contribution.
+ *   - else +1 if v_actual == value bit for that orbit, −1 otherwise.
+ * Range: [−25, +25]. With mask = 0x3F (all orbits non-wildcard) and the
+ * old binary semantics, a perfect match returns +25 and the worst
+ * possible mismatch returns −25; the previous binary "matches" count
+ * (which ranged [0, 25]) is recoverable as (score + 25) / 2. */
+static int fiducial_matches(int row, int col, uint8_t eg, uint8_t eg_mask)
 {
-    int N = gN, matches = 0;
+    int N = gN, score = 0;
     for (int di = -2; di <= 2; di++) {
         int r = ((row + di) % N + N) % N;
         for (int dj = -2; dj <= 2; dj++) {
-            int c      = ((col + dj) % N + N) % N;
-            int orbit  = orbit_map[di+2][dj+2];
-            int fid    = (eg >> orbit) & 1;
-            if (v_curr[r * N + c] == fid) matches++;
+            int orbit = orbit_map[di+2][dj+2];
+            if (((eg_mask >> orbit) & 1) == 0) continue;  /* wildcard */
+            int c   = ((col + dj) % N + N) % N;
+            int fid = (eg >> orbit) & 1;
+            score  += (v_curr[r * N + c] == fid) ? +1 : -1;
         }
     }
-    return matches;
+    return score;
 }
 
-/* Best (maximum) match count across the cell's active egenes.
+/* Best (maximum) signed score across the cell's active egenes.
  * `*winners_out` (if non-NULL) returns the bitmask of slots that
  * achieved the max — used by the eg_food probe to split mouthful
- * across all tied winners. Returns 0 if the cell has no active slot. */
+ * across all tied winners. Returns INT_MIN sentinel via 0 if the cell
+ * has no active slot (caller will clamp to 0 via max(0, ...)). */
 static int fiducial_matches_best(int row, int col, int idx,
                                  uint8_t *winners_out)
 {
@@ -815,13 +881,15 @@ static int fiducial_matches_best(int row, int col, int idx,
         if (winners_out) *winners_out = 0;
         return 0;
     }
-    int best = -1;
+    /* Score range is [−25, +25]; initialise best below the floor. */
+    int best = -100;
     uint8_t winners = 0;
     while (a) {
         int s = __builtin_ctz(a);
         a &= a - 1;
         int m = fiducial_matches(row, col,
-            egenes[(size_t)idx * NEGENOME_MAX + s]);
+            egenes[(size_t)idx * NEGENOME_MAX + s],
+            egenes_mask[(size_t)idx * NEGENOME_MAX + s]);
         if (m > best) {
             best = m;
             winners = (uint8_t)(1u << s);
@@ -830,7 +898,10 @@ static int fiducial_matches_best(int row, int col, int idx,
         }
     }
     if (winners_out) *winners_out = winners;
-    return best < 0 ? 0 : best;
+    /* Return the raw signed score; eating callers clamp at 0 themselves
+     * (mouthful never goes negative) but probes that track "are eaters
+     * doing well or badly?" want to see the negative excursions too. */
+    return best;
 }
 
 /* ── Food diffusion (3×3 box blur, periodic) ───────────────────── */
@@ -938,8 +1009,23 @@ void evoca_step(void)
         for (size_t i = 0; i < cells; i++) {
             if (!alive[i]) continue;
             float t = gtax;
-            if (gtax_per_egene > 0.0f)
-                t += gtax_per_egene * (float)cell_negene((int)i);
+            if (gtax_per_egene > 0.0f) {
+                /* Per-position tax (option b): sum non-wildcard
+                 * cell-positions across the cell's active egenes.
+                 * Max contribution = gtax_per_egene * NEGENOME_MAX *
+                 * 25 = gtax_per_egene * 200 when every active slot has
+                 * mask=0x3F. Old recipes that set gtax_per_egene for
+                 * the per-egene-count semantic should re-tune by
+                 * roughly 1/25 to recover similar net cost. */
+                int total_pos = 0;
+                uint8_t a = active[i];
+                while (a) {
+                    int s = __builtin_ctz(a); a &= a - 1;
+                    total_pos += mask_positions(
+                        egenes_mask[i * NEGENOME_MAX + s]);
+                }
+                t += gtax_per_egene * (float)total_pos;
+            }
             if (gtax_lut > 0.0f) {
                 int pc = 0;
                 const uint8_t *lb = lut + i * LUT_BYTES;
@@ -963,6 +1049,7 @@ void evoca_step(void)
 
     /* Phase 3: Eating (alive cells only) */
     g_sum_max_match = 0.0;
+    g_sum_mouthful  = 0.0;
     g_eat_count     = 0;
     for (int row = 0; row < N; row++) {
         for (int col = 0; col < N; col++) {
@@ -970,7 +1057,12 @@ void evoca_step(void)
             if (!alive[idx]) continue;
             uint8_t winners = 0;
             int   matches  = fiducial_matches_best(row, col, idx, &winners);
-            float mouthful = (gm_scale / 25.0f) * matches * F_food[idx];
+            /* Clamp the signed score at 0 for mouthful; negative-score
+             * egenes feed nothing (no anti-eating). winners still tags
+             * the tied set; eg_food only receives shares when mouthful
+             * > 0. */
+            int   eat_score = matches > 0 ? matches : 0;
+            float mouthful = (gm_scale / 25.0f) * eat_score * F_food[idx];
             float headroom = 1.0f - f_priv[idx];
             if (mouthful > headroom) mouthful = headroom;
             F_food[idx] -= mouthful;
@@ -991,6 +1083,7 @@ void evoca_step(void)
                 }
             }
             g_sum_max_match += matches;
+            g_sum_mouthful  += mouthful;
             g_eat_count++;
         }
     }
@@ -1078,8 +1171,10 @@ void evoca_step(void)
             }
 
             /* Dup-on-activate: for each newly-on bit, with probability
-             * gp_dup_egene, copy a random currently-active
-             * slot's egene byte into the new slot. */
+             * gp_dup_egene, copy a random currently-active slot's
+             * (value, mask) pair into the new slot. Both bytes copy
+             * together so a duplicated egene retains its parent's
+             * wildcard pattern. */
             uint8_t newly_on = active[child] & ~active_before;
             while (newly_on) {
                 int s = __builtin_ctz(newly_on);
@@ -1094,17 +1189,25 @@ void evoca_step(void)
                     int src = __builtin_ctz(a2);
                     egenes[(size_t)child * NEGENOME_MAX + s] =
                         egenes[(size_t)child * NEGENOME_MAX + src];
+                    egenes_mask[(size_t)child * NEGENOME_MAX + s] =
+                        egenes_mask[(size_t)child * NEGENOME_MAX + src];
                 }
             }
 
-            /* Egene-bit pass: flip every-bit-uniform across all 8
-             * slots × 6 bits. */
-            int ne = poisson_sample(gmu_egene * NEGENOME_MAX * 6);
+            /* Egene-bit pass: flip every-bit-uniform across all 8 slots
+             * × 12 bits (6 value + 6 mask). bits 0..5 hit the value
+             * byte, bits 6..11 hit the mask byte (so a value flip and
+             * a wildcard-toggle have the same per-bit rate). */
+            int ne = poisson_sample(gmu_egene * NEGENOME_MAX * 12);
             for (int f = 0; f < ne; f++) {
                 int slot = (int)(rng_next() & 7);
-                int bit  = (int)(rng_next() % 6);
-                egenes[(size_t)child * NEGENOME_MAX + slot] ^=
-                    (uint8_t)(1u << bit);
+                int bit12 = (int)(rng_next() % 12);
+                size_t off = (size_t)child * NEGENOME_MAX + slot;
+                if (bit12 < 6) {
+                    egenes[off] ^= (uint8_t)(1u << bit12);
+                } else {
+                    egenes_mask[off] ^= (uint8_t)(1u << (bit12 - 6));
+                }
             }
 
             /* births: 1 = normal, 2 = mutant */
@@ -2105,6 +2208,51 @@ void evoca_egenome_stats(float *out)
     out[4] = alive_cnt > 0 ? (float)n_at_max / (float)alive_cnt : 0.0f;
 }
 
+/* ── Egene cognitive stats probe ─────────────────────────────────────
+ *
+ * Fills out[0..2] with:
+ *   [0] mean cognitive specificity = mean non-wildcard cell-positions
+ *       per active egene (range [0, 25])
+ *   [1] mean cognitive load = mean per-cell sum of non-wildcard cell-
+ *       positions across all active egenes (range [0, 8*25 = 200])
+ *   [2] mean intake = mean mouthful per alive eater this step
+ *       (range [0, 1])
+ *
+ * Together with the egenome stats probe these answer "are agents
+ * specialising and is specialisation paying off in food intake?".
+ * Computed on demand; one O(N²) pass over alive cells. */
+void evoca_egene_stats(float *out)
+{
+    size_t cells = (size_t)gN * gN;
+    int alive_cnt   = 0;
+    long long sum_active_egenes = 0;   /* total active slots over alive cells */
+    long long sum_egene_pos     = 0;   /* sum of mask_positions over those */
+    long long sum_cell_load     = 0;   /* sum over alive cells of cell-load   */
+
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) continue;
+        alive_cnt++;
+        int cell_load = 0;
+        uint8_t a = active[i];
+        while (a) {
+            int s = __builtin_ctz(a); a &= a - 1;
+            int p = mask_positions(
+                egenes_mask[i * NEGENOME_MAX + s] & 0x3F);
+            sum_active_egenes++;
+            sum_egene_pos += p;
+            cell_load     += p;
+        }
+        sum_cell_load += cell_load;
+    }
+
+    out[0] = sum_active_egenes > 0
+             ? (float)sum_egene_pos / (float)sum_active_egenes : 0.0f;
+    out[1] = alive_cnt > 0
+             ? (float)sum_cell_load / (float)alive_cnt : 0.0f;
+    out[2] = g_eat_count > 0
+             ? (float)(g_sum_mouthful / (double)g_eat_count) : 0.0f;
+}
+
 /* ── LUT complexity classification ─────────────────────────────── */
 
 /* Return 1 (n1 only), 2 (n1+n2), or 3 (n1+n2+n3) for a given LUT. */
@@ -2345,6 +2493,7 @@ uint8_t *evoca_get_egenome(void)
     return egenome_scratch;
 }
 uint8_t *evoca_get_egenes(void) { return egenes; }
+uint8_t *evoca_get_egenes_mask(void) { return egenes_mask; }
 uint8_t *evoca_get_active(void) { return active; }
 uint8_t *evoca_get_lut(void)    { return lut;    }
 uint8_t *evoca_get_births(void) { return births; }
