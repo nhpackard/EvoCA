@@ -184,6 +184,12 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
             else:
                 samples['negene'].append(0.0)
 
+            # Cognitive stats (specificity, load, intake-per-eater).
+            es = sim.egene_stats()
+            samples['cog_specificity'].append(es['mean_specificity'])
+            samples['cog_load'].append(es['mean_load'])
+            samples['mean_intake'].append(es['mean_intake'])
+
             sim._lib.evoca_activity_update()
             G = sim.get_activity(max_n=200000)
             gp = G['pop_count'] > 0
@@ -233,6 +239,9 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
     _agg('alive_density', 'alive_density')
     _agg('n_distinct_genomes', 'n_distinct_genomes')
     _agg('negene', 'negene')
+    _agg('cog_specificity', 'cog_specificity')
+    _agg('cog_load', 'cog_load')
+    _agg('mean_intake', 'mean_intake')
 
     out['unique_top_genomes'] = len(dominator_history)
 
@@ -428,6 +437,15 @@ EVO_METRICS = [
     'n_distinct_genomes_temporal_std',
     'unique_top_genomes',
     'excess_activity_slope',
+]
+
+# Cognitive metrics — added with the ternary egene model. These index
+# whether agents are evolving useful cognition (specificity, load, and
+# how well that translates to food intake).
+COG_METRICS = [
+    'cog_specificity_mean',
+    'cog_load_mean',
+    'mean_intake_mean',
 ]
 
 SPATIAL_METRICS = [

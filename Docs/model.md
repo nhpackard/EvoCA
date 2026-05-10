@@ -53,11 +53,11 @@ and noted in the table below.
 | `m_scale`       | float | 1.0     | [0, 10]        | Mouthful scale factor for eating                      |
 | `gdiff`         | int   | 0       | [0, 10]        | Food diffusion passes (3x3 box blur) per step         |
 | `mu_lut`        | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction      |
-| `mu_egene`      | float | 0.0     | [0, 0.05]      | Per-egene-bit flip probability on reproduction (across all 8×6 = 48 bits per cell, including inactive slots — those drift as pseudogenes) |
+| `mu_egene`      | float | 0.0     | [0, 0.05]      | Per-egene-bit flip probability on reproduction (across all 8×12 = 96 bits per cell — 6 value bits + 6 mask bits per slot — including inactive slots, which drift as pseudogenes) |
 | `mu_egenome`    | float | 0.0     | [0, 0.05]      | Per-active-bit flip probability on reproduction (across the 8 presence bits). Flips that would take Negene to 0 are rejected |
 | `p_dup_egene`   | float | 1.0     | non-GUI        | Probability that a 0→1 active-bit flip overwrites the new slot's egene byte with a copy from a random currently-active slot (gene duplication). Copy happens before the egene-bit flip pass, so the new copy receives fresh independent point mutations. No slider — set via `sim.update_p_dup_egene(p)` |
 | `tax`           | float | 0.0     | [0, 0.1]       | Constant private-food decrement per step; death if depleted |
-| `tax_per_egene` | float | 0.0     | [0, 0.01]      | Additional decrement per active egene per step. Bounds Negene against the unbounded "more is better" pressure of max-match eating |
+| `tax_per_egene` | float | 0.0     | [0, 0.01]      | Additional decrement per non-wildcard cell-position summed across the cell's active egenes (per step). Max = `tax_per_egene * 8 * 25 = tax_per_egene * 200` when every active slot has mask=0x3F. Bounds cognitive load against the unbounded "more is better" pressure of max-match eating |
 | `tax_lut`       | float | 0.0     | [0, 0.001]     | Additional decrement per LUT '1' bit per step. Penalises rule complexity |
 | `restricted_mu` | int   | 0       | checkbox       | If 1, restrict LUT mutations to dynamically active bits |
 | `N_log_interval` | int  | 1       | non-GUI        | ProbeLogs CSV sampling interval (Python-side; the C library is unaware). 1 logs every tick; K logs every K-th sample. See `Docs/probes.md` "Probe Logging" |
@@ -127,27 +127,36 @@ to 3 rings.
 ## Fiducial Pattern c(x) and egenome
 
 Each cell carries a small **list of egenes** — up to `NEGENOME_MAX = 8`
-slots — and an **active mask** marking which slots are live.
+slots — and an **active mask** marking which slots are live. Each
+egene is **ternary** per orbit (0 / 1 / wildcard):
 
-- `egenes[NEGENOME_MAX][6 bits]` per cell — each slot is a 6-bit
-  D4-symmetric fiducial pattern (same encoding as the legacy single
-  egenome).
+- `egenes[NEGENOME_MAX]` per cell, 1 byte per slot:
+  the 6-bit *value* (one bit per D4 orbit) — what state that orbit's
+  cells "should" be in for a match.
+- `egenes_mask[NEGENOME_MAX]` per cell, 1 byte per slot:
+  the 6-bit *mask*. Bit i = 1 means orbit i is non-wildcard (the
+  matching code consults the value bit); bit i = 0 means orbit i is
+  wildcard (no contribution to eating, no per-position tax).
 - `active[8]` per cell — 1 bit per slot. `Negene = popcount(active)`.
   An alive cell always has Negene ≥ 1.
 
-Inactive slots' egene bytes are still mutated at the per-egene-bit
+Inactive slots' (value, mask) bytes still mutate at the per-egene-bit
 rate, accumulating drift like pseudogenes; if an inactive slot is
 later activated by a presence-bit flip, its drifted bits become live
 genome (and may be overwritten by a duplicated copy of an existing
 active egene first — see `p_dup_egene`).
 
 The list of slots is **unordered** for purposes of identity: the
-species hash sorts active egene bytes lex before folding them into the
-genome hash. Two cells with the same LUT and the same set of active
-egenes are the same species, regardless of slot positions.
+species hash sorts active (value, mask) pairs lex (with wildcard-bit
+positions zeroed in the value before hashing, so two egenes that
+differ only at wildcard positions hash to the same key) before folding
+them into the genome hash. Two cells with the same LUT and the same
+set of active (value, mask) pairs are the same species, regardless of
+slot positions.
 
 When the section below talks about "the egenome" it refers to a single
-slot. The next subsection covers how the cell uses *all* its slots.
+slot's (value, mask) pair. The next subsection covers how the cell
+uses *all* its slots.
 
 ### D4 Orbits
 
@@ -195,29 +204,50 @@ print(pat)
 
 ### How egenome affects eating
 
-The **fiducial match count** for a single egene compares the actual
-cell states in the 5x5 neighborhood against the fiducial pattern:
+The **fiducial score** for a single egene walks the 25 cell-positions in
+the 5x5 neighbourhood. For each position, the orbit's mask bit decides:
 
-    matches(egene) = sum over all 25 positions of (v_actual == c_fiducial)
+- mask bit = 0 (wildcard): position contributes 0.
+- mask bit = 1 (non-wildcard): contributes +1 if `v_actual` matches the
+  value bit, else −1.
 
-With multiple egenes per cell, eating uses the **best (maximum)** match
-across the cell's active egenes:
+So the score is a signed integer in `[−25, +25]` (the bound depends on
+how many orbits the egene marks as non-wildcard). With all 6 orbits
+non-wildcard (`mask = 0x3F`), a perfect match scores +25 and the worst
+mismatch scores −25; the previous binary `matches` count maps to
+`(score + 25) / 2`. With fewer non-wildcard orbits, the score range
+narrows and the cap on potential reward drops — the cost of cognitive
+parsimony.
 
-    matches(cell) = max over active s of matches(egene[s])
+With multiple egenes per cell, eating uses the **best (maximum)
+signed** score across the cell's active egenes:
 
-The cell's **mouthful** is:
+    score(cell) = max over active s of score(egene[s])
 
-    M(x) = (m_scale / 25) * matches(cell) * F(x)
+The cell's **mouthful** clamps the negative range away — bad egenes
+don't actively un-eat, they just feed nothing:
+
+    M(x) = (m_scale / 25) * max(0, score(cell)) * F(x)
 
 (capped to `1 - f_priv` so private food can't exceed 1).
 
-The max-match rule is a "breadth bonus": more active egenes can only
-increase mouthful, never decrease it. Without the per-egene tax
+The +1/−1 scoring puts evolutionary pressure on **confident, accurate
+specificity**: declaring "the corner orbit must be 1" is now risky
+unless it's actually correct most of the time. A cell with no useful
+non-wildcard orbits has no false-confidence cost, but also no upside —
+its score is 0 and it doesn't eat.
+
+The max-rule across active egenes is a "breadth bonus": more active
+egenes can only increase mouthful, never decrease it. Without the
+per-egene tax
 (`tax_per_egene`) this bonus would drive `Negene → NEGENOME_MAX` for
 free; the tax provides the metabolic counterweight.
 
-With egenome=0 (all-zero fiducial), matches counts **dead** neighbors.
-With egenome=0b111111 (all-one), matches counts **alive** neighbors.
+With (value=0, mask=0x3F) every orbit specifies "should be dead"; the
+score is +25 over fully-dead neighbourhoods. With (value=0x3F, mask=
+0x3F) every orbit specifies "should be alive"; the score is +25 over
+fully-alive neighbourhoods. With mask=0, the score is 0 regardless of
+value (a fully-wildcard egene is silent).
 
 ---
 
@@ -254,12 +284,21 @@ Periodic boundary conditions.
 
 For each alive cell, the per-step decrement is the sum of three terms:
 
-    t = tax  +  tax_per_egene * Negene  +  tax_lut * popcount(LUT bytes)
+    t = tax
+        + tax_per_egene * sum_over_active_slots(non_wildcard_positions)
+        + tax_lut * popcount(LUT bytes)
     f(x) -= t,   clamped to 0
 
+where `non_wildcard_positions(mask)` sums the orbit position counts
+`[1, 4, 4, 4, 4, 8]` for the orbits whose mask bit is set (range 0..25).
+
 - `tax` is the unconditional baseline.
-- `tax_per_egene` makes wider egenomes metabolically more expensive,
-  which combined with max-match eating gives Negene a finite optimum.
+- `tax_per_egene` makes egenes that specify more cell-positions
+  metabolically more expensive (option (b) in the design discussion).
+  An all-wildcard egene costs 0 per-position; a fully-specified egene
+  costs the maximum 25. Combined with max-match eating this gives
+  cognitive load a finite optimum where the additional food earned by
+  greater specificity stops paying for the extra tax.
 - `tax_lut` taxes "1" bits in the LUT, penalising rule complexity so
   innovations that don't pay for themselves get pruned.
 
@@ -298,9 +337,11 @@ For each alive cell where `f(x) >= 1.0`:
      with probability `p_dup_egene`, overwrite that slot's
      egene byte with a copy from a uniformly random
      currently-active slot.
-   - **Egene-bit pass**: draw `ne ~ Poisson(mu_egene * 8 * 6)` flips,
+   - **Egene-bit pass**: draw `ne ~ Poisson(mu_egene * 8 * 12)` flips,
      each picking a uniformly random slot and a uniformly random
-     bit in [0, 6). Inactive slots get mutated too (pseudogenes).
+     bit in [0, 12). Bits 0..5 hit the value byte, bits 6..11 hit the
+     mask byte (so a value flip and a wildcard-toggle have the same
+     per-bit rate). Inactive slots get mutated too (pseudogenes).
    The duplicated copy from sub-step 2 sees fresh independent
    point mutations from sub-step 3, so duplication is followed by
    divergence.
@@ -461,7 +502,7 @@ sim.update_food_inc(f)       # float
 sim.update_m_scale(m)        # float
 sim.update_gdiff(d)          # int
 sim.update_mu_lut(m)         # float, per-bit LUT mutation rate
-sim.update_mu_egene(m)       # float, per-egene-bit flip rate (across all 8×6 bits)
+sim.update_mu_egene(m)       # float, per-egene-bit flip rate (across all 8×12 bits)
 sim.update_mu_egenome(m)     # float, per-active-bit flip rate (across 8 presence bits)
 sim.update_p_dup_egene(p)  # float in [0,1], dup-on-activate probability
 sim.update_tax(t)            # float, constant priv-food decrement per step

@@ -26,6 +26,7 @@ for long-term diagnostics — see "Probe Logging" below.
 | `eg_activity`    | 512 x 256     | Egenome activity (scrolling hash-colored strip)        |
 | `eg_food`        | 512 x 256     | Cumulative food per egene byte (mouthful split across max-match-tied winners) |
 | `egenome`        | 512 x 256     | 4-strip Negene/eating diagnostics: mean ± std band, distinct egene values, mean max-match, frac at Negene_max |
+| `egene`          | 512 x 192     | 3-strip cognitive diagnostics for the ternary model: mean specificity (non-wildcard cell-positions per active egene), per-cell cognitive load, mean food intake per eater |
 | `lut_complexity` | 512 x 128     | Stacked area: green=n1 only, yellow=n1+n2, red=all     |
 | `eg_pop`         | 512 x 128     | Stacked area: population fraction per egenome value    |
 | `q_activity`     | 512 x 128     | Activity quantile deciles (log-scaled strip chart)     |
@@ -172,6 +173,43 @@ Reading the strips together:
 
 ---
 
+## Egene Cognitive Probe (egene)
+
+Three stacked sub-strips (each 64 px, 192 px total) charting how
+cognition itself is evolving in the ternary model. Together with the
+egenome probe, these are the primary indicators of "are agents
+actually getting better at parsing their environment?". All sub-strips
+have **fixed y-ranges** so values can be read directly without
+auto-scale context.
+
+| Sub-strip | In-strip label | Trace                                                                                                | Y range  | Colour |
+|-----------|----------------|------------------------------------------------------------------------------------------------------|----------|--------|
+| 0 (top)   | `spec`         | Mean cognitive **specificity**: non-wildcard cell-positions per active egene                         | [0, 25]  | green  |
+| 1         | `load`         | Mean per-cell cognitive **load**: sum over active egenes of cell-positions                           | [0, 200] | orange |
+| 2 (bot)   | `food`         | Mean food **intake** per alive eater this step                                                       | [0, 1]   | blue   |
+
+Source: `evoca_egene_stats(out)` fills a 3-element float buffer with
+`[mean_specificity, mean_load, mean_intake]`; `sim.egene_stats()`
+returns the same data as a dict.
+
+Reading the strips together:
+
+- `spec` rising while `food` is flat ⇒ population is making more
+  confident specifications, but they're not earning more food. Either
+  the LUT is shifting under the egenes or specificity is being paid
+  for by tax rather than by improved eating.
+- `food` rising with `spec` ⇒ cognition is paying off. The intended
+  evolutionary signal.
+- `load` climbing without `spec` rising ⇒ Negene is growing. Compare
+  with the egenome probe's `Ngene` strip.
+- `food` near 0 means cells are eating little. May be living on
+  reserves, may be on the brink of extinction.
+
+Logged to `ProbeLogs/<timestamp>_egene_<descriptor>.csv` whenever the
+`egene` probe is enabled.
+
+---
+
 ## Activity Quantile Probe (q_activity)
 
 Shows the distribution of LUT genome activity over time as 9 decile curves
@@ -267,9 +305,9 @@ spreads out low-activity entries.
 
 ## Probe Logging (ProbeLogs/)
 
-When `run_with_controls(sim, ...)` opens a session that includes the
-`ts` and/or `egenome` probe, it also opens one CSV per enabled probe
-under `ProbeLogs/`. These give long-term records of evolutionary
+When `run_with_controls(sim, ...)` opens a session that includes any
+of the `ts`, `egenome`, or `egene` probes, it also opens one CSV per
+enabled probe under `ProbeLogs/`. These give long-term records of evolutionary
 diagnostics across multiple chart-window-fulls — useful for spotting
 slow drift (e.g. mean max-match climbing across thousands of ticks)
 that a 512-px-wide strip can't show at once.
@@ -287,6 +325,7 @@ mapped to `_`.
 |-----------|---------------------------------------------------------------|
 | `ts`      | `t,pop,F_env,f_priv,lut_div,eg_ent,activity_flux`             |
 | `egenome` | `t,mean_negene,std_negene,distinct_egene_values,mean_max_match,frac_at_max` |
+| `egene`   | `t,mean_specificity,mean_load,mean_intake`                    |
 
 `t` is the global step counter at sample time. Histogram-strip probes
 (`activity`, `eg_activity`, `eg_food`, etc.) are intentionally not
