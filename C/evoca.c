@@ -227,11 +227,58 @@ static uint32_t  repro_age_t0 = 0;        /* start accumulating after this step 
 
 /* ── Egenome activity (fixed-size, 64 entries) ──────────────────── */
 
-#define EGENOME_COUNT 64
+/* Bucket counts for egene histogram probes. EGENE_VALUE_COUNT keeps
+ * the legacy 6-bit value-only space (still used for set_egenome_all
+ * etc.). EGENE_KEY_COUNT is the proper ternary 0/1/wildcard key space
+ * that the eg_activity, eg_food, and "distinct" probes now use. */
+#define EGENE_VALUE_COUNT 64
+#define EGENE_KEY_COUNT  729   /* 3^6 = ternary keys per egene */
+#define EGENOME_COUNT    EGENE_KEY_COUNT  /* legacy alias for back-compat */
 
-static uint64_t eg_act[EGENOME_COUNT];        /* cumulative activity */
-static uint32_t eg_pop[EGENOME_COUNT];        /* current population */
-static int32_t  eg_color[EGENOME_COUNT];      /* ARGB color per egenome */
+static uint64_t eg_act[EGENE_KEY_COUNT];      /* cumulative activity per key */
+static uint32_t eg_pop[EGENE_KEY_COUNT];      /* current population per key  */
+static int32_t  eg_color[EGENE_KEY_COUNT];    /* ARGB color per ternary key  */
+
+/* Encode a (value, mask) ternary egene as an integer in [0, 729).
+ * Per orbit i:
+ *   digit = 0  if mask bit i = 0 (wildcard)
+ *         = 1  if mask bit i = 1 and value bit i = 0 (off)
+ *         = 2  if mask bit i = 1 and value bit i = 1 (on)
+ * key = sum_i (digit * 3^i)  with i from 0 (centre) to 5 (knight). */
+static inline int egene_ternary_key(uint8_t value, uint8_t mask)
+{
+    int key = 0;
+    int p = 1;
+    for (int i = 0; i < 6; i++) {
+        int digit = ((mask >> i) & 1) == 0 ? 0
+                  : (((value >> i) & 1) == 0 ? 1 : 2);
+        key += digit * p;
+        p *= 3;
+    }
+    return key;
+}
+
+/* Inverse of egene_ternary_key. Wildcard digits zero both bits in
+ * the value (canonical form so two egenes that differ only in
+ * wildcard-position value bits decode identically). */
+static inline void egene_decode_ternary(int key, uint8_t *value_out,
+                                          uint8_t *mask_out)
+                                          __attribute__((unused));
+static inline void egene_decode_ternary(int key, uint8_t *value_out,
+                                          uint8_t *mask_out)
+{
+    uint8_t v = 0, m = 0;
+    for (int i = 0; i < 6; i++) {
+        int digit = key % 3;
+        key /= 3;
+        if (digit != 0) {
+            m |= (uint8_t)(1u << i);
+            if (digit == 2) v |= (uint8_t)(1u << i);
+        }
+    }
+    *value_out = v;
+    *mask_out  = m;
+}
 /* Per-egene cumulative food intake.  During eating, each cell's
  * mouthful is split equally across the egenes that tied for best
  * match; each share is added to eg_food[that egene byte] scaled by
@@ -251,13 +298,15 @@ static int      g_eat_count     = 0;       /* alive cells that ate      */
 static uint8_t  wt_egenome_val = 0;           /* wild-type egenome */
 static int      eg_act_ymax = 2000;          /* Y-scale for egenome activity */
 
-/* Precompute colors for all 64 egenomes.  Wild-type = white;
- * others = FNV-1a hash of the byte value → ARGB. */
+/* Precompute colors for all 729 ternary egene keys. The wild-type
+ * value `wt` (with mask=0x3F = fully specified) maps to the key that
+ * gets coloured white; every other key gets an FNV-1a hash colour. */
 static void eg_init_colors(uint8_t wt)
 {
     wt_egenome_val = wt;
-    for (int i = 0; i < EGENOME_COUNT; i++) {
-        if ((uint8_t)i == wt) {
+    int wt_key = egene_ternary_key(wt, 0x3F);
+    for (int i = 0; i < EGENE_KEY_COUNT; i++) {
+        if (i == wt_key) {
             eg_color[i] = (int32_t)0xFFFFFFFFu;
         } else {
             uint32_t h = 0x811c9dc5u ^ (uint32_t)i;
@@ -1084,8 +1133,9 @@ void evoca_step(void)
             F_food[idx] -= mouthful;
             f_priv[idx] += mouthful;
             /* eg_food: split mouthful equally across max-match
-             * winners. (Option-c attribution: ties contribute to
-             * every tied egene's food bucket.) */
+             * winners (option-c attribution). Each share goes into
+             * the winner's ternary-key bucket so wildcard-different
+             * egenes are tallied separately. */
             int n_w = __builtin_popcount(winners);
             if (mouthful > 0.0f && n_w > 0) {
                 uint64_t share =
@@ -1093,9 +1143,12 @@ void evoca_step(void)
                 uint8_t a = winners;
                 while (a) {
                     int s = __builtin_ctz(a); a &= a - 1;
-                    uint8_t eg =
-                        egenes[(size_t)idx * NEGENOME_MAX + s] & 0x3F;
-                    eg_food[eg] += share;
+                    uint8_t v =
+                        egenes[(size_t)idx * NEGENOME_MAX + s]      & 0x3F;
+                    uint8_t mk =
+                        egenes_mask[(size_t)idx * NEGENOME_MAX + s] & 0x3F;
+                    int key = egene_ternary_key(v, mk);
+                    eg_food[key] += share;
                 }
             }
             g_sum_max_match += matches;
@@ -1985,11 +2038,11 @@ void evoca_nq_activity_deciles(float *deciles_out)
 
 void evoca_eg_activity_update(void)
 {
-    /* Active-egene-slot histogram: for each alive cell, every active
-     * slot contributes one count to its egene-value bucket. So the
-     * sum across buckets equals (sum over alive cells of Negene), not
-     * the alive count. At Negene=1 everywhere this reduces to the
-     * old per-cell histogram. */
+    /* Active-egene-slot histogram, keyed on the ternary (value, mask)
+     * pair: for each alive cell, every active slot contributes one
+     * count to its (value, mask) → ternary-key bucket. The sum across
+     * 729 buckets equals (sum over alive cells of Negene), not the
+     * alive count. */
     size_t cells = (size_t)gN * gN;
     memset(eg_pop, 0, sizeof(eg_pop));
     for (size_t i = 0; i < cells; i++) {
@@ -1997,9 +2050,11 @@ void evoca_eg_activity_update(void)
         uint8_t a = active[i];
         while (a) {
             int s = __builtin_ctz(a); a &= a - 1;
-            uint8_t eg = egenes[i * NEGENOME_MAX + s] & 0x3F;
-            eg_pop[eg]++;
-            eg_act[eg]++;
+            uint8_t v = egenes[i * NEGENOME_MAX + s]      & 0x3F;
+            uint8_t m = egenes_mask[i * NEGENOME_MAX + s] & 0x3F;
+            int key = egene_ternary_key(v, m);
+            eg_pop[key]++;
+            eg_act[key]++;
         }
     }
 }
@@ -2014,8 +2069,8 @@ void evoca_eg_activity_render_col(int32_t *col, int height)
     uint32_t ypop[height];
     memset(ypop, 0, (size_t)height * sizeof(uint32_t));
 
-    /* Pass 1: extinct egenomes — dimmed */
-    for (int i = 0; i < EGENOME_COUNT; i++) {
+    /* Pass 1: extinct ternary egenes — dimmed */
+    for (int i = 0; i < EGENE_KEY_COUNT; i++) {
         if (eg_act[i] == 0 || eg_pop[i] > 0) continue;
         uint64_t act = eg_act[i];
         int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
@@ -2029,8 +2084,8 @@ void evoca_eg_activity_render_col(int32_t *col, int height)
                            | ((uint32_t)g << 8) | b);
     }
 
-    /* Pass 2: alive egenomes — full color, higher pop wins */
-    for (int i = 0; i < EGENOME_COUNT; i++) {
+    /* Pass 2: alive ternary egenes — full color, higher pop wins */
+    for (int i = 0; i < EGENE_KEY_COUNT; i++) {
         if (eg_pop[i] == 0) continue;
         uint64_t act = eg_act[i];
         int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
@@ -2046,12 +2101,12 @@ void evoca_eg_activity_render_col(int32_t *col, int height)
 int evoca_eg_activity_get(uint64_t *activities, uint32_t *pop_counts,
                           int32_t *colors)
 {
-    for (int i = 0; i < EGENOME_COUNT; i++) {
+    for (int i = 0; i < EGENE_KEY_COUNT; i++) {
         activities[i] = eg_act[i];
         pop_counts[i] = eg_pop[i];
         colors[i]     = eg_color[i];
     }
-    return EGENOME_COUNT;
+    return EGENE_KEY_COUNT;
 }
 
 void evoca_set_eg_act_ymax(int y) { eg_act_ymax = y > 1 ? y : 1; }
@@ -2191,7 +2246,10 @@ void evoca_egenome_stats(float *out)
     int sum_negene   = 0;
     int sum_negene_sq = 0;
     int n_at_max     = 0;
-    uint8_t present[EGENOME_COUNT] = {0};
+    /* Count distinct ternary KEYS (out of 729), not just value bytes
+     * (out of 64). Two egenes that differ in their wildcard pattern
+     * are now distinct in the diversity count. */
+    uint8_t present[EGENE_KEY_COUNT] = {0};
 
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) continue;
@@ -2203,11 +2261,13 @@ void evoca_egenome_stats(float *out)
         uint8_t a = active[i];
         while (a) {
             int s = __builtin_ctz(a); a &= a - 1;
-            present[egenes[i * NEGENOME_MAX + s] & 0x3F] = 1;
+            uint8_t v = egenes[i * NEGENOME_MAX + s]      & 0x3F;
+            uint8_t m = egenes_mask[i * NEGENOME_MAX + s] & 0x3F;
+            present[egene_ternary_key(v, m)] = 1;
         }
     }
     int distinct = 0;
-    for (int i = 0; i < EGENOME_COUNT; i++) if (present[i]) distinct++;
+    for (int i = 0; i < EGENE_KEY_COUNT; i++) if (present[i]) distinct++;
 
     float mean = alive_cnt > 0 ? (float)sum_negene / (float)alive_cnt : 0.0f;
     float var  = alive_cnt > 0

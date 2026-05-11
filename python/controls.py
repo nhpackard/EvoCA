@@ -174,8 +174,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     eg_activity_col     = None
 
     if eg_activity_enabled:
+        from python.evoca_py import EGENE_KEY_COUNT
+        K = EGENE_KEY_COUNT
         ega_meta_off = 4 + PROBE_W * ACT_H * 4
-        ega_shm_size = ega_meta_off + 64*8 + 64*4 + 64*4 + 4  # +acts,pops,cols,ymax
+        ega_shm_size = ega_meta_off + K*8 + K*4 + K*4 + 4  # +acts,pops,cols,ymax
         eg_activity_shm = SharedMemory(create=True, size=ega_shm_size)
         _egabuf = np.ndarray((ega_shm_size,), dtype=np.uint8,
                              buffer=eg_activity_shm.buf)
@@ -185,15 +187,15 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         eg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
                                         buffer=eg_activity_shm.buf, offset=4)
         eg_activity_col = np.zeros(ACT_H, dtype=np.int32)
-        # Metadata for click → egenome mapping (written by sim thread)
-        ega_m_acts = np.ndarray((64,), dtype=np.uint64,
+        # Metadata for click → ternary-key mapping (written by sim thread)
+        ega_m_acts = np.ndarray((K,), dtype=np.uint64,
                                 buffer=eg_activity_shm.buf, offset=ega_meta_off)
-        ega_m_pops = np.ndarray((64,), dtype=np.uint32,
-                                buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8)
-        ega_m_cols = np.ndarray((64,), dtype=np.int32,
-                                buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4)
+        ega_m_pops = np.ndarray((K,), dtype=np.uint32,
+                                buffer=eg_activity_shm.buf, offset=ega_meta_off + K*8)
+        ega_m_cols = np.ndarray((K,), dtype=np.int32,
+                                buffer=eg_activity_shm.buf, offset=ega_meta_off + K*8 + K*4)
         ega_m_ymax = np.ndarray((1,), dtype=np.int32,
-                                buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4*2)
+                                buffer=eg_activity_shm.buf, offset=ega_meta_off + K*8 + K*4*2)
 
     # ── Egenome food intake probe setup ──────────────────────────────
     eg_food_enabled = bool((probes or {}).get('eg_food'))

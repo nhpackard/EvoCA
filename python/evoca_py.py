@@ -24,6 +24,44 @@ import numpy as np
 LUT_BITS  = 250   # 2*5*5*5
 LUT_BYTES = 32    # ceil(250/8)
 
+# Egene representation: 6 D4 orbits, ternary 0/1/wildcard per orbit.
+# EGENE_VALUE_COUNT = 64  (legacy 6-bit value-only space; still used by
+#                         set_egenome_all and the value-only egenome
+#                         scratch view).
+# EGENE_KEY_COUNT  = 729  (3^6, the space of distinct ternary egenes).
+EGENE_VALUE_COUNT = 64
+EGENE_KEY_COUNT   = 729
+
+
+def egene_decode_ternary(key):
+    """Inverse of the C-side egene_ternary_key. Returns (value, mask)
+    as 6-bit ints. Wildcard digits zero both bits in the value, so
+    two egenes that differ only at wildcard positions decode
+    identically — useful when interpreting a 729-key colour swatch."""
+    v = m = 0
+    for i in range(6):
+        digit = key % 3
+        key //= 3
+        if digit:
+            m |= 1 << i
+            if digit == 2:
+                v |= 1 << i
+    return v, m
+
+
+def egene_ternary_key(value, mask):
+    """Inverse of egene_decode_ternary."""
+    key = 0
+    p = 1
+    for i in range(6):
+        if not ((mask >> i) & 1):
+            d = 0
+        else:
+            d = 2 if ((value >> i) & 1) else 1
+        key += d * p
+        p *= 3
+    return key
+
 # Ring strides for flat index
 _S = (125, 25, 5, 1)   # (v_x, n1, n2, n3)
 
@@ -854,10 +892,11 @@ class EvoCA:
         return int(self._lib.evoca_get_step())
 
     def get_eg_activity(self):
-        """Return egenome activity table as dict of arrays (64 entries)."""
-        acts = np.zeros(64, dtype=np.uint64)
-        pops = np.zeros(64, dtype=np.uint32)
-        cols = np.zeros(64, dtype=np.int32)
+        """Return egene-activity table as dict of arrays (EGENE_KEY_COUNT
+        = 729 ternary keys)."""
+        acts = np.zeros(EGENE_KEY_COUNT, dtype=np.uint64)
+        pops = np.zeros(EGENE_KEY_COUNT, dtype=np.uint32)
+        cols = np.zeros(EGENE_KEY_COUNT, dtype=np.int32)
         self._lib.evoca_eg_activity_get(
             acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
             pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
@@ -865,12 +904,12 @@ class EvoCA:
         return {'activity': acts, 'pop_count': pops, 'color': cols}
 
     def get_eg_food(self):
-        """Return egene food-intake table as dict of arrays (64 entries).
-        `food` values are uint64 scaled by 1e6 (so divide by 1e6 to get
-        food units)."""
-        food = np.zeros(64, dtype=np.uint64)
-        pops = np.zeros(64, dtype=np.uint32)
-        cols = np.zeros(64, dtype=np.int32)
+        """Return egene food-intake table as dict of arrays
+        (EGENE_KEY_COUNT = 729 ternary keys). `food` values are uint64
+        scaled by 1e6 (divide by 1e6 to get food units)."""
+        food = np.zeros(EGENE_KEY_COUNT, dtype=np.uint64)
+        pops = np.zeros(EGENE_KEY_COUNT, dtype=np.uint32)
+        cols = np.zeros(EGENE_KEY_COUNT, dtype=np.int32)
         self._lib.evoca_eg_food_get(
             food.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
             pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),

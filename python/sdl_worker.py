@@ -696,14 +696,15 @@ def main():
             eg_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
                                             buffer=eg_activity_shm.buf, offset=4)
             ega_meta_off = 4 + PROBE_W * ACT_H * 4
-            ega_m_acts = np.ndarray((64,), dtype=np.uint64,
+            K = 729  # ternary egene-key count, mirror of EGENE_KEY_COUNT
+            ega_m_acts = np.ndarray((K,), dtype=np.uint64,
                                     buffer=eg_activity_shm.buf, offset=ega_meta_off)
-            ega_m_pops = np.ndarray((64,), dtype=np.uint32,
-                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8)
-            ega_m_cols = np.ndarray((64,), dtype=np.int32,
-                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4)
+            ega_m_pops = np.ndarray((K,), dtype=np.uint32,
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + K*8)
+            ega_m_cols = np.ndarray((K,), dtype=np.int32,
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + K*8 + K*4)
             ega_m_ymax = np.ndarray((1,), dtype=np.int32,
-                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + 64*8 + 64*4*2)
+                                    buffer=eg_activity_shm.buf, offset=ega_meta_off + K*8 + K*4*2)
             print(f"EvoCA SDL: eg_activity shm opened ({ACT_H}x{PROBE_W})",
                   flush=True)
         except Exception as e:
@@ -1561,9 +1562,10 @@ def main():
                         and ega_m_cols is not None:
                     cur = int(eg_activity_cursor[0])
                     bx = (_cx + cur) % PROBE_W
+                    K = len(ega_m_cols)
                     if 0 <= _cy < ACT_H and 0 <= bx < PROBE_W:
                         col2eg = {}
-                        for i in range(64):
+                        for i in range(K):
                             cv = int(ega_m_cols[i])
                             col2eg[cv] = i
                             ru = (cv >> 16) & 0xFF
@@ -1586,17 +1588,26 @@ def main():
                             frac = int(ega_m_pops[best_eg]) / total_pop
                             alive = ("alive" if ega_m_pops[best_eg] > 0
                                      else "extinct")
-                            print(f"eg_activity click: egenome "
-                                  f"{best_eg} (0b{best_eg:06b})  "
-                                  f"pop={frac:.3f}  {alive}",
-                                  flush=True)
+                            # Decode key → (value, mask) for the print.
+                            v = m = 0
+                            kkey = best_eg
+                            for ii in range(6):
+                                d = kkey % 3; kkey //= 3
+                                if d:
+                                    m |= 1 << ii
+                                    if d == 2:
+                                        v |= 1 << ii
+                            print(f"eg_activity click: ternary key "
+                                  f"{best_eg}  value=0b{v:06b}  "
+                                  f"mask=0b{m:06b}  pop={frac:.3f}  "
+                                  f"{alive}", flush=True)
                 elif _kind == 'ep' and eg_pop_pixels is not None \
                         and ega_m_cols is not None:
                     cur = int(eg_pop_cursor[0])
                     bx = (_cx + cur) % PROBE_W
                     if 0 <= _cy < PROBE_H and 0 <= bx < PROBE_W:
                         col2eg = {}
-                        for i in range(64):
+                        for i in range(len(ega_m_cols)):
                             col2eg[int(ega_m_cols[i])] = i
                         best_eg = -1
                         for sy in range(_cy, -1, -1):
@@ -1676,13 +1687,28 @@ def main():
             cur_ega = int(eg_activity_cursor[0])
             eg_act_dst[:ACT_H, :PROBE_W] = np.roll(eg_activity_pixels,
                                                      -cur_ega, axis=1)
-            # Overlay: draw 5×5 egenome pattern in top-right corner
+            # Overlay: draw 5×5 ternary egenome pattern in top-right.
+            # eg_overlay_val is now a key in [0, 729). Decode to
+            # (value, mask), then render each cell as one of:
+            #   - mask bit 0 (wildcard)         → mid-grey
+            #   - mask bit 1, value bit 0 (off) → black
+            #   - mask bit 1, value bit 1 (on)  → egene color
             if eg_overlay_val >= 0:
                 _orbit = np.array([[4,5,2,5,4],[5,3,1,3,5],[2,1,0,1,2],
                                    [5,3,1,3,5],[4,5,2,5,4]], dtype=np.uint8)
-                pat = ((eg_overlay_val >> _orbit) & 1).astype(np.uint8)
+                # Decode key → (value, mask).
+                _v = _m = 0
+                _kk = int(eg_overlay_val)
+                for _ii in range(6):
+                    _d = _kk % 3; _kk //= 3
+                    if _d:
+                        _m |= 1 << _ii
+                        if _d == 2:
+                            _v |= 1 << _ii
                 col = int(ega_m_cols[eg_overlay_val]) if ega_m_cols is not None \
                     else _c(0xFFFFFFFF)
+                wild_col = _c(0xFF606060)   # mid-grey for wildcard
+                off_col  = _c(0xFF000000)
                 ox = PROBE_W - EG_OVL_PX - 3
                 oy = 3
                 # border (1px white)
@@ -1690,7 +1716,13 @@ def main():
                     _c(0xFFFFFFFF)
                 for r in range(EG_PAT_N):
                     for c in range(EG_PAT_N):
-                        px_col = col if pat[r, c] else _c(0xFF000000)
+                        orbit = int(_orbit[r, c])
+                        if not ((_m >> orbit) & 1):
+                            px_col = wild_col
+                        elif (_v >> orbit) & 1:
+                            px_col = col
+                        else:
+                            px_col = off_col
                         y0 = oy + r * EG_CELL_PX
                         x0 = ox + c * EG_CELL_PX
                         eg_act_dst[y0:y0+EG_CELL_PX, x0:x0+EG_CELL_PX] = px_col
