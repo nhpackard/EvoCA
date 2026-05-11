@@ -634,24 +634,37 @@ class EvoCA:
         self._state_params['egenome'] = 'random'
         self._state_params.pop('egenome_value', None)
 
-    def set_lut_random(self, n_init=3):
-        """Set each cell's LUT to an independent random rule.
+    def set_lut_random(self, n_init=3, density=0.5, uniform=False, seed=None):
+        """Set each cell's LUT to a random rule.
 
         n_init: number of rings the rule conditions on (1, 2, or 3).
           1: depends on (v_x, n1) — 10 independent bits per LUT
           2: depends on (v_x, n1, n2) — 50 independent bits
           3: depends on (v_x, n1, n2, n3) — all 250 bits independent
-        """
+        density: probability that each independent bit is 1 (default 0.5).
+          Use lower values to bias toward "stay dead" rules (sparse
+          activity), higher to bias toward "stay alive".
+        uniform: if True, generate one rule and assign it to every
+          cell (a true uniform CA substrate). Use for "fixed-LUT
+          population" experiments where you want one global dynamics
+          and only the egenome to evolve.
+        seed: numpy seed for reproducibility (None = use global RNG)."""
         N2 = self._N * self._N
+        n_dup = 1 if uniform else N2
+        rng = np.random.default_rng(seed) if seed is not None else np.random
 
+        # Each independent bit is 1 with probability `density`.
         if n_init >= 3:
-            bits = np.random.randint(0, 2, (N2, 2, 5, 5, 5), dtype=np.uint8)
+            bits = (rng.random((n_dup, 2, 5, 5, 5)) < density).astype(np.uint8)
         elif n_init == 2:
-            core = np.random.randint(0, 2, (N2, 2, 5, 5, 1), dtype=np.uint8)
+            core = (rng.random((n_dup, 2, 5, 5, 1)) < density).astype(np.uint8)
             bits = np.tile(core, (1, 1, 1, 1, 5))
         else:  # n_init == 1
-            core = np.random.randint(0, 2, (N2, 2, 5, 1, 1), dtype=np.uint8)
+            core = (rng.random((n_dup, 2, 5, 1, 1)) < density).astype(np.uint8)
             bits = np.tile(core, (1, 1, 1, 5, 5))
+
+        if uniform:
+            bits = np.tile(bits, (N2, 1, 1, 1, 1))
 
         flat = bits.reshape(N2, LUT_BITS)
 
@@ -664,10 +677,18 @@ class EvoCA:
             packed |= grouped[:, :, b] << b
 
         packed = np.ascontiguousarray(packed)
-        for i in range(N2):
-            self.set_lut(i, packed[i])
-        self._state_params['lut'] = 'random'
+        if uniform:
+            # All cells share row 0 of `packed`; one set_lut_all is faster
+            # than N2 set_lut calls.
+            self._lib.evoca_set_lut_all(
+                packed[0].ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+        else:
+            for i in range(N2):
+                self.set_lut(i, packed[i])
+        self._state_params['lut']        = 'random'
         self._state_params['lut_n_init'] = n_init
+        self._state_params['lut_density']= float(density)
+        self._state_params['lut_uniform']= bool(uniform)
 
     def set_f_all(self, f):
         self._lib.evoca_set_f_all(float(f))
@@ -1301,6 +1322,35 @@ def unpack_lut(packed):
     for i in range(LUT_BITS):
         bits[i] = (packed[i >> 3] >> (i & 7)) & 1
     return bits
+
+
+def make_random_lut(n_init=3, density=0.5, seed=None):
+    """Build one bit-packed LUT with the given ring-restriction and
+    bit-density. Returns a LUT_BYTES-length uint8 array, suitable for
+    sim.set_lut_all(lut).
+
+    n_init: 1 (n1 only), 2 (n1+n2), 3 (full n1+n2+n3).
+    density: probability that each independent bit is 1.
+    seed: numpy seed for reproducibility (None = global RNG).
+
+    Use to inspect or reproduce a particular substrate independently
+    of the simulation:
+
+        from python.evoca_py import make_random_lut, unpack_lut
+        lut = make_random_lut(n_init=2, density=0.4, seed=7)
+        sim.set_lut_all(lut)
+        # later: print/inspect  unpack_lut(lut)
+    """
+    rng = np.random.default_rng(seed) if seed is not None else np.random
+    if n_init >= 3:
+        bits = (rng.random((2, 5, 5, 5)) < density).astype(np.uint8)
+    elif n_init == 2:
+        core = (rng.random((2, 5, 5, 1)) < density).astype(np.uint8)
+        bits = np.tile(core, (1, 1, 1, 5))
+    else:
+        core = (rng.random((2, 5, 1, 1)) < density).astype(np.uint8)
+        bits = np.tile(core, (1, 1, 5, 5))
+    return pack_lut(bits.flatten())
 
 
 def make_gol_lut():
