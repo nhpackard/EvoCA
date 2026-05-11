@@ -150,6 +150,9 @@ class EvoCA:
         L.evoca_set_egenome_all.restype  = None
         L.evoca_set_egenome_random_all.argtypes = [ctypes.c_uint8]
         L.evoca_set_egenome_random_all.restype  = None
+        L.evoca_set_egenome_pair_all.argtypes = [ctypes.c_uint8,
+                                                  ctypes.c_uint8]
+        L.evoca_set_egenome_pair_all.restype  = None
         L.evoca_get_egenes.argtypes      = []
         L.evoca_get_egenes.restype       = ctypes.POINTER(ctypes.c_uint8)
         L.evoca_get_active.argtypes      = []
@@ -738,10 +741,79 @@ class EvoCA:
                  .copy().reshape(self._N, self._N)
 
     def get_egenome(self):
-        """Return (N, N) uint8 array of fiducial genomes (6-bit values)."""
+        """Return (N, N) uint8 array of fiducial genomes (6-bit values).
+        Each entry is the lowest-active-slot's value byte for that cell —
+        a backward-compat single-byte view of the multi-egene genome.
+        For the full per-slot picture, use get_egenes() and
+        get_egenes_mask() instead."""
         ptr = self._lib.evoca_get_egenome()
         return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)) \
                  .copy().reshape(self._N, self._N)
+
+    def get_egenes(self):
+        """Return (N, N, NEGENOME_MAX) uint8 array of egene value bytes,
+        one per slot. Pair with get_egenes_mask() and get_active() to
+        reconstruct the full ternary egenome of any cell."""
+        ptr = self._lib.evoca_get_egenes()
+        return np.ctypeslib.as_array(
+            ptr, shape=(self._N * self._N * 8,)).copy().reshape(
+                self._N, self._N, 8)
+
+    def get_active(self):
+        """Return (N, N) uint8 array — bit i = 1 means slot i is active.
+        Negene = popcount of this byte. NB: this is the per-cell active
+        mask (for egene slots), distinct from get_alive() which marks
+        which cells in the lattice host an organism."""
+        ptr = self._lib.evoca_get_active()
+        return np.ctypeslib.as_array(
+            ptr, shape=(self._N * self._N,)).copy().reshape(
+                self._N, self._N)
+
+    def cell_inspect(self, row, col):
+        """Convenience: return a dict describing one cell's egenome.
+        Includes alive flag, Negene, the list of active (value, mask)
+        pairs as ints in [0, 64), and a list of orbit-strings for each
+        active slot using '.', '0', '1' for wildcard / off / on."""
+        i = int(row) * self._N + int(col)
+        alive = int(np.ctypeslib.as_array(
+            self._lib.evoca_get_alive(),
+            shape=(self._N * self._N,))[i])
+        active = int(np.ctypeslib.as_array(
+            self._lib.evoca_get_active(),
+            shape=(self._N * self._N,))[i])
+        vals = np.ctypeslib.as_array(
+            self._lib.evoca_get_egenes(),
+            shape=(self._N * self._N * 8,))[i*8:(i+1)*8]
+        masks = np.ctypeslib.as_array(
+            self._lib.evoca_get_egenes_mask(),
+            shape=(self._N * self._N * 8,))[i*8:(i+1)*8]
+        slots = []
+        for s in range(8):
+            if (active >> s) & 1:
+                v, m = int(vals[s]) & 0x3F, int(masks[s]) & 0x3F
+                # Build per-orbit string using '.', '0', '1'.
+                orbits = ''.join(
+                    '.' if not ((m >> i) & 1) else
+                    ('1' if (v >> i) & 1 else '0')
+                    for i in range(6))
+                slots.append({'slot': s, 'value': v, 'mask': m,
+                              'orbits_b0..b5': orbits})
+        return {'alive': bool(alive), 'active_byte': active,
+                'Negene': int(bin(active).count('1')),
+                'slots': slots}
+
+    def set_egenome_pair_all(self, value, mask):
+        """Set every cell to a single active egene with the given
+        6-bit (value, mask) ternary pair. Negene = 1 everywhere; only
+        slot 0 active. Use this to seed runs at any starting cognition
+        level — e.g. (0, 0x01) for a minimal "centre = dead" one-orbit
+        specification from which evolution can grow specificity."""
+        v = int(value) & 0x3F
+        m = int(mask)  & 0x3F
+        self._lib.evoca_set_egenome_pair_all(v, m)
+        self._state_params['egenome'] = 'pair'
+        self._state_params['egenome_value'] = v
+        self._state_params['egenome_mask']  = m
 
     def get_births(self):
         """Return (N, N) uint8 array of birth events from last step."""

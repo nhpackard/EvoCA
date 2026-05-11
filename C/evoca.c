@@ -786,6 +786,22 @@ void evoca_set_egenome_all(uint8_t eg) {
         cell_rehash((int)i);
 }
 
+void evoca_set_egenome_pair_all(uint8_t value, uint8_t mask) {
+    size_t cells = (size_t)gN * gN;
+    /* All NEGENOME_MAX slots seeded with the same (value, mask) pair;
+     * only slot 0 active. Negene = 1. Lets callers start the
+     * population at any cognitive complexity from "minimal centre-only
+     * orbit" (mask=0x01) up to "fully specified" (mask=0x3F). */
+    uint8_t v = value & 0x3F;
+    uint8_t m = mask  & 0x3F;
+    memset(egenes,      v, cells * NEGENOME_MAX);
+    memset(egenes_mask, m, cells * NEGENOME_MAX);
+    memset(active, 0x01, cells);
+    eg_init_colors(v);
+    for (size_t i = 0; i < cells; i++)
+        cell_rehash((int)i);
+}
+
 void evoca_set_egenome_random_all(uint8_t wt) {
     size_t cells = (size_t)gN * gN;
     for (size_t i = 0; i < cells; i++) {

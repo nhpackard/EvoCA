@@ -80,6 +80,10 @@ void evoca_set_egenome_all(uint8_t eg);
  * values, exactly one random slot active per cell. Negene = 1
  * everywhere; the inactive slots act as a pseudogene reservoir. */
 void evoca_set_egenome_random_all(uint8_t wt);
+
+/* Set every cell to a single active egene with the given (value, mask)
+ * ternary pair. Use this to seed runs at any cognitive complexity. */
+void evoca_set_egenome_pair_all(uint8_t value, uint8_t mask);
 void evoca_set_f_all(float f);
 void evoca_set_F_all(float F);
 void     evoca_set_env_mask(const uint8_t *mask);
