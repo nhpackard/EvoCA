@@ -158,6 +158,17 @@ When the section below talks about "the egenome" it refers to a single
 slot's (value, mask) pair. The next subsection covers how the cell
 uses *all* its slots.
 
+For introspection, Python exposes the underlying ternary space as:
+
+- `EGENE_VALUE_COUNT = 64` — the 6-bit value space (legacy).
+- `EGENE_KEY_COUNT = 729` — the 3⁶ ternary-key space; eg_activity
+  and eg_food histograms key on this.
+- `egene_ternary_key(value, mask)` / `egene_decode_ternary(key)` —
+  round-trippable encode/decode helpers.
+- `sim.get_egenes()`, `sim.get_egenes_mask()`, `sim.get_active()` —
+  full per-slot value/mask/presence arrays.
+- `sim.cell_inspect(row, col)` — a human-readable dict for one cell.
+
 ### D4 Orbits
 
 The 25 positions of the 5x5 neighborhood fall into 6 orbits under the
@@ -530,18 +541,33 @@ sim.set_lut(idx, lut_bytes)
     # Set one cell's LUT (idx = flat cell index).
 
 sim.set_egenome_all(eg)
-    # Set all cells' fiducial genome (6-bit value, masked to 0x3F).
+    # Set every cell to: all 8 slots = `eg` (6-bit value) with
+    # mask = 0x3F (every orbit non-wildcard); only slot 0 active.
+    # Negene = 1. The mask=0x3F default reproduces the historical
+    # "fully specified" behaviour from the binary-egene model.
 
 sim.set_egenome_random()
-    # Set each cell's egenome to a random value in [0, 63].
-    # No wild-type: all 64 egenomes get distinct hash-based colors.
+    # Set every cell to: 8 independent random 6-bit value bytes and
+    # random 6-bit mask bytes (each orbit non-wildcard with prob 0.5);
+    # one random slot active.
 
-sim.set_lut_random(n_init=3)
-    # Set each cell's LUT to an independent random rule.
+sim.set_egenome_pair_all(value, mask)
+    # Set every cell to a single active egene with the given 6-bit
+    # ternary (value, mask) pair. Use this to seed runs at any
+    # starting cognitive complexity — e.g. (0, 0b000001) for a
+    # centre-only minimal cognition. Hash-correct.
+
+sim.set_lut_random(n_init=3, density=0.5, uniform=False, seed=None)
+    # Set each cell's LUT to a random rule.
     # n_init: number of rings the rule conditions on (1, 2, or 3).
     #   1: depends on (v_x, n1) only — 10 independent bits per LUT
     #   2: depends on (v_x, n1, n2) — 50 independent bits
     #   3: depends on (v_x, n1, n2, n3) — all 250 bits independent
+    # density: probability that each independent bit is 1. < 0.5 biases
+    #   toward "stay dead" rules; > 0.5 biases toward "stay alive".
+    # uniform: if True, generate ONE rule and give every cell the same
+    #   LUT (a true uniform CA substrate, useful with mu_lut=0).
+    # seed: numpy seed for reproducibility (None = global RNG).
 
 sim.set_f_all(f)
     # Set all cells' private food to float f.
@@ -654,16 +680,41 @@ sim.get_v()       -> np.ndarray   # (N, N) uint8, CA states (copy)
 sim.get_alive()   -> np.ndarray   # (N, N) uint8, alive flags (copy)
 sim.get_F()       -> np.ndarray   # (N, N) float32, env food (copy)
 sim.get_f()       -> np.ndarray   # (N, N) float32, private food (copy)
-sim.get_egenome()  -> np.ndarray   # (N, N) uint8, fiducial genomes (copy)
 sim.get_births()  -> np.ndarray   # (N, N) uint8, birth events last step (copy)
 sim.get_lut(idx)  -> np.ndarray   # (LUT_BYTES,) uint8, one cell's LUT (copy)
 sim.get_step()    -> int           # current global step counter
 sim.N             -> int           # lattice size
 sim.cell_px       -> int           # CELL_PX compile-time constant
 
-# Activity and diagnostics
+# Egenome (ternary 0/1/wildcard) accessors:
+sim.get_egenome()      -> np.ndarray  # (N, N) uint8 legacy scratch:
+                                       # lowest-active slot's value byte
+                                       # per cell. Use the next three
+                                       # for the full per-slot picture.
+sim.get_egenes()       -> np.ndarray  # (N, N, 8) uint8 per-slot value bytes
+sim.get_egenes_mask()  -> np.ndarray  # (N, N, 8) uint8 per-slot mask bytes;
+                                       # bit i = 1 means orbit i is non-wildcard
+sim.get_active()       -> np.ndarray  # (N, N) uint8 active mask;
+                                       # Negene[cell] = popcount(byte)
+sim.cell_inspect(row, col) -> dict    # {alive, active_byte, Negene,
+                                       #  slots:[{slot,value,mask,
+                                       #          orbits_b0..b5}]}
+                                       # orbits string uses '.', '0', '1'
+
+# Activity and diagnostics:
 sim.get_activity(max_n=4096) -> dict   # {'hash', 'activity', 'pop_count', 'color'}
-sim.get_eg_activity()        -> dict   # {'activity', 'pop_count', 'color'} (64 entries)
+sim.get_eg_activity()        -> dict   # 729 ternary keys (EGENE_KEY_COUNT)
+                                        # {'activity', 'pop_count', 'color'}
+sim.get_eg_food()            -> dict   # 729 ternary keys
+                                        # {'food', 'pop_count', 'color'};
+                                        # food values are uint64 scaled by 1e6
+sim.egene_stats()            -> dict   # {'mean_specificity' [0..25],
+                                        #  'mean_load' [0..200],
+                                        #  'mean_intake' [0..1]}
+sim.egenome_stats()          -> dict   # {'mean_negene', 'std_negene',
+                                        #  'distinct_egene_values' (out of 729),
+                                        #  'mean_max_match' [-25..+25],
+                                        #  'frac_at_max'}
 sim.get_lut_complexity()     -> dict   # {'n1': count, 'n2': count, 'n3': count}
 sim.get_repro_age_hist()     -> np.ndarray  # (1024,) uint32 histogram
 sim.set_repro_age_t0(t)                # set step threshold for histogram accumulation
@@ -717,10 +768,17 @@ either the original or the tweaked configuration can be reproduced.
 #### Stored Attributes
 
 After `init()` or the corresponding setter, these Python attributes
-reflect current values:
+reflect current values (each tracks the matching C global):
 
     sim.food_inc, sim.m_scale, sim.gdiff,
-    sim.mu_lut, sim.mu_egene, sim.tax, sim.restricted_mu, sim.egenome
+    sim.mu_lut, sim.mu_egene, sim.mu_egenome, sim.p_dup_egene,
+    sim.tax, sim.tax_per_egene, sim.tax_lut,
+    sim.restricted_mu,
+    sim.N_log_interval,        # Python-side ProbeLogs throttle
+    sim.egenome                # legacy: last value passed to set_egenome_all
+
+`sim._origin_recipe` is set to the `.evoca` basename by
+`import_run`; the probe logger uses it to tag log files.
 
 ---
 
@@ -829,6 +887,20 @@ Builds Conway's Game of Life (B3/S23) as a bit-packed LUT.
 
 With mutation=0 (all cells share this LUT), the simulation runs exact GoL.
 
+### make_random_lut
+
+```python
+make_random_lut(n_init=3, density=0.5, seed=None) -> np.ndarray
+    # LUT_BYTES-length uint8 bit-packed array.
+    # n_init: 1 (n1 only), 2 (n1+n2), 3 (full).
+    # density: probability that each independent bit is 1.
+    # seed:    numpy seed for reproducibility (None = global RNG).
+```
+
+Builds a single random ring-restricted LUT. Pair with
+`sim.set_lut_all(lut)` to give every cell the same substrate (useful
+for "fixed LUT / evolving egene" experiments with `mu_lut=0`).
+
 ### pack_lut / unpack_lut
 
 ```python
@@ -856,10 +928,31 @@ lut_bit_index(v_x, n1, n2, n3) -> int
 ### Constants
 
 ```python
-LUT_BITS  = 250      # bits per LUT
-LUT_BYTES = 32       # bytes per LUT (ceil(250/8))
-ORBIT_MAP            # (5, 5) uint8 array of orbit indices
+LUT_BITS           = 250    # bits per LUT
+LUT_BYTES          = 32     # bytes per LUT (ceil(250/8))
+EGENE_VALUE_COUNT  = 64     # 6-bit value-only space (legacy)
+EGENE_KEY_COUNT    = 729    # 3^6 ternary keys (value × mask)
+ORBIT_MAP                   # (5, 5) uint8 array of orbit indices
 ```
+
+### Ternary egene helpers
+
+```python
+egene_ternary_key(value, mask) -> int
+    # Encode a 6-bit (value, mask) pair into a ternary key in [0, 729).
+    # Per orbit i: digit = 0 (wildcard) | 1 (off) | 2 (on);
+    # key = sum_i (digit * 3^i).
+
+egene_decode_ternary(key) -> (value, mask)
+    # Inverse. Wildcard digits zero both bits in the returned value
+    # (canonical form: two egenes that differ only at wildcard
+    #  positions decode to the same (value, mask)).
+```
+
+The 5×5 ternary fiducial pattern of an egene with `(value, mask)` is
+recovered by combining `ORBIT_MAP` with `egenome_to_pattern`; orbits
+where the mask bit is 0 are wildcards and should be drawn as a third
+state (not 0/1).
 
 ---
 
