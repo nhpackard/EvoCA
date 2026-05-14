@@ -32,6 +32,9 @@ LUT_BYTES = 32    # ceil(250/8)
 EGENE_VALUE_COUNT = 64
 EGENE_KEY_COUNT   = 729
 
+# Dyn-activity: 250 LUT inputs × 2 outputs = 500 transition buckets.
+DYN_ACT_COUNT = LUT_BITS * 2   # 500
+
 
 def egene_decode_ternary(key):
     """Inverse of the C-side egene_ternary_key. Returns (value, mask)
@@ -358,6 +361,20 @@ class EvoCA:
         #    mean intake per alive eater this step]
         L.evoca_egene_stats.argtypes  = [ctypes.POINTER(ctypes.c_float)]
         L.evoca_egene_stats.restype   = None
+        # Dyn-activity probe (LUT-entry-level): 500 buckets
+        L.evoca_dyn_activity_render_col.argtypes = [
+            ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
+        L.evoca_dyn_activity_render_col.restype  = None
+        L.evoca_dyn_activity_get.argtypes = [
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_int32),
+        ]
+        L.evoca_dyn_activity_get.restype  = ctypes.c_int
+        L.evoca_set_dyn_act_ymax.argtypes = [ctypes.c_int]
+        L.evoca_set_dyn_act_ymax.restype  = None
+        L.evoca_get_dyn_act_ymax.argtypes = []
+        L.evoca_get_dyn_act_ymax.restype  = ctypes.c_int
         # Egene mask accessor: per-slot wildcard-mask byte (bit i = 1
         # means orbit i is non-wildcard).
         L.evoca_get_egenes_mask.argtypes = []
@@ -516,6 +533,9 @@ class EvoCA:
 
     def update_eg_food_ymax(self, y):
         self._lib.evoca_set_eg_food_ymax(int(y))
+
+    def update_dyn_act_ymax(self, y):
+        self._lib.evoca_set_dyn_act_ymax(int(y))
 
     def update_pat_act_ymax(self, y):
         self._lib.evoca_set_pat_act_ymax(int(y))
@@ -936,6 +956,25 @@ class EvoCA:
             pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
             cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
         return {'food': food, 'pop_count': pops, 'color': cols}
+
+    def get_dyn_activity(self):
+        """Return per-(LUT input, output) activity table as dict of
+        arrays of length DYN_ACT_COUNT = 500. Each bucket counts how
+        often the alive population took the corresponding transition.
+        Bucket index i = input * 2 + output where input is
+        LUT_IDX(v_x, n1, n2, n3) and output ∈ {0, 1}.
+        - 'activity'  : cumulative count since sim init (uint64)
+        - 'pop_count' : count this step (uint32) — sum = alive cells
+                        going into Phase 1
+        - 'color'     : ARGB per bucket (int32)"""
+        acts = np.zeros(DYN_ACT_COUNT, dtype=np.uint64)
+        pops = np.zeros(DYN_ACT_COUNT, dtype=np.uint32)
+        cols = np.zeros(DYN_ACT_COUNT, dtype=np.int32)
+        self._lib.evoca_dyn_activity_get(
+            acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+            pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
+        return {'activity': acts, 'pop_count': pops, 'color': cols}
 
     def egenome_stats(self):
         """Return scalar Negene-distribution stats over alive cells:

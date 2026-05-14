@@ -584,6 +584,7 @@ def main():
     eg_food_shm_name = None
     egn_shm_name = None
     eg_shm_name  = None
+    dyn_activity_shm_name = None
     lut_complexity_shm_name = None
     entropy_shm_name = None
     pat_activity_shm_name = None
@@ -603,6 +604,8 @@ def main():
             egn_shm_name = arg[len("--egenome="):]
         elif arg.startswith("--egene="):
             eg_shm_name = arg[len("--egene="):]
+        elif arg.startswith("--dyn-activity="):
+            dyn_activity_shm_name = arg[len("--dyn-activity="):]
         elif arg.startswith("--lut-complexity="):
             lut_complexity_shm_name = arg[len("--lut-complexity="):]
         elif arg.startswith("--entropy="):
@@ -711,6 +714,35 @@ def main():
             print(f"EvoCA SDL: eg_activity SharedMemory open failed: {e}",
                   flush=True)
             eg_activity_shm_name = None
+
+    # Open dyn_activity shared memory
+    dyn_activity_shm     = None
+    dyn_activity_cursor  = None
+    dyn_activity_pixels  = None
+    dyn_m_acts = dyn_m_pops = dyn_m_cols = dyn_m_ymax = None
+    if dyn_activity_shm_name:
+        try:
+            dyn_activity_shm = SharedMemory(name=dyn_activity_shm_name)
+            dyn_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                              buffer=dyn_activity_shm.buf)
+            dyn_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                              buffer=dyn_activity_shm.buf, offset=4)
+            dyn_meta_off = 4 + PROBE_W * ACT_H * 4
+            D = 500  # mirror of DYN_ACT_COUNT
+            dyn_m_acts = np.ndarray((D,), dtype=np.uint64,
+                                     buffer=dyn_activity_shm.buf, offset=dyn_meta_off)
+            dyn_m_pops = np.ndarray((D,), dtype=np.uint32,
+                                     buffer=dyn_activity_shm.buf, offset=dyn_meta_off + D*8)
+            dyn_m_cols = np.ndarray((D,), dtype=np.int32,
+                                     buffer=dyn_activity_shm.buf, offset=dyn_meta_off + D*8 + D*4)
+            dyn_m_ymax = np.ndarray((1,), dtype=np.int32,
+                                     buffer=dyn_activity_shm.buf, offset=dyn_meta_off + D*8 + D*4*2)
+            print(f"EvoCA SDL: dyn_activity shm opened ({ACT_H}x{PROBE_W})",
+                  flush=True)
+        except Exception as e:
+            print(f"EvoCA SDL: dyn_activity SharedMemory open failed: {e}",
+                  flush=True)
+            dyn_activity_shm_name = None
 
     # Open eg_food shared memory
     eg_food_shm     = None
@@ -1084,6 +1116,44 @@ def main():
                 sdl2.SDL_DestroyWindow(caw)
         else:
             print("EvoCA SDL: eg_activity window creation failed", flush=True)
+
+    # ── Dyn-activity window (LUT-entry-level selection) ──────
+    dyn_window_p  = None
+    dyn_surface_p = None
+    dyn_dst       = None
+    dyn_window_id = 0
+    dyn_overlay_val = -1
+    if dyn_activity_shm is not None:
+        dynw_x = main_x - PROBE_W
+        dynw = sdl2.SDL_CreateWindow(
+            b"dyn_activity",
+            dynw_x, next_probe_y,
+            PROBE_W, ACT_H,
+            sdl2.SDL_WINDOW_SHOWN,
+        )
+        if dynw:
+            actual_y = ctypes.c_int(0)
+            sdl2.SDL_GetWindowPosition(dynw, None, ctypes.byref(actual_y))
+            next_probe_y = actual_y.value + ACT_H + real_title_h
+            dynps = sdl2.SDL_GetWindowSurface(dynw)
+            if dynps:
+                sdl2.SDL_SetSurfaceBlendMode(dynps, sdl2.SDL_BLENDMODE_NONE)
+                dynsurf  = dynps.contents
+                dynp_i32 = dynsurf.pitch // 4
+                dynp_ptr = ctypes.cast(dynsurf.pixels,
+                                        ctypes.POINTER(ctypes.c_int32))
+                dynd_flat = np.ctypeslib.as_array(dynp_ptr,
+                                                   shape=(ACT_H * dynp_i32,))
+                dyn_dst       = dynd_flat.reshape(ACT_H, dynp_i32)
+                dyn_window_p  = dynw
+                dyn_surface_p = dynps
+                dyn_window_id = sdl2.SDL_GetWindowID(dynw)
+                print("EvoCA SDL: dyn_activity window created", flush=True)
+            else:
+                sdl2.SDL_DestroyWindow(dynw)
+        else:
+            print("EvoCA SDL: dyn_activity window creation failed",
+                  flush=True)
 
     # ── Egenome food intake window ─────────────────────────────
     eg_food_window_p  = None
@@ -1538,6 +1608,8 @@ def main():
                     pending_click = ('ega', _mx, _my)
                 elif (ep_window_id and _wid == ep_window_id):
                     pending_click = ('ep', _mx, _my)
+                elif (dyn_window_id and _wid == dyn_window_id):
+                    pending_click = ('dyn', _mx, _my)
             elif event.type == sdl2.SDL_WINDOWEVENT:
                 if event.window.event == sdl2.SDL_WINDOWEVENT_CLOSE:
                     if (mag_window_p is not None and
@@ -1601,6 +1673,47 @@ def main():
                                   f"{best_eg}  value=0b{v:06b}  "
                                   f"mask=0b{m:06b}  pop={frac:.3f}  "
                                   f"{alive}", flush=True)
+                elif _kind == 'dyn' and dyn_activity_pixels is not None \
+                        and dyn_m_cols is not None:
+                    cur = int(dyn_activity_cursor[0])
+                    bx = (_cx + cur) % PROBE_W
+                    D = len(dyn_m_cols)
+                    if 0 <= _cy < ACT_H and 0 <= bx < PROBE_W:
+                        col2idx = {}
+                        for i in range(D):
+                            cv = int(dyn_m_cols[i])
+                            col2idx[cv] = i
+                            ru = (cv >> 16) & 0xFF
+                            gu = (cv >>  8) & 0xFF
+                            bu =  cv        & 0xFF
+                            dim = (0xFF000000 | ((ru*15//100) << 16)
+                                   | ((gu*15//100) << 8) | (bu*15//100))
+                            if dim >= 0x80000000:
+                                dim -= 0x100000000
+                            col2idx.setdefault(dim, i)
+                        best = -1
+                        for sy in range(_cy, -1, -1):
+                            spx = int(dyn_activity_pixels[sy, bx])
+                            if spx in col2idx:
+                                best = col2idx[spx]
+                                break
+                        if best >= 0:
+                            dyn_overlay_val = best
+                            inp = best // 2
+                            out = best %  2
+                            v_x = inp // 125
+                            n1  = (inp // 25) %  5
+                            n2  = (inp //  5) %  5
+                            n3  = inp        %  5
+                            total = max(int(dyn_m_acts.sum()), 1)
+                            frac = int(dyn_m_acts[best]) / total
+                            now = int(dyn_m_pops[best])
+                            print(f"dyn_activity click: bucket {best}  "
+                                  f"(v_x={v_x}, n1={n1}, n2={n2}, n3={n3})"
+                                  f" -> {out}  "
+                                  f"this_step={now}  "
+                                  f"cumulative_frac={frac:.4f}",
+                                  flush=True)
                 elif _kind == 'ep' and eg_pop_pixels is not None \
                         and ega_m_cols is not None:
                     cur = int(eg_pop_cursor[0])
@@ -1728,6 +1841,15 @@ def main():
                         eg_act_dst[y0:y0+EG_CELL_PX, x0:x0+EG_CELL_PX] = px_col
             sdl2.SDL_UnlockSurface(eg_act_surface_p)
             sdl2.SDL_UpdateWindowSurface(eg_act_window_p)
+
+        # Render dyn_activity window (column data is computed C-side).
+        if dyn_window_p is not None and dyn_activity_pixels is not None:
+            sdl2.SDL_LockSurface(dyn_surface_p)
+            cur_dyn = int(dyn_activity_cursor[0])
+            dyn_dst[:ACT_H, :PROBE_W] = np.roll(dyn_activity_pixels,
+                                                 -cur_dyn, axis=1)
+            sdl2.SDL_UnlockSurface(dyn_surface_p)
+            sdl2.SDL_UpdateWindowSurface(dyn_window_p)
 
         # Render eg_food window (same scrolling-strip rendering as
         # eg_activity; column data is computed C-side)

@@ -27,6 +27,7 @@ for long-term diagnostics — see "Probe Logging" below.
 | `eg_food`        | 512 x 256     | Cumulative food per egene byte (mouthful split across max-match-tied winners) |
 | `egenome`        | 512 x 256     | 4-strip Negene/eating diagnostics: mean ± std band, distinct egene values, mean max-match, frac at Negene_max |
 | `egene`          | 512 x 192     | 3-strip cognitive diagnostics for the ternary model: mean specificity (non-wildcard cell-positions per active egene), per-cell cognitive load, mean food intake per eater |
+| `dyn_activity`   | 512 x 256     | 500-bucket histogram over (LUT input, output) transitions — which entries the alive population actually exercises (selection at the LUT-entry level) |
 | `lut_complexity` | 512 x 128     | Stacked area: green=n1 only, yellow=n1+n2, red=all     |
 | `eg_pop`         | 512 x 128     | Stacked area: population fraction per egenome value    |
 | `q_activity`     | 512 x 128     | Activity quantile deciles (log-scaled strip chart)     |
@@ -170,6 +171,44 @@ Reading the strips together:
 - `frac at max` > 0 with `tax_per_egene > 0` is a sign the per-egene
   tax isn't strong enough to bound breadth; with `tax_per_egene = 0`
   it's expected to climb toward 1.
+
+---
+
+## Dyn-activity Probe (dyn_activity)
+
+Hash-coloured scrolling strip over the **500 possible (LUT input,
+output) transitions**, where input ∈ [0, 250) =
+`LUT_IDX(v_x, n1, n2, n3)` and output ∈ {0, 1}. Bucket index =
+`input * 2 + output`. During Phase 1, every alive cell increments one
+bucket per step; `dyn_pop[i]` counts how many alive cells fell in
+bucket *i* this step, `dyn_act[i]` accumulates since init.
+
+The probe answers a different question than `activity` (which keys on
+the cell's *whole* LUT genome via FNV-1a):
+
+- `activity` measures **per-cell selection**: which LUT genome
+  fingerprints dominate.
+- `dyn_activity` measures **per-LUT-entry selection**: which
+  transitions in rule space the alive population actually exercises.
+
+If `activity` shows churn (lots of new LUT-genome species) but
+`dyn_activity` stays concentrated on a small set of buckets, evolution
+is shuffling LUT bits that map to unused inputs — the *effective*
+dynamics is unchanged. If both churn together, the population is
+genuinely shifting which transitions it uses.
+
+Same hyperbolic Y-axis saturation as `eg_activity`:
+
+    y = (H-1) - (H-1) * a / (a + ymax)
+
+Tunable via `dyn_act_ymax` halve/double button (default 5000). Click on
+a band prints the decoded `(v_x, n1, n2, n3) -> output` and that
+bucket's per-step + cumulative counts. Use `sim.get_dyn_activity()` in
+Python to pull the raw 500-entry arrays.
+
+`dyn_activity` is not written to ProbeLogs (500 columns is too wide
+for a useful CSV); use `sim.get_dyn_activity()` to snapshot for
+analysis instead.
 
 ---
 

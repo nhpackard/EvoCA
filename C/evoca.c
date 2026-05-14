@@ -290,6 +290,22 @@ static int      eg_food_ymax = 1000000;      /* ≈ 1 unit of food */
  * fill (makes the trace continuous instead of dotted). */
 static int      eg_food_prev_y[EGENOME_COUNT];
 static int      eg_food_prev_y_init = 0;
+
+/* ── Dyn-activity probe (LUT-entry-level selection) ─────────────────
+ * Histogram over the 250 LUT input indices × 2 possible outputs = 500
+ * buckets. Every alive cell increments exactly one (input, output)
+ * bucket per step. Distinguishes "evolution churning LUT bits that
+ * map to unused inputs" from "evolution actually shifting which
+ * transitions get exercised" — even if the per-cell LUT genome
+ * fingerprint stays diverse, dyn_activity can be concentrated on a
+ * small set of buckets if the dynamics only visits a few inputs. */
+#define DYN_ACT_COUNT (LUT_BITS * 2)   /* 250 * 2 = 500 */
+static uint64_t dyn_act[DYN_ACT_COUNT];      /* cumulative since init */
+static uint32_t dyn_pop[DYN_ACT_COUNT];      /* alive-cell count this step */
+static int32_t  dyn_color[DYN_ACT_COUNT];    /* ARGB color per bucket */
+static int      dyn_act_ymax = 5000;         /* Y-scale for the strip */
+static int      dyn_act_prev_y[DYN_ACT_COUNT];
+static int      dyn_act_prev_y_init = 0;
 /* Per-step accumulators for the egenome / egene probes. Reset at the
  * start of each eating phase. */
 static double   g_sum_max_match = 0.0;     /* sum of max signed scores  */
@@ -318,6 +334,23 @@ static void eg_init_colors(uint8_t wt)
             eg_color[i] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
                                     | ((uint32_t)g << 8) | b);
         }
+    }
+}
+
+/* Hash-derived colour per (input, output) bucket for the dyn_activity
+ * probe. No wild-type concept — every bucket is just an FNV hash. */
+static void dyn_init_colors(void)
+{
+    for (int i = 0; i < DYN_ACT_COUNT; i++) {
+        uint32_t h = 0x811c9dc5u ^ (uint32_t)i;
+        h *= 0x01000193u;
+        h ^= h >> 13;
+        h *= 0x01000193u;
+        uint8_t r = (uint8_t)((h >> 16) & 0xFF); if (r < 0x40) r |= 0x80;
+        uint8_t g = (uint8_t)((h >>  8) & 0xFF); if (g < 0x40) g |= 0x80;
+        uint8_t b = (uint8_t)( h        & 0xFF); if (b < 0x40) b |= 0x80;
+        dyn_color[i] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                                  | ((uint32_t)g << 8) | b);
     }
 }
 
@@ -737,6 +770,10 @@ void evoca_init(int N, float food_inc, float m_scale)
     memset(eg_pop, 0, sizeof(eg_pop));
     memset(eg_food, 0, sizeof(eg_food));
     eg_food_prev_y_init = 0;   /* drop bridge-history from prior run */
+    memset(dyn_act, 0, sizeof(dyn_act));
+    memset(dyn_pop, 0, sizeof(dyn_pop));
+    dyn_act_prev_y_init = 0;
+    dyn_init_colors();
     g_sum_max_match = 0.0;
     g_sum_mouthful  = 0.0;
     g_eat_count = 0;
@@ -767,6 +804,8 @@ void evoca_free(void)
     memset(eg_act,  0, sizeof(eg_act));
     memset(eg_pop,  0, sizeof(eg_pop));
     memset(eg_food, 0, sizeof(eg_food));
+    memset(dyn_act, 0, sizeof(dyn_act));
+    memset(dyn_pop, 0, sizeof(dyn_pop));
     memset(pat_act, 0, sizeof(pat_act));
     memset(pat_pop, 0, sizeof(pat_pop));
     gN = 0;
@@ -1027,15 +1066,25 @@ void evoca_step(void)
     g_births_last = 0;
     g_deaths_last = 0;
 
-    /* Phase 1: CA state update (double-buffered) */
+    /* Phase 1: CA state update (double-buffered).
+     *
+     * Also counts per-(input, output) transitions for the dyn_activity
+     * probe: dyn_pop is the count this step (reset here), dyn_act
+     * accumulates since init. Only alive cells contribute. */
     memset(lut_active, 0, LUT_BYTES);
+    memset(dyn_pop,    0, sizeof(dyn_pop));
     for (int row = 0; row < N; row++) {
         for (int col = 0; col < N; col++) {
             int idx = row * N + col;
             int bit = compute_lut_bit(row, col);
-            if (alive[idx])
+            int new_state = lut_get(lut + (size_t)idx * LUT_BYTES, bit);
+            v_next[idx] = (uint8_t)new_state;
+            if (alive[idx]) {
                 lut_active[bit >> 3] |= (uint8_t)(1u << (bit & 7));
-            v_next[idx] = lut_get(lut + (size_t)idx * LUT_BYTES, bit);
+                int key = bit * 2 + new_state;
+                dyn_act[key]++;
+                dyn_pop[key]++;
+            }
         }
     }
     uint8_t *tmp = v_curr; v_curr = v_next; v_next = tmp;
@@ -2226,6 +2275,111 @@ int evoca_eg_food_get(uint64_t *food_out, uint32_t *pop_counts,
 
 void evoca_set_eg_food_ymax(int y) { eg_food_ymax = y > 1 ? y : 1; }
 int  evoca_get_eg_food_ymax(void)  { return eg_food_ymax; }
+
+/* ── Dyn-activity probe ─────────────────────────────────────────────
+ *
+ * dyn_act[i] is the cumulative count (since init) of alive-cell steps
+ * that observed the (LUT input, output) pair encoded by bucket i =
+ * input * 2 + output. dyn_pop[i] is the same count restricted to the
+ * current step (reset at top of Phase 1). dyn_color[i] is a stable
+ * FNV-derived ARGB colour per bucket.
+ *
+ * Renders as a scrolling hash-coloured strip with hyperbolic-y
+ * saturation (same machinery as eg_food), with prev_y bridging so
+ * traces are continuous lines rather than dots. */
+
+static void dyn_act_prev_y_reset(void)
+{
+    for (int i = 0; i < DYN_ACT_COUNT; i++) dyn_act_prev_y[i] = -1;
+    dyn_act_prev_y_init = 1;
+}
+
+void evoca_dyn_activity_render_col(int32_t *col, int height)
+{
+    if (!dyn_act_prev_y_init) dyn_act_prev_y_reset();
+
+    for (int y = 0; y < height; y++)
+        col[y] = (int32_t)0xFF111111u;
+
+    uint64_t ymax = (uint64_t)dyn_act_ymax;
+
+    int      curr_y[DYN_ACT_COUNT];
+    int32_t  bucket_col[DYN_ACT_COUNT];
+    uint8_t  bucket_alive[DYN_ACT_COUNT] = {0};
+    for (int i = 0; i < DYN_ACT_COUNT; i++) curr_y[i] = -1;
+
+    uint32_t ypop[height];
+    memset(ypop, 0, (size_t)height * sizeof(uint32_t));
+
+    for (int i = 0; i < DYN_ACT_COUNT; i++) {
+        if (dyn_act[i] == 0) continue;
+        uint64_t a = dyn_act[i];
+        int y = (height - 1) - (int)((uint64_t)(height - 1) * a / (a + ymax));
+        if (y < 0) y = 0;
+        if (y >= height) y = height - 1;
+        curr_y[i] = y;
+        if (dyn_pop[i] > 0) {
+            bucket_alive[i] = 1;
+            bucket_col[i]   = dyn_color[i];
+        } else {
+            uint32_t c = (uint32_t)dyn_color[i];
+            uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
+            uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
+            uint8_t b = (uint8_t)(( c        & 0xFF) * 15 / 100);
+            bucket_col[i] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                                       | ((uint32_t)g << 8) | b);
+        }
+    }
+
+    /* Pass 1: buckets with no current activity write endpoint pixels
+     * (later overwritten by active buckets via ypop priority). */
+    for (int i = 0; i < DYN_ACT_COUNT; i++) {
+        if (curr_y[i] < 0 || bucket_alive[i]) continue;
+        col[curr_y[i]] = bucket_col[i];
+    }
+    /* Pass 2: currently-active buckets, higher pop wins. */
+    for (int i = 0; i < DYN_ACT_COUNT; i++) {
+        if (curr_y[i] < 0 || !bucket_alive[i]) continue;
+        int y = curr_y[i];
+        if (dyn_pop[i] >= ypop[y]) {
+            col[y]  = bucket_col[i];
+            ypop[y] = dyn_pop[i];
+        }
+    }
+    /* Pass 3: bridge from prev_y to curr_y for continuous traces. */
+    for (int i = 0; i < DYN_ACT_COUNT; i++) {
+        int p = dyn_act_prev_y[i];
+        int c = curr_y[i];
+        if (p < 0 || c < 0) continue;
+        int y_lo = p < c ? p : c;
+        int y_hi = p > c ? p : c;
+        for (int y = y_lo + 1; y < y_hi; y++) {
+            if (bucket_alive[i]) {
+                if (dyn_pop[i] >= ypop[y]) {
+                    col[y]  = bucket_col[i];
+                    ypop[y] = dyn_pop[i];
+                }
+            } else {
+                if (ypop[y] == 0) col[y] = bucket_col[i];
+            }
+        }
+    }
+    memcpy(dyn_act_prev_y, curr_y, sizeof(dyn_act_prev_y));
+}
+
+int evoca_dyn_activity_get(uint64_t *activities, uint32_t *pop_counts,
+                            int32_t *colors)
+{
+    for (int i = 0; i < DYN_ACT_COUNT; i++) {
+        activities[i] = dyn_act[i];
+        pop_counts[i] = dyn_pop[i];
+        colors[i]     = dyn_color[i];
+    }
+    return DYN_ACT_COUNT;
+}
+
+void evoca_set_dyn_act_ymax(int y) { dyn_act_ymax = y > 1 ? y : 1; }
+int  evoca_get_dyn_act_ymax(void)  { return dyn_act_ymax; }
 
 /* ── Egenome scalar stats probe ─────────────────────────────────────
  *

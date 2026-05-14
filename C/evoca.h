@@ -188,6 +188,17 @@ void evoca_egenome_stats(float *out);
  * egenes, range 0..200), mean food intake per alive eater this step
  * (range 0..1)]. */
 void evoca_egene_stats(float *out);
+
+/* Dyn-activity probe: 500 buckets indexed by (input * 2 + output),
+ * where input is the 250-value LUT bit index from
+ * LUT_IDX(v_x, n1, n2, n3) and output is the new cell state.
+ * Cumulative activity tally + per-step population (count of alive
+ * cells whose Phase-1 transition fell in this bucket). */
+void evoca_dyn_activity_render_col(int32_t *col, int height);
+int  evoca_dyn_activity_get(uint64_t *activities, uint32_t *pop_counts,
+                             int32_t *colors);
+void evoca_set_dyn_act_ymax(int y);
+int  evoca_get_dyn_act_ymax(void);
 int  evoca_eg_activity_get(uint64_t *activities, uint32_t *pop_counts,
                            int32_t *colors);
 void evoca_set_eg_act_ymax(int y);

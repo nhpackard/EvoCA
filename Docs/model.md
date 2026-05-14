@@ -708,6 +708,9 @@ sim.get_eg_activity()        -> dict   # 729 ternary keys (EGENE_KEY_COUNT)
 sim.get_eg_food()            -> dict   # 729 ternary keys
                                         # {'food', 'pop_count', 'color'};
                                         # food values are uint64 scaled by 1e6
+sim.get_dyn_activity()       -> dict   # 500 (LUT input, output) buckets
+                                        # {'activity', 'pop_count', 'color'};
+                                        # bucket = LUT_IDX(v_x,n1,n2,n3)*2 + output
 sim.egene_stats()            -> dict   # {'mean_specificity' [0..25],
                                         #  'mean_load' [0..200],
                                         #  'mean_intake' [0..1]}
@@ -932,6 +935,7 @@ LUT_BITS           = 250    # bits per LUT
 LUT_BYTES          = 32     # bytes per LUT (ceil(250/8))
 EGENE_VALUE_COUNT  = 64     # 6-bit value-only space (legacy)
 EGENE_KEY_COUNT    = 729    # 3^6 ternary keys (value × mask)
+DYN_ACT_COUNT      = 500    # 250 LUT inputs × 2 outputs
 ORBIT_MAP                   # (5, 5) uint8 array of orbit indices
 ```
 

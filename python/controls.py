@@ -77,6 +77,12 @@ _AVAILABLE_PROBES = {
     'eg_food':        'Egene food intake (scrolling hash-colored strip; '
                       'cumulative food per egene byte, mouthfuls split '
                       'across max-match-tied winners)',
+    'dyn_activity':   ('Per-(LUT input, output) activity: 500-bucket '
+                      'scrolling strip of which transitions the alive '
+                      'population is exercising. Shows selection at the '
+                      'LUT-entry level (not the genome level — two cells '
+                      'with different LUTs but the same local transition '
+                      'share a bucket).'),
     'egenome':        ('Egenome stats: mean Negene with +/- std band '
                        '(top) plus three sub-strips for distinct egene '
                        'values, mean max-match, and frac at Negene_max'),
@@ -196,6 +202,39 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                                 buffer=eg_activity_shm.buf, offset=ega_meta_off + K*8 + K*4)
         ega_m_ymax = np.ndarray((1,), dtype=np.int32,
                                 buffer=eg_activity_shm.buf, offset=ega_meta_off + K*8 + K*4*2)
+
+    # ── Dyn-activity probe setup ─────────────────────────────────────
+    # 500-bucket histogram over (LUT input, output) transitions. shm
+    # holds cursor + pixel grid + 500 entries each of acts/pops/cols
+    # for the click → bucket map. Y-axis ymax sits at the end as int32.
+    dyn_activity_enabled = bool((probes or {}).get('dyn_activity'))
+    dyn_activity_shm     = None
+    dyn_activity_cursor  = None
+    dyn_activity_pixels  = None
+    dyn_activity_col     = None
+    dyn_m_acts = dyn_m_pops = dyn_m_cols = dyn_m_ymax = None
+    if dyn_activity_enabled:
+        from python.evoca_py import DYN_ACT_COUNT
+        D = DYN_ACT_COUNT
+        dyn_meta_off = 4 + PROBE_W * ACT_H * 4
+        dyn_shm_size = dyn_meta_off + D*8 + D*4 + D*4 + 4
+        dyn_activity_shm = SharedMemory(create=True, size=dyn_shm_size)
+        _dynbuf = np.ndarray((dyn_shm_size,), dtype=np.uint8,
+                              buffer=dyn_activity_shm.buf)
+        _dynbuf[:] = 0
+        dyn_activity_cursor = np.ndarray((1,), dtype=np.int32,
+                                          buffer=dyn_activity_shm.buf)
+        dyn_activity_pixels = np.ndarray((ACT_H, PROBE_W), dtype=np.int32,
+                                          buffer=dyn_activity_shm.buf, offset=4)
+        dyn_activity_col = np.zeros(ACT_H, dtype=np.int32)
+        dyn_m_acts = np.ndarray((D,), dtype=np.uint64,
+                                 buffer=dyn_activity_shm.buf, offset=dyn_meta_off)
+        dyn_m_pops = np.ndarray((D,), dtype=np.uint32,
+                                 buffer=dyn_activity_shm.buf, offset=dyn_meta_off + D*8)
+        dyn_m_cols = np.ndarray((D,), dtype=np.int32,
+                                 buffer=dyn_activity_shm.buf, offset=dyn_meta_off + D*8 + D*4)
+        dyn_m_ymax = np.ndarray((1,), dtype=np.int32,
+                                 buffer=dyn_activity_shm.buf, offset=dyn_meta_off + D*8 + D*4*2)
 
     # ── Egenome food intake probe setup ──────────────────────────────
     eg_food_enabled = bool((probes or {}).get('eg_food'))
@@ -483,6 +522,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         cmd += ["--eg-activity=" + eg_activity_shm.name]
     if eg_food_enabled:
         cmd += ["--eg-food=" + eg_food_shm.name]
+    if dyn_activity_enabled:
+        cmd += ["--dyn-activity=" + dyn_activity_shm.name]
     if egn_enabled:
         cmd += ["--egenome=" + egn_shm.name]
     if eg_enabled:
@@ -587,6 +628,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             all_shm.append(eg_activity_shm)
         if eg_food_shm is not None:
             all_shm.append(eg_food_shm)
+        if dyn_activity_shm is not None:
+            all_shm.append(dyn_activity_shm)
         if egn_shm is not None:
             all_shm.append(egn_shm)
         if eg_shm is not None:
@@ -831,6 +874,9 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     if eg_food_enabled:
         _ymax_btns.append(_make_ymax_btns(
             "eg_food_ymax", 1000000, sim.update_eg_food_ymax))
+    if dyn_activity_enabled:
+        _ymax_btns.append(_make_ymax_btns(
+            "dyn_act_ymax", 5000, sim.update_dyn_act_ymax))
     if pat_activity_enabled:
         _ymax_btns.append(_make_ymax_btns(
             "pat_act_ymax", 2000, sim.update_pat_act_ymax))
@@ -928,6 +974,18 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             sim._lib.evoca_eg_food_render_col(egf_col_ptr, ACT_H)
             eg_food_pixels[:, egf_cur] = eg_food_col
             eg_food_cursor[0] = (egf_cur + 1) % PROBE_W
+        if dyn_activity_enabled:
+            dyn_cur = int(dyn_activity_cursor[0])
+            dyn_col_ptr = dyn_activity_col.ctypes.data_as(
+                ctypes.POINTER(ctypes.c_int32))
+            sim._lib.evoca_dyn_activity_render_col(dyn_col_ptr, ACT_H)
+            dyn_activity_pixels[:, dyn_cur] = dyn_activity_col
+            dyn_activity_cursor[0] = (dyn_cur + 1) % PROBE_W
+            sim._lib.evoca_dyn_activity_get(
+                dyn_m_acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+                dyn_m_pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+                dyn_m_cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
+            dyn_m_ymax[0] = sim._lib.evoca_get_dyn_act_ymax()
         if egn_enabled:
             egn_out = np.zeros(5, dtype=np.float32)
             sim._lib.evoca_egenome_stats(
@@ -1118,6 +1176,9 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         if eg_food_enabled:
             eg_food_cursor[0] = 0
             eg_food_pixels[:] = 0
+        if dyn_activity_enabled:
+            dyn_activity_cursor[0] = 0
+            dyn_activity_pixels[:] = 0
         if egn_enabled:
             egn_cursor[0] = 0
             for buf in egn_bufs:
@@ -1317,6 +1378,18 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 sim._lib.evoca_eg_food_render_col(egf_col_ptr, ACT_H)
                 eg_food_pixels[:, egf_cur] = eg_food_col
                 eg_food_cursor[0] = (egf_cur + 1) % PROBE_W
+            if dyn_activity_enabled:
+                dyn_cur = int(dyn_activity_cursor[0])
+                dyn_col_ptr = dyn_activity_col.ctypes.data_as(
+                    ctypes.POINTER(ctypes.c_int32))
+                sim._lib.evoca_dyn_activity_render_col(dyn_col_ptr, ACT_H)
+                dyn_activity_pixels[:, dyn_cur] = dyn_activity_col
+                dyn_activity_cursor[0] = (dyn_cur + 1) % PROBE_W
+                sim._lib.evoca_dyn_activity_get(
+                    dyn_m_acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+                    dyn_m_pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+                    dyn_m_cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
+                dyn_m_ymax[0] = sim._lib.evoca_get_dyn_act_ymax()
             if egn_enabled:
                 egn_out = np.zeros(5, dtype=np.float32)
                 sim._lib.evoca_egenome_stats(
