@@ -213,11 +213,13 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     dyn_activity_pixels  = None
     dyn_activity_col     = None
     dyn_m_acts = dyn_m_pops = dyn_m_cols = dyn_m_ymax = None
+    dyn_distinct_buf = None
     if dyn_activity_enabled:
         from python.evoca_py import DYN_ACT_COUNT
         D = DYN_ACT_COUNT
         dyn_meta_off = 4 + PROBE_W * ACT_H * 4
-        dyn_shm_size = dyn_meta_off + D*8 + D*4 + D*4 + 4
+        dyn_dist_off = dyn_meta_off + D*8 + D*4 + D*4 + 4
+        dyn_shm_size = dyn_dist_off + PROBE_W * 4   # +per-column n_distinct
         dyn_activity_shm = SharedMemory(create=True, size=dyn_shm_size)
         _dynbuf = np.ndarray((dyn_shm_size,), dtype=np.uint8,
                               buffer=dyn_activity_shm.buf)
@@ -235,6 +237,11 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                                  buffer=dyn_activity_shm.buf, offset=dyn_meta_off + D*8 + D*4)
         dyn_m_ymax = np.ndarray((1,), dtype=np.int32,
                                  buffer=dyn_activity_shm.buf, offset=dyn_meta_off + D*8 + D*4*2)
+        # Per-column ring buffer recording how many of the 500 buckets
+        # have ever been observed at each sample tick. Used by the SDL
+        # renderer to overlay a white line on top of the strip.
+        dyn_distinct_buf = np.ndarray((PROBE_W,), dtype=np.int32,
+                                       buffer=dyn_activity_shm.buf, offset=dyn_dist_off)
 
     # ── Egenome food intake probe setup ──────────────────────────────
     eg_food_enabled = bool((probes or {}).get('eg_food'))
@@ -980,6 +987,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 ctypes.POINTER(ctypes.c_int32))
             sim._lib.evoca_dyn_activity_render_col(dyn_col_ptr, ACT_H)
             dyn_activity_pixels[:, dyn_cur] = dyn_activity_col
+            dyn_distinct_buf[dyn_cur] = sim._lib.evoca_get_dyn_distinct()
             dyn_activity_cursor[0] = (dyn_cur + 1) % PROBE_W
             sim._lib.evoca_dyn_activity_get(
                 dyn_m_acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
@@ -1179,6 +1187,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         if dyn_activity_enabled:
             dyn_activity_cursor[0] = 0
             dyn_activity_pixels[:] = 0
+            dyn_distinct_buf[:] = 0
         if egn_enabled:
             egn_cursor[0] = 0
             for buf in egn_bufs:

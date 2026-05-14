@@ -375,6 +375,8 @@ class EvoCA:
         L.evoca_set_dyn_act_ymax.restype  = None
         L.evoca_get_dyn_act_ymax.argtypes = []
         L.evoca_get_dyn_act_ymax.restype  = ctypes.c_int
+        L.evoca_get_dyn_distinct.argtypes = []
+        L.evoca_get_dyn_distinct.restype  = ctypes.c_int
         # Egene mask accessor: per-slot wildcard-mask byte (bit i = 1
         # means orbit i is non-wildcard).
         L.evoca_get_egenes_mask.argtypes = []

@@ -199,6 +199,8 @@ int  evoca_dyn_activity_get(uint64_t *activities, uint32_t *pop_counts,
                              int32_t *colors);
 void evoca_set_dyn_act_ymax(int y);
 int  evoca_get_dyn_act_ymax(void);
+/* Count of (input, output) buckets ever observed (range [0, 500]). */
+int  evoca_get_dyn_distinct(void);
 int  evoca_eg_activity_get(uint64_t *activities, uint32_t *pop_counts,
                            int32_t *colors);
 void evoca_set_eg_act_ymax(int y);

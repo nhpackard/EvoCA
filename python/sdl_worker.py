@@ -719,6 +719,7 @@ def main():
     dyn_activity_shm     = None
     dyn_activity_cursor  = None
     dyn_activity_pixels  = None
+    dyn_distinct_buf     = None
     dyn_m_acts = dyn_m_pops = dyn_m_cols = dyn_m_ymax = None
     if dyn_activity_shm_name:
         try:
@@ -737,6 +738,10 @@ def main():
                                      buffer=dyn_activity_shm.buf, offset=dyn_meta_off + D*8 + D*4)
             dyn_m_ymax = np.ndarray((1,), dtype=np.int32,
                                      buffer=dyn_activity_shm.buf, offset=dyn_meta_off + D*8 + D*4*2)
+            dyn_dist_off = dyn_meta_off + D*8 + D*4 + D*4 + 4
+            dyn_distinct_buf = np.ndarray((PROBE_W,), dtype=np.int32,
+                                           buffer=dyn_activity_shm.buf,
+                                           offset=dyn_dist_off)
             print(f"EvoCA SDL: dyn_activity shm opened ({ACT_H}x{PROBE_W})",
                   flush=True)
         except Exception as e:
@@ -1843,11 +1848,42 @@ def main():
             sdl2.SDL_UpdateWindowSurface(eg_act_window_p)
 
         # Render dyn_activity window (column data is computed C-side).
+        # Overlay a 2-pixel-wide white line tracking "n_distinct buckets
+        # ever observed" with fixed y-axis [0, 500]. y=0 (top) = all
+        # 500 buckets seen, y=ACT_H-1 (bottom) = none seen yet. Alpha-
+        # blended at 0.75 against the strip.
         if dyn_window_p is not None and dyn_activity_pixels is not None:
             sdl2.SDL_LockSurface(dyn_surface_p)
             cur_dyn = int(dyn_activity_cursor[0])
             dyn_dst[:ACT_H, :PROBE_W] = np.roll(dyn_activity_pixels,
                                                  -cur_dyn, axis=1)
+            if dyn_distinct_buf is not None:
+                dist = np.roll(dyn_distinct_buf, -cur_dyn)
+                mask = dist > 0
+                if mask.any():
+                    DYN_DIST_YMAX = 500.0
+                    ys = (ACT_H - 1) - (dist.astype(np.float64)
+                                         / DYN_DIST_YMAX) * (ACT_H - 1)
+                    ys = np.clip(ys, 0, ACT_H - 1).astype(np.int32)
+                    xs = np.arange(PROBE_W)
+                    # 2-pixel-wide line, alpha-blended at 0.75.
+                    for dy in (0, 1):
+                        yclamp = np.clip(ys + dy, 0, ACT_H - 1)
+                        rows = yclamp[mask]
+                        cols = xs[mask]
+                        existing = dyn_dst[rows, cols].astype(np.int64)
+                        # Decompose existing pixels, blend toward white.
+                        ex_r = (existing >> 16) & 0xFF
+                        ex_g = (existing >>  8) & 0xFF
+                        ex_b =  existing        & 0xFF
+                        blend = lambda c: ((0xFF * 3 + c) >> 2)  # 0.75*white + 0.25*c
+                        nr = blend(ex_r); ng = blend(ex_g); nb = blend(ex_b)
+                        out = (0xFF000000 | (nr << 16) | (ng << 8) | nb)
+                        out = out.astype(np.int64)
+                        # Convert to signed int32.
+                        out = np.where(out >= 0x80000000,
+                                        out - 0x100000000, out).astype(np.int32)
+                        dyn_dst[rows, cols] = out
             sdl2.SDL_UnlockSurface(dyn_surface_p)
             sdl2.SDL_UpdateWindowSurface(dyn_window_p)
 

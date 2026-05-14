@@ -2381,6 +2381,17 @@ int evoca_dyn_activity_get(uint64_t *activities, uint32_t *pop_counts,
 void evoca_set_dyn_act_ymax(int y) { dyn_act_ymax = y > 1 ? y : 1; }
 int  evoca_get_dyn_act_ymax(void)  { return dyn_act_ymax; }
 
+/* Number of (LUT input, output) buckets that have ever been observed
+ * since init. Range [0, DYN_ACT_COUNT]. The dyn_activity strip
+ * overlays this as a white line so the viewer can tell saturation
+ * (line near 500) from genuine inactivity (line low). */
+int evoca_get_dyn_distinct(void)
+{
+    int n = 0;
+    for (int i = 0; i < DYN_ACT_COUNT; i++) if (dyn_act[i] > 0) n++;
+    return n;
+}
+
 /* ── Egenome scalar stats probe ─────────────────────────────────────
  *
  * Fills out[0..4] with:
