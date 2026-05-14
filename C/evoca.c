@@ -2614,13 +2614,30 @@ void evoca_colorize(int32_t *pixels, int colormode)
     size_t cells = (size_t)gN * gN;
     switch (colormode) {
         case 0:
+            /* Two-shade split of the LUT-hash colour:
+             *   alive, v_curr=1  → full LUT colour
+             *   alive, v_curr=0  → ~35%-brightness version of the same
+             *                       colour (same hue → same lineage,
+             *                       brightness → CA phase)
+             *   alive=0          → black
+             * Two cells with the SAME LUT but different v states are
+             * visibly "same lineage, different phase"; two cells with
+             * DIFFERENT LUTs are visibly distinct in both phases. */
             for (size_t i = 0; i < cells; i++) {
-                if (!alive[i])
+                if (!alive[i]) {
                     pixels[i] = (int32_t)0xFF000000;
-                else if (v_curr[i])
+                } else if (v_curr[i]) {
                     pixels[i] = (int32_t)lut_color[i];
-                else
-                    pixels[i] = (int32_t)0xFF333333;  /* alive, v=0: dark grey */
+                } else {
+                    uint32_t c = (uint32_t)lut_color[i];
+                    /* multiply each channel by ~0.35 via (c * 90) >> 8 */
+                    uint8_t r = (uint8_t)((((c >> 16) & 0xFF) * 90) >> 8);
+                    uint8_t g = (uint8_t)((((c >>  8) & 0xFF) * 90) >> 8);
+                    uint8_t b = (uint8_t)((( c        & 0xFF) * 90) >> 8);
+                    pixels[i] = (int32_t)(0xFF000000u
+                                 | ((uint32_t)r << 16)
+                                 | ((uint32_t)g << 8) | b);
+                }
             }
             break;
         case 1:
