@@ -576,7 +576,7 @@ class EvoCA:
         return dict(self._state_params)
 
     def state(self, lut='gol', lut_n_init=3, lut_density=0.5,
-              lut_uniform=False, lut_seed=None,
+              lut_uniform=False, lut_seed=None, lut_to_dead=False,
               egenome='uniform', egenome_value=0,
               v_density=0.5, f_init=0.0, F='uniform', F_init=0.0, F_range=None,
               alive='all', alive_fraction=0.5, alive_radius=64, alive_axis=0):
@@ -624,6 +624,25 @@ class EvoCA:
             self.set_alive_halfplane(alive_axis)
         else:
             self.set_alive_all()
+
+        # Optional: re-apply LUT (and egenome) to all cells AFTER the
+        # alive setter zeroed dead cells' rules. Gives a uniform CA
+        # substrate regardless of which cells start "alive" — dead
+        # cells still don't eat/reproduce but they DO participate in
+        # the CA via their own LUT (e.g. v_curr can transition there).
+        if lut_to_dead:
+            if lut == 'random':
+                self.set_lut_random(n_init=lut_n_init,
+                                    density=lut_density,
+                                    uniform=lut_uniform,
+                                    seed=lut_seed)
+            else:
+                self.set_lut_all(make_gol_lut())
+            if egenome == 'random':
+                self.set_egenome_random()
+            else:
+                self.set_egenome_all(egenome_value)
+        self._state_params['lut_to_dead'] = bool(lut_to_dead)
 
     # ── Grid setters ──────────────────────────────────────────────────
 
@@ -1265,6 +1284,7 @@ _AVAILABLE_STATE_INIT = {
     'lut_density':    "float 0-1: probability each independent LUT bit is 1 (lut='random'). Default 0.5",
     'lut_uniform':    "bool: lut='random' shares one rule across all cells if True, else independent per-cell. Default False",
     'lut_seed':       "int|None: numpy seed for the random LUT (None = global RNG). Default None",
+    'lut_to_dead':    "bool: if True, re-apply the chosen LUT (and egenome) to all cells AFTER the alive setter has zeroed dead cells. Gives a uniform CA substrate regardless of alive mask — dead cells run the rule too (their v_curr can transition). Default False",
     'egenome':        "'uniform' (same value for all) | 'random' (random in 0..63)",
     'egenome_value':  "int 0-63: egenome value when egenome='uniform'. Default 0",
     'v_density':      "float 0-1: fraction of cells with v=1. Default 0.5",
