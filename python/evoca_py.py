@@ -575,7 +575,9 @@ class EvoCA:
         """Return a copy of the current state-initialization parameters."""
         return dict(self._state_params)
 
-    def state(self, lut='gol', lut_n_init=3, egenome='uniform', egenome_value=0,
+    def state(self, lut='gol', lut_n_init=3, lut_density=0.5,
+              lut_uniform=False, lut_seed=None,
+              egenome='uniform', egenome_value=0,
               v_density=0.5, f_init=0.0, F='uniform', F_init=0.0, F_range=None,
               alive='all', alive_fraction=0.5, alive_radius=64, alive_axis=0):
         """Initialize lattice state from parameters.
@@ -586,7 +588,10 @@ class EvoCA:
 
         # LUT
         if lut == 'random':
-            self.set_lut_random(n_init=lut_n_init)
+            self.set_lut_random(n_init=lut_n_init,
+                                density=lut_density,
+                                uniform=lut_uniform,
+                                seed=lut_seed)
         else:
             self.set_lut_all(make_gol_lut())
 
@@ -711,6 +716,7 @@ class EvoCA:
         self._state_params['lut_n_init'] = n_init
         self._state_params['lut_density']= float(density)
         self._state_params['lut_uniform']= bool(uniform)
+        self._state_params['lut_seed']   = None if seed is None else int(seed)
 
     def set_f_all(self, f):
         self._lib.evoca_set_f_all(float(f))
@@ -1254,8 +1260,11 @@ class EvoCA:
 # ── State initialization catalogue ────────────────────────────────────
 
 _AVAILABLE_STATE_INIT = {
-    'lut':            "'gol' (GoL rule for all) | 'random' (independent random LUT per cell)",
+    'lut':            "'gol' (GoL rule for all) | 'random' (random LUT)",
     'lut_n_init':     "int 1-3: ring depth for random LUT (1=10 bits, 2=50, 3=all 250). Default 3",
+    'lut_density':    "float 0-1: probability each independent LUT bit is 1 (lut='random'). Default 0.5",
+    'lut_uniform':    "bool: lut='random' shares one rule across all cells if True, else independent per-cell. Default False",
+    'lut_seed':       "int|None: numpy seed for the random LUT (None = global RNG). Default None",
     'egenome':        "'uniform' (same value for all) | 'random' (random in 0..63)",
     'egenome_value':  "int 0-63: egenome value when egenome='uniform'. Default 0",
     'v_density':      "float 0-1: fraction of cells with v=1. Default 0.5",
