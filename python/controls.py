@@ -821,6 +821,12 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         value=sim.gdiff, min=0.0, max=gd_max, step=gd_step,
         description="gdiff:", readout_format=".2f", **sl_kw)
     mul_max, mul_step = _flt_lims(sim.mu_lut,     1e-6)
+    # _flt_lims keeps the step floor at 1e-6 (fine control at typical
+    # scan values around 0.001) but caps the range tightly when init=0.
+    # Ensure the slider can reach 0.01 even at init=0 so the user can
+    # drag mu_lut up to interesting values without re-init.
+    if mul_max < 0.01:
+        mul_max = 0.01
     sl_mu_lut = widgets.FloatSlider(
         value=sim.mu_lut, min=0.0, max=mul_max, step=mul_step,
         description="mu_lut:",    readout_format=".6f", **sl_kw)
