@@ -201,9 +201,21 @@ Same hyperbolic Y-axis saturation as `eg_activity`:
 
     y = (H-1) - (H-1) * a / (a + ymax)
 
-Tunable via `dyn_act_ymax` halve/double button (default 5000). Click on
-a band prints the decoded `(v_x, n1, n2, n3) -> output` and that
-bucket's per-step + cumulative counts. Use `sim.get_dyn_activity()` in
+Tunable via `dyn_act_ymax` halve/double button (default 5000). At the
+default setting every active bucket saturates near the top within a
+few hundred ticks; if the strip looks "empty" it's saturation, not
+inactivity — bump `dyn_act_ymax` × 2 (or × 4) to spread the waves
+back into the lower part of the strip.
+
+**White overlay line**: a 2-pixel-wide alpha-blended (0.75) white
+line tracks the number of `(input, output)` buckets ever observed,
+with a *fixed* y range `[0, 500]` independent of `dyn_act_ymax`. The
+line climbs from the bottom toward the top as the dynamics visits
+more transitions. A line near the top confirms the dim/saturated
+strip is showing "all 500 transitions exercised", not "no activity".
+
+Click on a band prints the decoded `(v_x, n1, n2, n3) -> output`
+and that bucket's per-step + cumulative counts. Use `sim.get_dyn_activity()` in
 Python to pull the raw 500-entry arrays.
 
 `dyn_activity` is not written to ProbeLogs (500 columns is too wide
