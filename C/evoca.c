@@ -2630,10 +2630,10 @@ void evoca_colorize(int32_t *pixels, int colormode)
                     pixels[i] = (int32_t)lut_color[i];
                 } else {
                     uint32_t c = (uint32_t)lut_color[i];
-                    /* multiply each channel by ~0.35 via (c * 90) >> 8 */
-                    uint8_t r = (uint8_t)((((c >> 16) & 0xFF) * 90) >> 8);
-                    uint8_t g = (uint8_t)((((c >>  8) & 0xFF) * 90) >> 8);
-                    uint8_t b = (uint8_t)((( c        & 0xFF) * 90) >> 8);
+                    /* multiply each channel by ~0.55 via (c * 140) >> 8 */
+                    uint8_t r = (uint8_t)((((c >> 16) & 0xFF) * 140) >> 8);
+                    uint8_t g = (uint8_t)((((c >>  8) & 0xFF) * 140) >> 8);
+                    uint8_t b = (uint8_t)((( c        & 0xFF) * 140) >> 8);
                     pixels[i] = (int32_t)(0xFF000000u
                                  | ((uint32_t)r << 16)
                                  | ((uint32_t)g << 8) | b);
