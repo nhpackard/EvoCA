@@ -208,6 +208,9 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
                 npop = Nt['pop_count'] > 0
                 samples['N_total_activity'].append(
                     int(Nt['activity'][npop].sum()) if npop.any() else 0)
+                # Shadow diversity D_N (buckets with pop>0), needed for
+                # the component-normalised excess (see summary block).
+                samples['N_distinct'].append(int(npop.sum()))
 
             samples['t'].append(t)
 
@@ -248,14 +251,42 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
     if shadow and samples['G_total_activity'] and samples['N_total_activity']:
         G_arr = np.asarray(samples['G_total_activity'], dtype=float)
         N_arr = np.asarray(samples['N_total_activity'], dtype=float)
+        t_arr = np.asarray(samples['t'], dtype=float)
+
+        # Legacy RAW excess (ΣG − ΣN). Retained for backward
+        # comparability with the 2026-04-27 scans, but KNOWN to invert
+        # at high mu_lut: the shadow reproduces with the same mutation
+        # operator, so above mu_lut≈0.03 it stops being a neutral model
+        # (becomes a no-heredity model) and ΣN inflates. Do not rank on
+        # this in high-mutation regimes. See
+        # Docs/EvoCA_research_directions.md §2.
         excess = G_arr - N_arr
         out['excess_activity_final'] = float(excess[-1])
         if len(excess) >= 2:
-            t_arr = np.asarray(samples['t'], dtype=float)
             slope, _ = np.polyfit(t_arr, excess, 1)
             out['excess_activity_slope'] = float(slope)
         else:
             out['excess_activity_slope'] = 0.0
+
+        # COMPONENT-NORMALISED excess (roadmap §2 fix): per-component
+        # mean cumulative activity ΣG/D_G − ΣN/D_N, where D is the
+        # diversity (count of buckets with pop>0). This is the
+        # Channon-2006 correction and is turnover-invariant, so it
+        # stays meaningful across the whole mu_lut range. Prefer this
+        # metric for ranking; keep raw above only for comparison.
+        DG = np.asarray(samples['n_distinct_genomes'], dtype=float)
+        DN = np.asarray(samples['N_distinct'], dtype=float) \
+            if samples['N_distinct'] else np.zeros_like(G_arr)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            g_pc = np.where(DG > 0, G_arr / DG, 0.0)
+            n_pc = np.where(DN > 0, N_arr / DN, 0.0)
+        excess_pc = g_pc - n_pc
+        out['excess_pc_final'] = float(excess_pc[-1])
+        if len(excess_pc) >= 2:
+            slope_pc, _ = np.polyfit(t_arr, excess_pc, 1)
+            out['excess_pc_slope'] = float(slope_pc)
+        else:
+            out['excess_pc_slope'] = 0.0
 
     pop_arr = np.asarray(samples['alive_density'], dtype=float) * (N * N)
     if pop_arr.size:
