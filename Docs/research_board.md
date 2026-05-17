@@ -20,7 +20,8 @@ on-disk dir + its own `C/libevoca.dylib`). Analysis-only work runs on
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
 | **D3** ✓ RESOLVED | architecture / S2d | Relaunch under the path-jail prompt + orchestrator clean-check completed **verified-isolated** (rule-1/5 checks in its report; post-check shows main clean). Guardrail validated. Standing policy for all future spawns: path-jail prompt + orchestrator main-clean assert before/after each agent; devlog per workstream. Original note: **was MITIGATED →** Mechanism investigated (bounded transcript grep) & confirmed: agent used absolute `/Users/n/Projects/EvoCA/…` paths and `cd` to main, bypassing its worktree. Two-layer fix deployed: (1) orchestrator asserts `main` clean before/after every agent — mechanism-agnostic detection, the real guarantee; (2) agent prompt path-jail — forbids the literal main-path string, no `cd` to main, asserts `git rev-parse --show-toplevel` is the worktree. S2d relaunched alone under this. Residual: prompt-level prevention is soft (LLM can disobey) — layer (1) is what makes it safe. | 2026-05-16 |
-| D2 ✓ RESOLVED | S2b (+ pre-existing `tax_lut`) | `tax_ring`/`tax_lut` don't round-trip into `.evoca` recipes → genelife ring-ladder configs won't reproduce. **DECISION (user, 2026-05-16): add both.** → Integration task at S2b merge gate: add `tax_lut` AND `tax_ring` to `params()` / `metaparams_final` / recipe export + add a recipe round-trip test covering both. | 2026-05-16 |
+| D4 | recipe export (latent, pre-existing) | While doing D2 found `metaparams_final` ALSO omits `tax_per_egene`, `mu_egenome`, `p_dup_egene` — same class of bug for egene-driven recipes (e.g. the §7 cognition experiments won't reproduce from a `recipe='final'`). Non-blocking, out of D2's agreed scope, flagged not silently fixed. Decision: extend `metaparams_final`/`params()` to the full param set vs leave. Recommend: extend. Decide when convenient. | 2026-05-17 |
+| D2 ✓ RESOLVED → DONE | S2b (+ pre-existing `tax_lut`) | `tax_ring`/`tax_lut` don't round-trip into `.evoca` recipes → genelife ring-ladder configs won't reproduce. **DECISION (user, 2026-05-16): add both.** → Integration task at S2b merge gate: add `tax_lut` AND `tax_ring` to `params()` / `metaparams_final` / recipe export + add a recipe round-trip test covering both. | 2026-05-16 |
 | D1 | S2a/b/c/d | Worktree-base quirk: `lineage-field`, `ring-tax`, `patch-transfer`, `eg-dyn-shadows` based at `b04a0d1` (pre-S1), so they lack `evoca_set_seed`. Mitigation (no decision needed, FYI): orchestrator rebases each onto `main`@447a019 and re-runs its suite *before* the merge gate; final integrated `main` is unaffected. S2e (bifurcation) correctly has S1. | 2026-05-16 |
 
 ---
@@ -42,8 +43,36 @@ ready, awaiting human merge decision) → `merged` / `parked`.
 
 ---
 
+## Integration status (2026-05-17) — ALL 5 VERIFIED, awaiting merge gate
+
+Done in a dedicated `/tmp/evoca_integ` worktree (main's tree carries
+the user's uncommitted notebooks). Hygiene fix first: untracked
+`tests/__pycache__/*.pyc` (was blocking rebases) → `289191b` on main.
+
+| Branch | Commits over main | Delivers | Tests (own+base) | S1 | Rebased on main |
+|--------|------|----------|-------|----|----|
+| `bifurcation-harness` | 1 (`dfdb010`) | R3 bifurcation/Feigenbaum analysis (pure Py) | 20 | ✓ | ✓ |
+| `ring-tax` | 2 (`829c8db`+`dca4afa` D2) | §8 ring-dependence tax + D2 recipe round-trip | 15 | ✓ | ✓ |
+| `patch-transfer` | 1 (`e8a2f07`) | §11 extract/stamp + reciprocal-2×2 assay | 15 | ✓ | ✓ |
+| `lineage-field` | 1 (`ef41d36`) | §1 opt-in lineage (zero-cost off) | 14 | ✓ | ✓ |
+| `eg-dyn-shadows` | 1 (`89ad3eb`) | §2 fixed-space eg/dyn neutral shadows | 14 | ✓ | ✓ |
+
+- Individual rebases onto main: **clean, no conflicts.**
+- Trial sequential merge of all 5: **zero cross-branch conflicts**,
+  combined build clean, **full combined suite 38/38 passed**.
+- Branch refs are the rebased versions; merge-ready.
+- **Awaiting human merge gate** (recommended order + push: user's call).
+- Cleanup pending user nod: `S2D_INCOMPLETE.patch` (root) can be
+  deleted — S2d was redone cleanly.
+
 ## Log (newest first)
 
+- **2026-05-17** — Integration prep complete. Repo-hygiene fix
+  (`289191b`: untrack `tests/__pycache__`). All 5 branches rebased
+  onto main individually clean; D2 executed on `ring-tax`
+  (`dca4afa`, +D4 flagged); trial all-5 merge = zero cross-branch
+  conflicts, 38/38 combined. Verified in `/tmp/evoca_integ`; nothing
+  merged/pushed. Awaiting merge gate.
 - **2026-05-16** — S2d relaunch completed verified-isolated
   (`89ad3eb`, 12/12). **All 5 workstreams in-review.** D3 resolved.
   `Docs/devlog/` created + backfilled (the design-evolution narrative
