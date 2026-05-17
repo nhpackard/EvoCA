@@ -116,6 +116,7 @@ class EvoCA:
         self.tax         = 0.0
         self.tax_per_egene = 0.0
         self.tax_lut       = 0.0
+        self.tax_ring      = 0.0
         self.restricted_mu = 0
         self._n_ent      = 2
         self.egenome      = 0
@@ -167,12 +168,16 @@ class EvoCA:
         L.evoca_set_tax_per_egene.restype  = None
         L.evoca_set_tax_lut.argtypes    = [ctypes.c_float]
         L.evoca_set_tax_lut.restype     = None
+        L.evoca_set_tax_ring.argtypes   = [ctypes.c_float]
+        L.evoca_set_tax_ring.restype    = None
         L.evoca_get_tax.argtypes        = []
         L.evoca_get_tax.restype         = ctypes.c_float
         L.evoca_get_tax_per_egene.argtypes = []
         L.evoca_get_tax_per_egene.restype  = ctypes.c_float
         L.evoca_get_tax_lut.argtypes    = []
         L.evoca_get_tax_lut.restype     = ctypes.c_float
+        L.evoca_get_tax_ring.argtypes   = []
+        L.evoca_get_tax_ring.restype    = ctypes.c_float
         L.evoca_set_restricted_mu.argtypes = [ctypes.c_int]
         L.evoca_set_restricted_mu.restype  = None
         L.evoca_get_restricted_mu.argtypes = []
@@ -416,7 +421,7 @@ class EvoCA:
     def init(self, N, food_inc=0.0, m_scale=1.0, gdiff=0.0,
              mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
              p_dup_egene=1.0,
-             tax=0.0, tax_per_egene=0.0, tax_lut=0.0,
+             tax=0.0, tax_per_egene=0.0, tax_lut=0.0, tax_ring=0.0,
              restricted_mu=0, n_ent=2,
              N_log_interval=1):
         stop = getattr(self, '_stop_display', None)
@@ -434,6 +439,7 @@ class EvoCA:
         self.tax        = float(tax)
         self.tax_per_egene = float(tax_per_egene)
         self.tax_lut       = float(tax_lut)
+        self.tax_ring      = float(tax_ring)
         self.restricted_mu = int(restricted_mu)
         self._n_ent     = int(n_ent)
         self.N_log_interval = max(1, int(N_log_interval))
@@ -446,6 +452,7 @@ class EvoCA:
         self._lib.evoca_set_tax(self.tax)
         self._lib.evoca_set_tax_per_egene(self.tax_per_egene)
         self._lib.evoca_set_tax_lut(self.tax_lut)
+        self._lib.evoca_set_tax_ring(self.tax_ring)
         self._lib.evoca_set_restricted_mu(self.restricted_mu)
         self._lib.evoca_set_n_ent(self._n_ent)
         self._state_params = {}
@@ -460,6 +467,7 @@ class EvoCA:
             'tax': self.tax,
             'tax_per_egene': self.tax_per_egene,
             'tax_lut': self.tax_lut,
+            'tax_ring': self.tax_ring,
             'restricted_mu': self.restricted_mu,
         }
 
@@ -527,6 +535,10 @@ class EvoCA:
     def update_tax_lut(self, t):
         self.tax_lut = float(t)
         self._lib.evoca_set_tax_lut(self.tax_lut)
+
+    def update_tax_ring(self, t):
+        self.tax_ring = float(t)
+        self._lib.evoca_set_tax_ring(self.tax_ring)
 
     def update_N_log_interval(self, n):
         """Set the ProbeLogs CSV sampling interval (Python-side; the C

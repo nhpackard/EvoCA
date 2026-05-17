@@ -853,6 +853,10 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     sl_tax_lut = widgets.FloatSlider(
         value=sim.tax_lut, min=0.0, max=txl_max, step=txl_step,
         description="tax_lut:", readout_format=".5f", **sl_kw)
+    txr_max, txr_step = _flt_lims(max(sim.tax_ring, 0.001), 1e-5)
+    sl_tax_ring = widgets.FloatSlider(
+        value=sim.tax_ring, min=0.0, max=txr_max, step=txr_step,
+        description="tax_ring:", readout_format=".5f", **sl_kw)
 
     # ── ymax halve / double buttons ──────────────────────────────────
     def _make_ymax_btns(name, initial, update_fn):
@@ -909,7 +913,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                       btn_quit, btn_save, txt_descriptor, btn_export]),
         sl_food_inc, sl_m_scale, sl_gdiff,
         sl_mu_lut, sl_mu_egene, sl_mu_egenome,
-        sl_tax, sl_tax_per_egene, sl_tax_lut,
+        sl_tax, sl_tax_per_egene, sl_tax_lut, sl_tax_ring,
     ]
     if _ymax_btns:
         _rows.append(widgets.HBox(_ymax_btns))
@@ -1164,6 +1168,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         sim._lib.evoca_set_tax(sim.tax)
         sim._lib.evoca_set_tax_per_egene(sim.tax_per_egene)
         sim._lib.evoca_set_tax_lut(sim.tax_lut)
+        sim._lib.evoca_set_tax_ring(sim.tax_ring)
         sim._lib.evoca_set_restricted_mu(sim.restricted_mu)
         if pat_enabled:
             sim._lib.evoca_set_n_ent(sim.n_ent)
@@ -1288,6 +1293,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     _make_slider_cb("tax",        sl_tax)
     _make_slider_cb("tax_per_egene", sl_tax_per_egene)
     _make_slider_cb("tax_lut",    sl_tax_lut)
+    _make_slider_cb("tax_ring",   sl_tax_ring)
 
     # ── Simulation thread ─────────────────────────────────────────
     def _sim_thread():
