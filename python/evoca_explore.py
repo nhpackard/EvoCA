@@ -142,6 +142,9 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
 
     sim = EvoCA()
     sim.init(N, **{k: params[k] for k in _PARAM_KEYS if k in params})
+    # Reseed the C PRNG: pool workers are reused, so the C RNG state
+    # would otherwise carry across configs and break reproducibility.
+    sim.set_seed(seed)
     sim.state(lut='gol', egenome='uniform', egenome_value=0b000011)
     sim.set_v(rng.integers(0, 2, (N, N), dtype=np.uint8))
     sim.set_f_all(0.5)

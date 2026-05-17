@@ -135,6 +135,8 @@ class EvoCA:
         L.evoca_init.restype            = None
         L.evoca_free.argtypes           = []
         L.evoca_free.restype            = None
+        L.evoca_set_seed.argtypes       = [ctypes.c_uint32]
+        L.evoca_set_seed.restype        = None
         L.evoca_set_food_inc.argtypes   = [ctypes.c_float]
         L.evoca_set_food_inc.restype    = None
         L.evoca_set_m_scale.argtypes    = [ctypes.c_float]
@@ -468,6 +470,14 @@ class EvoCA:
             self._stop_display = None
         self._lib.evoca_free()
         self._N = 0
+
+    def set_seed(self, seed):
+        """Deterministically reset the C PRNG state.
+
+        Pool workers are reused, so the C RNG would otherwise carry
+        state across configs. Reseeding identically per run makes
+        results reproducible. seed==0 is remapped C-side."""
+        self._lib.evoca_set_seed(ctypes.c_uint32(int(seed) & 0xFFFFFFFF))
 
     def __del__(self):
         try:

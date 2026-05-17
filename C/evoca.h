@@ -45,6 +45,9 @@
 void evoca_init(int N, float food_inc, float m_scale);
 void evoca_free(void);
 
+/* Deterministically reset the PRNG state (seed==0 remapped internally). */
+void evoca_set_seed(uint32_t seed);
+
 /* ── Metaparam setters ──────────────────────────────────────────────── */
 
 void evoca_set_food_inc(float f);

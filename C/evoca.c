@@ -14,6 +14,16 @@ static inline uint32_t rng_next(void)
     return g_rng;
 }
 
+/* Deterministically reset the PRNG state from `seed`.
+ * xorshift32 must never be seeded with 0 (it would stay stuck at 0),
+ * so seed==0 is remapped to a fixed nonzero constant. With no call to
+ * this function the RNG keeps its original default state, so behaviour
+ * is unchanged for callers that never reseed. */
+void evoca_set_seed(uint32_t seed)
+{
+    g_rng = seed ? seed : 0x12345678u;
+}
+
 /*
  * Distance-ring classification for each (di,dj) offset, indexed [di+2][dj+2].
  *
