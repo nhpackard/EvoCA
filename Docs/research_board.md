@@ -19,7 +19,7 @@ on-disk dir + its own `C/libevoca.dylib`). Analysis-only work runs on
 
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
-| — | (none yet) | | |
+| D1 | S2a/b/c/d | Worktree-base quirk: `lineage-field`, `ring-tax`, `patch-transfer`, `eg-dyn-shadows` based at `b04a0d1` (pre-S1), so they lack `evoca_set_seed`. Mitigation (no decision needed, FYI): orchestrator rebases each onto `main`@447a019 and re-runs its suite *before* the merge gate; final integrated `main` is unaffected. S2e (bifurcation) correctly has S1. | 2026-05-16 |
 
 ---
 
