@@ -28,12 +28,12 @@ on-disk dir + its own `C/libevoca.dylib`). Analysis-only work runs on
 | ID | Branch | Isolation | Owner | Status | Last result | Updated |
 |----|--------|-----------|-------|--------|-------------|---------|
 | S1 determinism fix | `main` | none (main, gating) | agent | **in-review** | Added `evoca_set_seed()` (single xorshift32 `g_rng`; seed==0 remapped to 0x12345678); `run_sim` reseeds C RNG per call. tests/test_determinism.py: same-seed runs identical, different seeds differ. `pytest -q tests/` = 10 passed (8 existing + 2 new), clean `-Wall` build. | 2026-05-16 |
-| S2a lineage field | `lineage-field` | worktree | (pending S1) | queued | — | 2026-05-16 |
-| S2b ring-complexity tax | `ring-tax` | worktree | (pending S1) | queued | — | 2026-05-16 |
-| S2c patch transfer | `patch-transfer` | worktree | (pending S1) | queued | — | 2026-05-16 |
-| S2d eg/dyn fixed-space shadows | `main` | none (analysis) | (pending S1) | queued | — | 2026-05-16 |
-| S2e bifurcation-diagram harness | `main` | none (analysis) | (pending S1) | queued | — | 2026-05-16 |
-| S3 nightly digest | n/a | n/a | orchestrator | proposed | — | 2026-05-16 |
+| S2a lineage field | `lineage-field` | worktree | agent | **launched** | — | 2026-05-16 |
+| S2b ring-complexity tax | `ring-tax` | worktree | agent | **launched** | — | 2026-05-16 |
+| S2c patch transfer | `patch-transfer` | worktree | agent | **launched** | — | 2026-05-16 |
+| S2d eg/dyn fixed-space shadows | `eg-dyn-shadows` | worktree | agent | **launched** | — | 2026-05-16 |
+| S2e bifurcation-diagram harness | `bifurcation-harness` | worktree | agent | **launched** | — | 2026-05-16 |
+| S3 nightly digest | n/a | n/a | orchestrator | deferred | collector script to be built now; `/schedule` wrapper deferred until first batch produces something to digest (user-approved) | 2026-05-16 |
 
 Status vocabulary: `queued` → `launched` → `in-review` (PR/branch
 ready, awaiting human merge decision) → `merged` / `parked`.
@@ -42,6 +42,13 @@ ready, awaiting human merge decision) → `merged` / `parked`.
 
 ## Log (newest first)
 
+- **2026-05-16** — S2a–e launched in parallel, each in its own
+  worktree+branch (`lineage-field`, `ring-tax`, `patch-transfer`,
+  `eg-dyn-shadows`, `bifurcation-harness`). All branch from local
+  `main` @ 447a019 so they include the S1 seed fix. Agents do NOT
+  edit this board; orchestrator maintains it from their reports.
+  Branches stay local; merge is a human gate. S1 commit 447a019
+  remains local-only (not pushed) pending human review.
 - **2026-05-16** — S1 implemented & in-review. Single per-process
   xorshift32 (`g_rng` in C/evoca.c) confirmed — no entangled
   generators. Added additive `void evoca_set_seed(uint32_t)`
