@@ -278,6 +278,22 @@ class EvoCA:
         L.evoca_get_births_last.restype  = ctypes.c_int
         L.evoca_get_deaths_last.argtypes = []
         L.evoca_get_deaths_last.restype  = ctypes.c_int
+        # Realised per-component mutation flux (fixed-space shadows)
+        L.evoca_get_eg_bitflips_last.argtypes  = []
+        L.evoca_get_eg_bitflips_last.restype   = ctypes.c_long
+        L.evoca_get_lut_bitflips_last.argtypes = []
+        L.evoca_get_lut_bitflips_last.restype  = ctypes.c_long
+        L.evoca_get_repro_last.argtypes        = []
+        L.evoca_get_repro_last.restype         = ctypes.c_long
+        # Fixed-space neutral baselines (eg_activity / dyn_activity)
+        L.evoca_eg_excess_pc.argtypes      = []
+        L.evoca_eg_excess_pc.restype       = ctypes.c_double
+        L.evoca_dyn_excess_pc.argtypes     = []
+        L.evoca_dyn_excess_pc.restype      = ctypes.c_double
+        L.evoca_eg_shadow_total.argtypes   = []
+        L.evoca_eg_shadow_total.restype    = ctypes.c_double
+        L.evoca_dyn_shadow_total.argtypes  = []
+        L.evoca_dyn_shadow_total.restype   = ctypes.c_double
         # Neutral shadow population (Channon-style activity calibration)
         L.evoca_neutral_enable.argtypes        = []
         L.evoca_neutral_enable.restype         = None
@@ -1132,6 +1148,47 @@ class EvoCA:
 
     def get_deaths_last(self):
         return int(self._lib.evoca_get_deaths_last())
+
+    # ── Fixed-space neutral baselines (eg_activity / dyn_activity) ────
+
+    def get_realised_flux(self):
+        """Realised per-component mutation flux from the most recent
+        step (measured bit-flip counts applied to children, not the
+        nominal mu_* metaparameter). Returns a dict:
+          'eg_bitflips'  total egene value+mask + presence flips
+          'lut_bitflips' total LUT bit flips
+          'repro'        reproduction events this step
+        Used internally to drive the fixed-space drift baselines."""
+        return {
+            'eg_bitflips':  int(self._lib.evoca_get_eg_bitflips_last()),
+            'lut_bitflips': int(self._lib.evoca_get_lut_bitflips_last()),
+            'repro':        int(self._lib.evoca_get_repro_last()),
+        }
+
+    def eg_excess_pc(self):
+        """Per-component-normalised cumulative excess for eg_activity
+        (729 ternary egene keys): observed ΣG/D_G − drift-shadow
+        ΣN/D_N. ≈ 0 under neutral egene drift, clearly > 0 under
+        selection on the eating genome. Consistent with
+        evoca_explore.py's excess_pc_*. Call eg_activity_update()
+        first so eg_pop reflects the current step."""
+        return float(self._lib.evoca_eg_excess_pc())
+
+    def dyn_excess_pc(self):
+        """Per-component-normalised cumulative excess for dyn_activity
+        (500 LUT (input,output) buckets): observed ΣG/D_G − drift-
+        shadow ΣN/D_N. ≈ 0 under neutral LUT-entry drift, > 0 when
+        effective rule transitions are under selection. dyn_pop is
+        kept current by Phase 1 every step (no update call needed)."""
+        return float(self._lib.evoca_dyn_excess_pc())
+
+    def eg_shadow_total(self):
+        """Σ cumulative activity of the eg_activity drift shadow."""
+        return float(self._lib.evoca_eg_shadow_total())
+
+    def dyn_shadow_total(self):
+        """Σ cumulative activity of the dyn_activity drift shadow."""
+        return float(self._lib.evoca_dyn_shadow_total())
 
     # ── N-activity probe (Channon-style neutral shadow) ──────────────
 
