@@ -19,6 +19,7 @@ on-disk dir + its own `C/libevoca.dylib`). Analysis-only work runs on
 
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
+| D2 | S2b (+ pre-existing `tax_lut`) | `tax_ring` was kept OUT of `params()`/`metaparams_final` to match `tax_lut`'s existing treatment. Consequence: **neither `tax_lut` nor `tax_ring` round-trips into `.evoca` recipes** — so the genelife ring-ladder A/B configs (the whole point of S2b) won't reproduce from a saved recipe. Decision: add both to recipe export (fixes reproducibility, tiny risk to old recipes) vs leave as-is. Recommend: add both. Decide at the S2b merge gate. | 2026-05-16 |
 | D1 | S2a/b/c/d | Worktree-base quirk: `lineage-field`, `ring-tax`, `patch-transfer`, `eg-dyn-shadows` based at `b04a0d1` (pre-S1), so they lack `evoca_set_seed`. Mitigation (no decision needed, FYI): orchestrator rebases each onto `main`@447a019 and re-runs its suite *before* the merge gate; final integrated `main` is unaffected. S2e (bifurcation) correctly has S1. | 2026-05-16 |
 
 ---
@@ -29,7 +30,7 @@ on-disk dir + its own `C/libevoca.dylib`). Analysis-only work runs on
 |----|--------|-----------|-------|--------|-------------|---------|
 | S1 determinism fix | `main` | none (main, gating) | agent | **in-review** | Added `evoca_set_seed()` (single xorshift32 `g_rng`; seed==0 remapped to 0x12345678); `run_sim` reseeds C RNG per call. tests/test_determinism.py: same-seed runs identical, different seeds differ. `pytest -q tests/` = 10 passed (8 existing + 2 new), clean `-Wall` build. | 2026-05-16 |
 | S2a lineage field | `lineage-field` | worktree | agent | **in-review** | `ef41d36`: opt-in per-cell parent_hash/birth_id/parent_id written in Phase 4 (§1). OFF zero-cost (N=256 GoL 409→408 fps, within 1σ); ON −0.43%. 12/12 tests pass (8+4). Independently confirmed D1 (based pre-S1). Merge-ready pending rebase onto main@447a019. | 2026-05-16 |
-| S2b ring-complexity tax | `ring-tax` | worktree | agent | **launched** | — | 2026-05-16 |
+| S2b ring-complexity tax | `ring-tax` | worktree | agent | **in-review** | `829c8db`: `tax_ring` (default 0.0, bit-for-bit no-op verified w/ mutation test) = `tax_ring*level` reusing the exact `lut_complexity` classifier (tax & probe measure identical quantity). GUI slider added. Self-rebased onto main@447a019 (has S1). 12/12 tests pass. | 2026-05-16 |
 | S2c patch transfer | `patch-transfer` | worktree | agent | **in-review** | `e8a2f07`: zero-C-change `extract_patch`/`stamp_patch` (genome-level) + `python/patch_transfer.py` §11 harness (reciprocal 2×2, self-transfer control, size series, boundary-flux scoring). 13/13 tests pass. Agent claims base had S1 — verify at integration. | 2026-05-16 |
 | S2d eg/dyn fixed-space shadows | `eg-dyn-shadows` | worktree | agent | **launched** | — | 2026-05-16 |
 | S2e bifurcation-diagram harness | `bifurcation-harness` | worktree | agent | **in-review** | `dfdb010`: `python/bifurcation.py` (scalar_series/recurrent_extrema/sweep/Feigenbaum δ) + tests, pure analysis no C change. Agent self-rebased onto main@447a019 (has S1) — D1 N/A here. 20/20 tests pass. `--demo` runs ~0.7s. Note: its tree carries S1's older board copy → resolve board to main HEAD at merge. | 2026-05-16 |
@@ -42,6 +43,10 @@ ready, awaiting human merge decision) → `merged` / `parked`.
 
 ## Log (newest first)
 
+- **2026-05-16** — S2b completed → in-review (`829c8db`, 12/12).
+  Self-rebased onto S1. Raised D2 (tax_lut/tax_ring not in recipe
+  export → genelife A/B configs won't round-trip). 4/5 done; S2d
+  (eg-dyn-shadows) still running.
 - **2026-05-16** — S2a, S2c, S2e completed → in-review (commits
   `ef41d36`, `e8a2f07`, `dfdb010`; tests 12/13/20 pass). All local,
   unmerged. S2e self-rebased onto S1; S2a confirmed pre-S1 (D1);
