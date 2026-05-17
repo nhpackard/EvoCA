@@ -19,6 +19,7 @@ on-disk dir + its own `C/libevoca.dylib`). Analysis-only work runs on
 
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
+| **D3** | architecture / S2d | **Worktree isolation was defeated**: S2d edited `main` directly (uncommitted, broke the build). Recovered, no committed damage, other 4 branches safe. But 1/5 agents silently contaminated `main` — unacceptable for unattended parallel work. **Decision needed before any further parallel spawns:** (a) relaunch S2d with a hard cwd-guard prompt + orchestrator clean-check, or (b) pause parallel work, investigate the escape mechanism first. Recommend (a) with the guardrail below. | 2026-05-16 |
 | D2 | S2b (+ pre-existing `tax_lut`) | `tax_ring` was kept OUT of `params()`/`metaparams_final` to match `tax_lut`'s existing treatment. Consequence: **neither `tax_lut` nor `tax_ring` round-trips into `.evoca` recipes** — so the genelife ring-ladder A/B configs (the whole point of S2b) won't reproduce from a saved recipe. Decision: add both to recipe export (fixes reproducibility, tiny risk to old recipes) vs leave as-is. Recommend: add both. Decide at the S2b merge gate. | 2026-05-16 |
 | D1 | S2a/b/c/d | Worktree-base quirk: `lineage-field`, `ring-tax`, `patch-transfer`, `eg-dyn-shadows` based at `b04a0d1` (pre-S1), so they lack `evoca_set_seed`. Mitigation (no decision needed, FYI): orchestrator rebases each onto `main`@447a019 and re-runs its suite *before* the merge gate; final integrated `main` is unaffected. S2e (bifurcation) correctly has S1. | 2026-05-16 |
 
@@ -32,7 +33,7 @@ on-disk dir + its own `C/libevoca.dylib`). Analysis-only work runs on
 | S2a lineage field | `lineage-field` | worktree | agent | **in-review** | `ef41d36`: opt-in per-cell parent_hash/birth_id/parent_id written in Phase 4 (§1). OFF zero-cost (N=256 GoL 409→408 fps, within 1σ); ON −0.43%. 12/12 tests pass (8+4). Independently confirmed D1 (based pre-S1). Merge-ready pending rebase onto main@447a019. | 2026-05-16 |
 | S2b ring-complexity tax | `ring-tax` | worktree | agent | **in-review** | `829c8db`: `tax_ring` (default 0.0, bit-for-bit no-op verified w/ mutation test) = `tax_ring*level` reusing the exact `lut_complexity` classifier (tax & probe measure identical quantity). GUI slider added. Self-rebased onto main@447a019 (has S1). 12/12 tests pass. | 2026-05-16 |
 | S2c patch transfer | `patch-transfer` | worktree | agent | **in-review** | `e8a2f07`: zero-C-change `extract_patch`/`stamp_patch` (genome-level) + `python/patch_transfer.py` §11 harness (reciprocal 2×2, self-transfer control, size series, boundary-flux scoring). 13/13 tests pass. Agent claims base had S1 — verify at integration. | 2026-05-16 |
-| S2d eg/dyn fixed-space shadows | `eg-dyn-shadows` | worktree | agent | **launched** | — | 2026-05-16 |
+| S2d eg/dyn fixed-space shadows | `eg-dyn-shadows` | worktree | agent | **FAILED (isolation breach)** | Agent edited the **main** working tree instead of its worktree; killed mid-rewrite (broken, dup `n_dyn_q1_init`); never committed to its branch. Main recovered to HEAD; partial work quarantined in `S2D_INCOMPLETE.patch`. See D3. | 2026-05-16 |
 | S2e bifurcation-diagram harness | `bifurcation-harness` | worktree | agent | **in-review** | `dfdb010`: `python/bifurcation.py` (scalar_series/recurrent_extrema/sweep/Feigenbaum δ) + tests, pure analysis no C change. Agent self-rebased onto main@447a019 (has S1) — D1 N/A here. 20/20 tests pass. `--demo` runs ~0.7s. Note: its tree carries S1's older board copy → resolve board to main HEAD at merge. | 2026-05-16 |
 | S3 nightly digest | n/a | n/a | orchestrator | deferred | collector script to be built now; `/schedule` wrapper deferred until first batch produces something to digest (user-approved) | 2026-05-16 |
 
@@ -43,6 +44,14 @@ ready, awaiting human merge decision) → `merged` / `parked`.
 
 ## Log (newest first)
 
+- **2026-05-16** — **INCIDENT**: S2d (eg-dyn-shadows) edited the
+  `main` working tree instead of its worktree, killed mid-rewrite →
+  `main` working tree left non-compiling (uncommitted only; HEAD
+  always clean). Recovered: legit board edits committed, S2d partial
+  diff saved to `S2D_INCOMPLETE.patch`, contaminated tracked files
+  `git checkout HEAD --`'d, build clean `-Wall`, 10/10 tests pass.
+  Other 4 branches verified intact. Raised D3 — parallel spawns
+  paused pending human decision on isolation guardrail.
 - **2026-05-16** — S2b completed → in-review (`829c8db`, 12/12).
   Self-rebased onto S1. Raised D2 (tax_lut/tax_ring not in recipe
   export → genelife A/B configs won't round-trip). 4/5 done; S2d
