@@ -20,7 +20,7 @@ on-disk dir + its own `C/libevoca.dylib`). Analysis-only work runs on
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
 | **D3** | architecture / S2d | **MITIGATED.** Mechanism investigated (bounded transcript grep) & confirmed: agent used absolute `/Users/n/Projects/EvoCA/…` paths and `cd` to main, bypassing its worktree. Two-layer fix deployed: (1) orchestrator asserts `main` clean before/after every agent — mechanism-agnostic detection, the real guarantee; (2) agent prompt path-jail — forbids the literal main-path string, no `cd` to main, asserts `git rev-parse --show-toplevel` is the worktree. S2d relaunched alone under this. Residual: prompt-level prevention is soft (LLM can disobey) — layer (1) is what makes it safe. | 2026-05-16 |
-| D2 | S2b (+ pre-existing `tax_lut`) | `tax_ring` was kept OUT of `params()`/`metaparams_final` to match `tax_lut`'s existing treatment. Consequence: **neither `tax_lut` nor `tax_ring` round-trips into `.evoca` recipes** — so the genelife ring-ladder A/B configs (the whole point of S2b) won't reproduce from a saved recipe. Decision: add both to recipe export (fixes reproducibility, tiny risk to old recipes) vs leave as-is. Recommend: add both. Decide at the S2b merge gate. | 2026-05-16 |
+| D2 ✓ RESOLVED | S2b (+ pre-existing `tax_lut`) | `tax_ring`/`tax_lut` don't round-trip into `.evoca` recipes → genelife ring-ladder configs won't reproduce. **DECISION (user, 2026-05-16): add both.** → Integration task at S2b merge gate: add `tax_lut` AND `tax_ring` to `params()` / `metaparams_final` / recipe export + add a recipe round-trip test covering both. | 2026-05-16 |
 | D1 | S2a/b/c/d | Worktree-base quirk: `lineage-field`, `ring-tax`, `patch-transfer`, `eg-dyn-shadows` based at `b04a0d1` (pre-S1), so they lack `evoca_set_seed`. Mitigation (no decision needed, FYI): orchestrator rebases each onto `main`@447a019 and re-runs its suite *before* the merge gate; final integrated `main` is unaffected. S2e (bifurcation) correctly has S1. | 2026-05-16 |
 
 ---
@@ -44,6 +44,9 @@ ready, awaiting human merge decision) → `merged` / `parked`.
 
 ## Log (newest first)
 
+- **2026-05-16** — D2 resolved (user: add both `tax_lut` + `tax_ring`
+  to recipe export; folded into S2b integration task). D1 acknowledged
+  (no decision; FYI only).
 - **2026-05-16** — **INCIDENT**: S2d (eg-dyn-shadows) edited the
   `main` working tree instead of its worktree, killed mid-rewrite →
   `main` working tree left non-compiling (uncommitted only; HEAD
