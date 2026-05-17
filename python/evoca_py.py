@@ -323,6 +323,20 @@ class EvoCA:
         L.evoca_get_population.restype  = ctypes.c_int
         L.evoca_get_ages.argtypes       = [ctypes.POINTER(ctypes.c_int32)]
         L.evoca_get_ages.restype        = None
+        # Opt-in lineage record (research-directions §1)
+        L.evoca_enable_lineage.argtypes = [ctypes.c_int]
+        L.evoca_enable_lineage.restype  = None
+        L.evoca_lineage_enabled.argtypes = []
+        L.evoca_lineage_enabled.restype  = ctypes.c_int
+        L.evoca_get_lineage_parent_hash.argtypes = [
+            ctypes.POINTER(ctypes.c_uint32)]
+        L.evoca_get_lineage_parent_hash.restype  = None
+        L.evoca_get_lineage_birth_id.argtypes = [
+            ctypes.POINTER(ctypes.c_uint64)]
+        L.evoca_get_lineage_birth_id.restype  = None
+        L.evoca_get_lineage_parent_id.argtypes = [
+            ctypes.POINTER(ctypes.c_uint64)]
+        L.evoca_get_lineage_parent_id.restype  = None
         # Egenome activity
         L.evoca_eg_activity_update.argtypes  = []
         L.evoca_eg_activity_update.restype   = None
@@ -418,7 +432,11 @@ class EvoCA:
              p_dup_egene=1.0,
              tax=0.0, tax_per_egene=0.0, tax_lut=0.0,
              restricted_mu=0, n_ent=2,
-             N_log_interval=1):
+             N_log_interval=1, lineage=False):
+        # Opt-in lineage record (research-directions §1). The C flag must
+        # be set before evoca_init so the arrays get allocated. Default
+        # OFF -> zero added work in the Phase-1/Phase-4 hot path.
+        self._lib.evoca_enable_lineage(1 if lineage else 0)
         stop = getattr(self, '_stop_display', None)
         if stop is not None:
             stop()
@@ -1066,6 +1084,45 @@ class EvoCA:
         out = np.zeros(self._N * self._N, dtype=np.int32)
         self._lib.evoca_get_ages(
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)))
+        return out.reshape(self._N, self._N)
+
+    # ── Opt-in lineage record (research-directions §1) ───────────────
+    def enable_lineage(self, on=True):
+        """Toggle the opt-in per-cell lineage record. Must be called
+        BEFORE init() to take effect (the C arrays are allocated in
+        evoca_init only when the flag is set). Default OFF -> zero
+        added cost in the CA hot path."""
+        self._lib.evoca_enable_lineage(1 if on else 0)
+
+    def lineage_enabled(self):
+        """True if the lineage record is currently enabled."""
+        return bool(self._lib.evoca_lineage_enabled())
+
+    def get_lineage_parent_hash(self):
+        """Return (N, N) uint32 copy of each cell's recorded parent
+        full-genome FNV-1a hash (same hash as the activity tracker).
+        0 for founders / cells never born under tracking. All zeros if
+        lineage was not enabled."""
+        out = np.zeros(self._N * self._N, dtype=np.uint32)
+        self._lib.evoca_get_lineage_parent_hash(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)))
+        return out.reshape(self._N, self._N)
+
+    def get_lineage_birth_id(self):
+        """Return (N, N) uint64 copy of each cell's monotonic birth id
+        (0 == cell never born under tracking, e.g. a founder)."""
+        out = np.zeros(self._N * self._N, dtype=np.uint64)
+        self._lib.evoca_get_lineage_birth_id(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)))
+        return out.reshape(self._N, self._N)
+
+    def get_lineage_parent_id(self):
+        """Return (N, N) uint64 copy of each cell's parent birth id
+        (0 == parent was a founder / born before tracking). Walk
+        child.parent_id == parent's birth_id to follow lineage chains."""
+        out = np.zeros(self._N * self._N, dtype=np.uint64)
+        self._lib.evoca_get_lineage_parent_id(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)))
         return out.reshape(self._N, self._N)
 
     def activity_crossings(self, decile_lo=2, decile_hi=3, window=8,
