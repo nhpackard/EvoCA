@@ -22,7 +22,7 @@ resolved/done; **FYI items (no decision) last**. None open right now.
 
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
-| — | — | **No open decisions.** | — |
+| R1 | research / next pure-evo scan | Campaign #1 found the corrected-metric optimum at **`m_scale=2.5` (grid ceiling) + low `mu_lut`**, still unbracketed. Decision: a follow-up scan with `m_scale ∈ {2.5, 3.5, 5.0}` to bracket it. Non-blocking (the #1–#4 program proceeds first); recommend running it after #4. | 2026-05-17 |
 | D4 ✓ DONE | recipe export | Extend `metaparams_final`/`params()`/`_DEFAULTS` to the full param set (`mu_egenome`, `p_dup_egene`, `tax_per_egene` were also missing). **User: definitely extend.** Done `a1f70e2` (on `ring-tax`, merged) + round-trip test extended. | 2026-05-17 |
 | D2 ✓ DONE | S2b / `tax_lut` | Add `tax_lut`+`tax_ring` to recipe export so genelife ring-ladder configs reproduce. **User: add both.** Done `dca4afa` + `test_recipe_roundtrip.py`. | 2026-05-16 |
 | D3 ✓ RESOLVED | architecture / S2d | Worktree isolation breach (agent used absolute main paths + `cd` to main). Two-layer fix: (1) orchestrator asserts `main` clean before/after every agent — mechanism-agnostic, the real guarantee; (2) agent path-jail prompt. Relaunch verified-isolated. Standing policy for all future spawns. | 2026-05-16 |
@@ -46,6 +46,22 @@ Status vocabulary: `queued` → `launched` → `in-review` (PR/branch
 ready, awaiting human merge decision) → `merged` / `parked`.
 
 ---
+
+## Research campaigns (2026-05-17, R-track) — IN PROGRESS
+
+Compute: torque (32 cores) + local. Findings in
+`Docs/devlog/2026-05-17_research-campaigns.md`.
+
+| # | Campaign | Status | Headline |
+|---|----------|--------|----------|
+| 1 | pure-evo LUT+egene | ✅ done | whole-genome excess≈0 everywhere; dyn/eg excess strongly +ve; low mu_lut + high m_scale wins (contradicts old broken-metric optimum) |
+| 2 | pure-evo LUT-only | ⏳ running (torque) | — |
+| 3 | #2 winners → egene scan | queued (needs #2) | — |
+| 4 | past evo+spatial winners → pure-evo: does RD vanish? | queued | — |
+| 5 | genelife ring-ladder A/B | queued | — |
+| 6 | bifurcation sweep | queued | — |
+| 7 | patch-transfer 2×2 | queued | — |
+| — | causal-control v2 (local) | ⏳ running | bug-corrected per-subsystem excess |
 
 ## Integration status (2026-05-17) — ✅ MERGED & PUSHED
 
