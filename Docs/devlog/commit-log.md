@@ -7,9 +7,16 @@ merges into `main` (and after every push, note the push range). This
 is the at-a-glance "what has changed in the repo" record; the devlog
 batch files carry the *why*.
 
+**Hash rule (avoids the self-reference trap):** a commit cannot
+contain its own final hash. So a substantive commit's hash is
+**backfilled on the next ledger touch**, not written self-
+referentially. Pure ledger-maintenance commits are not themselves
+logged. If an entry ever shows a hash not in `git log main`, it is a
+stale pre-amend hash — backfill it from the real history.
+
 ## 2026-05-17
 
-- `ca1f35f` commit — `tests/README.md`: test-suite index (40 tests / 10 files, one-line descriptions)
+- `5c74caf` commit — `tests/README.md`: test-suite index (40 tests / 10 files, one-line descriptions)
 - `6ba31ad` commit — docs: merge review appended; commit-log ledger; board finalised
 - `9fdb3e6` merge — `bifurcation-harness` (R3 bifurcation/Feigenbaum)
 - `2bb9cd5` merge — `patch-transfer` (§11 extract/stamp + 2×2 assay)
