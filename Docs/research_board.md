@@ -22,7 +22,7 @@ resolved/done; **FYI items (no decision) last**. None open right now.
 
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
-| R1 | research / next pure-evo scan | Campaign #1 found the corrected-metric optimum at **`m_scale=2.5` (grid ceiling) + low `mu_lut`**, still unbracketed. Decision: a follow-up scan with `m_scale ∈ {2.5, 3.5, 5.0}` to bracket it. Non-blocking (the #1–#4 program proceeds first); recommend running it after #4. | 2026-05-17 |
+| R1 ✓ APPROVED | research / next pure-evo scan | **User approved (2026-05-18):** bracket `m_scale ∈ {2.5,3.5,5.0}` (+ low-`food_inc` extension). Scheduled to run **after #4**. | 2026-05-17 |
 | D4 ✓ DONE | recipe export | Extend `metaparams_final`/`params()`/`_DEFAULTS` to the full param set (`mu_egenome`, `p_dup_egene`, `tax_per_egene` were also missing). **User: definitely extend.** Done `a1f70e2` (on `ring-tax`, merged) + round-trip test extended. | 2026-05-17 |
 | D2 ✓ DONE | S2b / `tax_lut` | Add `tax_lut`+`tax_ring` to recipe export so genelife ring-ladder configs reproduce. **User: add both.** Done `dca4afa` + `test_recipe_roundtrip.py`. | 2026-05-16 |
 | D3 ✓ RESOLVED | architecture / S2d | Worktree isolation breach (agent used absolute main paths + `cd` to main). Two-layer fix: (1) orchestrator asserts `main` clean before/after every agent — mechanism-agnostic, the real guarantee; (2) agent path-jail prompt. Relaunch verified-isolated. Standing policy for all future spawns. | 2026-05-16 |
@@ -57,11 +57,11 @@ Compute: torque (32 cores) + local. Findings in
 | 1 | pure-evo LUT+egene | ✅ done | whole-genome excess≈0 everywhere; dyn/eg excess strongly +ve; low mu_lut + high m_scale wins (contradicts old broken-metric optimum) |
 | 2 | pure-evo LUT-only | ✅ done | 0/180 extinct; egene-freeze *reduces* dyn-excess (egene co-evo amplifies rule selection); LUT-only wants high mu_lut+m_scale, low food_inc — mu_lut optimum is conditional on egene |
 | 3 | #2 winners → egene scan (3a/3b) | ✅ done | 3a≫3b (eg_excess 20 vs 6; 3b 46% extinct); strong co-dependence BUT 3b froze GoL not evolved-LUT → confound not cleanly resolved; #8 now decisive, #3c queued |
-| 4 | past evo+spatial winners → pure-evo: does RD vanish? | queued | — |
+| 4 | past evo+spatial winners → pure-evo: does RD vanish? | ⏳ launching (torque, 30 recipes×3 seeds, 12k ticks) | — |
 | 5 | genelife ring-ladder A/B | queued | — |
 | 6 | bifurcation sweep | queued | — |
 | 7 | patch-transfer 2×2 | queued | — |
-| 8 | direct lineage co-evolution metric (ΔLUT×Δegene joint-retention vs neutral) | ⏳ next (DECISIVE — promoted) | needs no freezing; resolves the confound directly |
+| 8 | direct lineage co-evolution metric | ⏸ blocked: needs a bulk per-cell LUT-only-hash accessor (API only exposes combined parent_hash + single-cell get_lut). Will add `get_lut_hashes()` (tiny, additive) properly, then build #8. NOT hacking an approx into the decisive test. | 2026-05-17 |
 | 3c | evolve→extract evolved LUT→freeze→evolve egene (clean substrate test, uses S2c) | queued | the test 3b was meant to be |
 | — | causal-control v2 (local) | ✅ done | shadows pass null controls EXACTLY (eg/dyn excess=0 when frozen); bug closed (eg_excess_pc +31 vs v1's −26); LUT+egene co-evo mutually amplify selection — corroborates #1/#2 |
 
