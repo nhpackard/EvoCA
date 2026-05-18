@@ -16,7 +16,8 @@ stale pre-amend hash — backfill it from the real history.
 
 ## 2026-05-17
 
-- `pending` commit — Scans/2026-05-17_pure_evo_joint/scan.py (priority #1 pure-evo LUT+egene scan)
+- `pending` commit — pure-evo #2 (LUT-only) scan + #1 results.csv
+- `e6525b5` commit — Scans/2026-05-17_pure_evo_joint/scan.py (priority #1 pure-evo LUT+egene scan)
 - `5c74caf` commit — `tests/README.md`: test-suite index (40 tests / 10 files, one-line descriptions)
 - `6ba31ad` commit — docs: merge review appended; commit-log ledger; board finalised
 - `9fdb3e6` merge — `bifurcation-harness` (R3 bifurcation/Feigenbaum)
