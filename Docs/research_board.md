@@ -17,12 +17,16 @@ on-disk dir + its own `C/libevoca.dylib`). Analysis-only work runs on
 
 ## Decisions needed (human) — read this first
 
+Convention: **unresolved decisions at the top** (act on these); then
+resolved/done; **FYI items (no decision) last**. None open right now.
+
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
-| **D3** ✓ RESOLVED | architecture / S2d | Relaunch under the path-jail prompt + orchestrator clean-check completed **verified-isolated** (rule-1/5 checks in its report; post-check shows main clean). Guardrail validated. Standing policy for all future spawns: path-jail prompt + orchestrator main-clean assert before/after each agent; devlog per workstream. Original note: **was MITIGATED →** Mechanism investigated (bounded transcript grep) & confirmed: agent used absolute `/Users/n/Projects/EvoCA/…` paths and `cd` to main, bypassing its worktree. Two-layer fix deployed: (1) orchestrator asserts `main` clean before/after every agent — mechanism-agnostic detection, the real guarantee; (2) agent prompt path-jail — forbids the literal main-path string, no `cd` to main, asserts `git rev-parse --show-toplevel` is the worktree. S2d relaunched alone under this. Residual: prompt-level prevention is soft (LLM can disobey) — layer (1) is what makes it safe. | 2026-05-16 |
-| D4 | recipe export (latent, pre-existing) | While doing D2 found `metaparams_final` ALSO omits `tax_per_egene`, `mu_egenome`, `p_dup_egene` — same class of bug for egene-driven recipes (e.g. the §7 cognition experiments won't reproduce from a `recipe='final'`). Non-blocking, out of D2's agreed scope, flagged not silently fixed. Decision: extend `metaparams_final`/`params()` to the full param set vs leave. Recommend: extend. Decide when convenient. | 2026-05-17 |
-| D2 ✓ RESOLVED → DONE | S2b (+ pre-existing `tax_lut`) | `tax_ring`/`tax_lut` don't round-trip into `.evoca` recipes → genelife ring-ladder configs won't reproduce. **DECISION (user, 2026-05-16): add both.** → Integration task at S2b merge gate: add `tax_lut` AND `tax_ring` to `params()` / `metaparams_final` / recipe export + add a recipe round-trip test covering both. | 2026-05-16 |
-| D1 | S2a/b/c/d | Worktree-base quirk: `lineage-field`, `ring-tax`, `patch-transfer`, `eg-dyn-shadows` based at `b04a0d1` (pre-S1), so they lack `evoca_set_seed`. Mitigation (no decision needed, FYI): orchestrator rebases each onto `main`@447a019 and re-runs its suite *before* the merge gate; final integrated `main` is unaffected. S2e (bifurcation) correctly has S1. | 2026-05-16 |
+| — | — | **No open decisions.** | — |
+| D4 ✓ DONE | recipe export | Extend `metaparams_final`/`params()`/`_DEFAULTS` to the full param set (`mu_egenome`, `p_dup_egene`, `tax_per_egene` were also missing). **User: definitely extend.** Done `a1f70e2` (on `ring-tax`, merged) + round-trip test extended. | 2026-05-17 |
+| D2 ✓ DONE | S2b / `tax_lut` | Add `tax_lut`+`tax_ring` to recipe export so genelife ring-ladder configs reproduce. **User: add both.** Done `dca4afa` + `test_recipe_roundtrip.py`. | 2026-05-16 |
+| D3 ✓ RESOLVED | architecture / S2d | Worktree isolation breach (agent used absolute main paths + `cd` to main). Two-layer fix: (1) orchestrator asserts `main` clean before/after every agent — mechanism-agnostic, the real guarantee; (2) agent path-jail prompt. Relaunch verified-isolated. Standing policy for all future spawns. | 2026-05-16 |
+| D1 (FYI) | S2a/b/c/d | Worktree-base quirk: agent worktrees based pre-S1; orchestrator rebased each onto `main` at the integration gate (done — all 5 S1✓, merged). No decision was needed. | 2026-05-16 |
 
 ---
 
@@ -43,7 +47,7 @@ ready, awaiting human merge decision) → `merged` / `parked`.
 
 ---
 
-## Integration status (2026-05-17) — ALL 5 VERIFIED, awaiting merge gate
+## Integration status (2026-05-17) — ✅ MERGED & PUSHED
 
 Done in a dedicated `/tmp/evoca_integ` worktree (main's tree carries
 the user's uncommitted notebooks). Hygiene fix first: untracked
@@ -61,12 +65,20 @@ the user's uncommitted notebooks). Hygiene fix first: untracked
 - Trial sequential merge of all 5: **zero cross-branch conflicts**,
   combined build clean, **full combined suite 38/38 passed**.
 - Branch refs are the rebased versions; merge-ready.
-- **Awaiting human merge gate** (recommended order + push: user's call).
-- Cleanup pending user nod: `S2D_INCOMPLETE.patch` (root) can be
-  deleted — S2d was redone cleanly.
+- **MERGED** into `main` (order lineage→eg-dyn→ring-tax→patch→bifn):
+  merge commits `4900145 1164ecb 8783059 2bb9cd5 9fdb3e6`, build
+  clean, **40/40 combined suite**. D4 also executed (`a1f70e2`).
+- **Pushed**: `b04a0d1..9fdb3e6 → origin/main`.
+- `S2D_INCOMPLETE.patch` deleted (S2d redone cleanly). See
+  `Docs/devlog/commit-log.md` for the running ledger.
 
 ## Log (newest first)
 
+- **2026-05-17** — **All 5 merged to `main` + pushed**
+  (`b04a0d1..9fdb3e6`). D4 executed (user: extend). 40/40 suite.
+  `S2D_INCOMPLETE.patch` deleted. Devlog merge-review appended;
+  `commit-log.md` ledger started (standing convention). Decisions
+  table reordered (unresolved-first; none open). Batch complete.
 - **2026-05-17** — Integration prep complete. Repo-hygiene fix
   (`289191b`: untrack `tests/__pycache__`). All 5 branches rebased
   onto main individually clean; D2 executed on `ring-tax`

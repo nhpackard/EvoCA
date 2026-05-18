@@ -194,3 +194,35 @@ regime verified isolated (rule-1/rule-5 checks in its report).
 - Worktree-base quirk (D1): agent worktrees were repeatedly based at
   the pre-S1 commit regardless of main's HEAD; orchestrator rebases at
   the integration gate. Final integrated `main` is unaffected.
+
+---
+
+## Consolidated merge review (2026-05-17) — MERGED & PUSHED
+
+Integration prep ran in a dedicated `/tmp/evoca_integ` worktree.
+Pre-step hygiene: untracked `tests/__pycache__/*.pyc` (was blocking
+rebases) → `289191b`.
+
+| Branch | Final commits over main | Delivers | Tests |
+|--------|------|----------|-------|
+| `lineage-field` | `ef41d36` | §1 opt-in lineage, zero-cost OFF | 14 |
+| `eg-dyn-shadows` | `89ad3eb` | §2 fixed-space eg/dyn neutral shadows | 14 |
+| `ring-tax` | `829c8db` + `dca4afa` (D2) + `a1f70e2` (D4) | §8 ring tax + full recipe round-trip | 17 |
+| `patch-transfer` | `e8a2f07` | §11 extract/stamp + reciprocal 2×2 | 15 |
+| `bifurcation-harness` | `dfdb010` | R3 bifurcation/Feigenbaum (pure Py) | 20 |
+
+- Each branch rebased onto `main` individually: **clean**.
+- D2 executed on `ring-tax` (`dca4afa`); **D4** ("definitely extend",
+  user) executed (`a1f70e2`) — `metaparams_final`/`params()`/
+  `_DEFAULTS` now carry the **full** param set; round-trip test
+  extended.
+- Trial all-5 merge: **zero cross-branch conflicts**, 38/38.
+- Real merge into `main` (order: lineage → eg-dyn → ring-tax →
+  patch-transfer → bifurcation): 5 `--no-ff` merge commits
+  `4900145 1164ecb 8783059 2bb9cd5 9fdb3e6`, build clean,
+  **40/40 combined suite**.
+- Pushed: `b04a0d1..9fdb3e6 → origin/main`.
+- `S2D_INCOMPLETE.patch` deleted (S2d redone cleanly).
+
+Outcome: S1 + all 5 workstreams + D2 + D4 + repo-hygiene + this
+devlog are on `origin/main`. No open decisions.
