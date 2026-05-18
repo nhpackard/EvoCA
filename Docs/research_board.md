@@ -56,12 +56,13 @@ Compute: torque (32 cores) + local. Findings in
 |---|----------|--------|----------|
 | 1 | pure-evo LUT+egene | ✅ done | whole-genome excess≈0 everywhere; dyn/eg excess strongly +ve; low mu_lut + high m_scale wins (contradicts old broken-metric optimum) |
 | 2 | pure-evo LUT-only | ✅ done | 0/180 extinct; egene-freeze *reduces* dyn-excess (egene co-evo amplifies rule selection); LUT-only wants high mu_lut+m_scale, low food_inc — mu_lut optimum is conditional on egene |
-| 3 | #2 winners → egene scan (3a seeded-joint + 3b frozen-LUT) | ⏳ running (torque, 288 cfg) | — |
+| 3 | #2 winners → egene scan (3a/3b) | ✅ done | 3a≫3b (eg_excess 20 vs 6; 3b 46% extinct); strong co-dependence BUT 3b froze GoL not evolved-LUT → confound not cleanly resolved; #8 now decisive, #3c queued |
 | 4 | past evo+spatial winners → pure-evo: does RD vanish? | queued | — |
 | 5 | genelife ring-ladder A/B | queued | — |
 | 6 | bifurcation sweep | queued | — |
 | 7 | patch-transfer 2×2 | queued | — |
-| 8 | direct lineage co-evolution metric (ΔLUT×Δegene joint-retention vs neutral) | queued (auto after #3) | spec ready in devlog; decisive 3a-vs-3b cross-check |
+| 8 | direct lineage co-evolution metric (ΔLUT×Δegene joint-retention vs neutral) | ⏳ next (DECISIVE — promoted) | needs no freezing; resolves the confound directly |
+| 3c | evolve→extract evolved LUT→freeze→evolve egene (clean substrate test, uses S2c) | queued | the test 3b was meant to be |
 | — | causal-control v2 (local) | ✅ done | shadows pass null controls EXACTLY (eg/dyn excess=0 when frozen); bug closed (eg_excess_pc +31 vs v1's −26); LUT+egene co-evo mutually amplify selection — corroborates #1/#2 |
 
 ## Integration status (2026-05-17) — ✅ MERGED & PUSHED

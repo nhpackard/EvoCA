@@ -87,6 +87,40 @@ mu_egenome = tax_per_egene = 0`. 258 s on torque.
 
 ---
 
+## Campaign #3 — egene-on-#2-winners, paired 3a/3b  (`Scans/2026-05-17_pure_evo_egene_on_winners`)
+
+288 cfg (12 bases × 12 egene × 2 modes), 805 s on torque.
+
+| mode | viable/total | eg_excess_pc (mean/med) | dyn_excess_pc | extinct |
+|------|---:|---:|---:|---:|
+| 3a seeded-joint (LUT evolves) | 127/144 | 20.3 / 16.7 | 14.0 | 17 |
+| 3b frozen-LUT (mu_lut=0)      | 78/144  |  5.6 / 2.0  | 0.00 | **66 (46%)** |
+
+3a > 3b eg_excess on **9/12 bases** (+13…+29).
+
+**Finding.** Egene evolution is far weaker (eg_excess 20→6) and
+**46% lethal** when the LUT cannot co-adapt. Strong co-evolution /
+co-dependence signal: cognition needs the rule to co-evolve for both
+efficacy and viability.
+
+**Design limitation (flagged, not buried).** `run_sim` always seeds
+`lut='gol'`; with `mu_lut=0`, 3b freezes the LUT at **GoL**, *not* at
+an evolved good substrate. So 3b ≈ causal-control EGENE_only relocated
+to the winning param regimes — it does **not** isolate "egene on a
+*good evolved* substrate", so #3 **strengthens but does not cleanly
+resolve** the frozen-substrate confound. The orchestrator over-stated
+what 3b would test.
+
+**Decisive resolution (supersedes the #3-as-disambiguator claim):**
+1. **#8** (direct lineage joint-retention vs neutral) needs no
+   freezing — promoted from corroborator to *the* decisive test.
+2. **#3c (new, queued):** evolve LUT-only → `extract_patch` the
+   *evolved* LUT → freeze that → evolve egene. The clean
+   "good evolved substrate" test 3b was meant to be (uses S2c).
+
+`dyn_excess_pc`=0 in 3b reconfirms the fixed-space null holds
+(mu_lut=0 ⇒ no rule evolution ⇒ exactly zero).
+
 ## Campaign #8 (QUEUED, fires after #3) — direct lineage co-evolution metric
 
 Goal: replace the *indirect* excess-comparison evidence for LUT↔egene

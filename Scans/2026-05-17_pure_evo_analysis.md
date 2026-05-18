@@ -164,8 +164,11 @@ concrete metaparameter↔metaparameter interaction.
 
 ## Open / in flight
 
-- **#3** (running): paired 3a/3b egene sweep on the top-12 LUT-only
-  winners — disambiguates the frozen-substrate confound.
+- **#3** (DONE): 3a≫3b (eg_excess 20 vs 6; 3b 46% extinct) — strong
+  co-dependence. BUT 3b's `mu_lut=0` froze the LUT at *GoL* (run_sim
+  always seeds gol), not at an evolved substrate, so #3 strengthens
+  but does NOT cleanly resolve the confound. #8 promoted to decisive;
+  #3c (evolve→extract evolved LUT→freeze→evolve egene, via S2c) queued.
 - **#4** (queued): seed pure-evo from the 2026-04-27 balanced
   winners; track spatial `correlation_length`/`largest_patch` *over
   the run* — does RD structure collapse under pure-evo? (#1/#2 show
