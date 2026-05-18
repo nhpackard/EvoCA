@@ -22,7 +22,7 @@ resolved/done; **FYI items (no decision) last**. None open right now.
 
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
-| R1 ✓ APPROVED | research / next pure-evo scan | **User approved (2026-05-18):** bracket `m_scale ∈ {2.5,3.5,5.0}` (+ low-`food_inc` extension). Scheduled to run **after #4**. | 2026-05-17 |
+| R1 ✓ APPROVED — UNBLOCKED | research / next pure-evo scan | **User approved (2026-05-18):** bracket `m_scale ∈ {2.5,3.5,5.0}` (+ low-`food_inc` extension). Was gated on #4 → **#4 now done (2026-05-18)**, R1 ready to launch (run detached this time). | 2026-05-17 |
 | D4 ✓ DONE | recipe export | Extend `metaparams_final`/`params()`/`_DEFAULTS` to the full param set (`mu_egenome`, `p_dup_egene`, `tax_per_egene` were also missing). **User: definitely extend.** Done `a1f70e2` (on `ring-tax`, merged) + round-trip test extended. | 2026-05-17 |
 | D2 ✓ DONE | S2b / `tax_lut` | Add `tax_lut`+`tax_ring` to recipe export so genelife ring-ladder configs reproduce. **User: add both.** Done `dca4afa` + `test_recipe_roundtrip.py`. | 2026-05-16 |
 | D3 ✓ RESOLVED | architecture / S2d | Worktree isolation breach (agent used absolute main paths + `cd` to main). Two-layer fix: (1) orchestrator asserts `main` clean before/after every agent — mechanism-agnostic, the real guarantee; (2) agent path-jail prompt. Relaunch verified-isolated. Standing policy for all future spawns. | 2026-05-16 |
@@ -57,7 +57,7 @@ Compute: torque (32 cores) + local. Findings in
 | 1 | pure-evo LUT+egene | ✅ done | whole-genome excess≈0 everywhere; dyn/eg excess strongly +ve; low mu_lut + high m_scale wins (contradicts old broken-metric optimum) |
 | 2 | pure-evo LUT-only | ✅ done | 0/180 extinct; egene-freeze *reduces* dyn-excess (egene co-evo amplifies rule selection); LUT-only wants high mu_lut+m_scale, low food_inc — mu_lut optimum is conditional on egene |
 | 3 | #2 winners → egene scan (3a/3b) | ✅ done | 3a≫3b (eg_excess 20 vs 6; 3b 46% extinct); strong co-dependence BUT 3b froze GoL not evolved-LUT → confound not cleanly resolved; #8 now decisive, #3c queued |
-| 4 | past evo+spatial winners → pure-evo: does RD vanish? | ⏳ launching (torque, 30 recipes×3 seeds, 12k ticks) | — |
+| 4 | past evo+spatial winners → pure-evo: does RD vanish? | ✅ done | RD spatial structure NOT robust under pure-evo (corrL final/mean med 0.23, 0/30 extinct); 8/10 keep turnover while spatial washes out, 2/10 collapse to static colony-blob (lowest dyn_excess) — NP's "suspect-the-metric" cases. Recovered after DNS-drop (scan finished autonomously on torque) |
 | 5 | genelife ring-ladder A/B | queued | — |
 | 6 | bifurcation sweep | queued | — |
 | 7 | patch-transfer 2×2 | queued | — |
@@ -92,6 +92,15 @@ the user's uncommitted notebooks). Hygiene fix first: untracked
 
 ## Log (newest first)
 
+- **2026-05-18** — **Campaign #4 recovered & analysed.** Local DNS
+  failure → reboot dropped the launching SSH session; the #4 scan had
+  already **finished autonomously on torque** (`run.log`: "Done in
+  89s", 30 rows, 0 errors). Results pulled to local; analysis,
+  `notes.md`, devlog section written. **Finding:** RD spatial
+  structure not robust under pure-evo (corrL final/mean median 0.23,
+  0/30 extinct); the 2 static colony-blob configs are the
+  lowest-`dyn_excess` ones — corroborates NP's intuition. R1
+  unblocked (run detached this time to survive disconnects).
 - **2026-05-17** — **All 5 merged to `main` + pushed**
   (`b04a0d1..9fdb3e6`). D4 executed (user: extend). 40/40 suite.
   `S2D_INCOMPLETE.patch` deleted. Devlog merge-review appended;

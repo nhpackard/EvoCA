@@ -121,6 +121,67 @@ what 3b would test.
 `dyn_excess_pc`=0 in 3b reconfirms the fixed-space null holds
 (mu_lut=0 ⇒ no rule evolution ⇒ exactly zero).
 
+---
+
+## Campaign #4 — RD winners under pure-evo: does spatial structure vanish?  (`Scans/2026-05-18_rd_under_pure_evo`)
+
+**Setup.** The 30 `Runs/2026-04-27_top_*` evo+spatial balanced-composite
+winners, deduped by metaparam set → **10 distinct recipes** × 3 seeds =
+30 runs, N=256, 12 000 ticks, `init='halfplane'`, shadows on. The
+direct test of NP's central intuition: robust evolution needs
+life-death turnover, so pure-evo should *not* re-select the static
+spatial structure the spatial-composite objective rewarded; if it
+collapses to static, suspect the (spatial) metric. 89 s on torque,
+**0/30 extinct**.
+
+**Headline finding (significant).** RD-scale spatial structure is
+**not robust under pure-evo**. `correlation_length` final/mean across
+all 30 runs: median **0.23**, mean 0.35, max 0.89 — *every* run's
+spatial correlation decays to a fraction of its run-mean. The RD
+structure the 2026-04-27 winners exhibit is an artifact of the
+**spatial-composite objective they were selected under**, not an
+attractor of pure evolutionary turnover. (This refines, not
+contradicts, #1/#2's "correlation_length persists": that was a *box
+winner / mean* statement; #4 shows the *2026-04-27 spatial winners'*
+structure does not survive as an *endpoint* once the spatial objective
+is removed — the mean was inflated by a structured early transient.)
+
+**Two regimes (the interesting part).**
+- **Dynamically-alive, spatially-washed-out (8/10).** Spatial
+  correlation collapses (cL f/m 0.06–0.64) but the population keeps
+  strong effective-dynamics turnover (`dyn_excess_pc_slope` ≈ 12–27).
+  These are *not* collapsing to static structure — they stay
+  dynamically selected, they simply don't preserve the particular
+  correlation length the spatial objective rewarded.
+- **Static colony-filling blob (2/10):** `cfg49` (top_1) & `cfg30`
+  (top_2), both **m_scale 0.6 / mu_lut 0.01 / food_inc 0.025**.
+  `largest_patch` final/mean ≈ **1.00–1.01** with mean patch ≈ 45 600
+  cells (~70 % of the 65 536-cell grid) — a single frozen blob —
+  *and* the **lowest `dyn_excess_pc_slope` in the set (~5.8)**. These
+  are precisely the degenerate "suspect the metric" cases NP
+  predicted: static structure ⟺ weakest effective-dynamics
+  selection. Cf. the local artifact
+  `Runs/2026-04-27_R-D_to_static_colony_filling_world.evoca`.
+
+**Interpretation.** NP's intuition is corroborated with a sharpened
+form: pure-evo does **not** preserve the spatial-objective's RD
+structure; the healthy pure-evo regime keeps life-death turnover
+(high `dyn_excess`) while letting spatial correlation wash out, and
+the *only* runs that lock into static structure are exactly those
+with the **least** dynamic selection signal. "RD spatial structure" is
+therefore an objective-induced phenotype, not an intrinsic property of
+the evolving dynamics; `dyn_excess`/`eg_excess` (not
+`correlation_length`) remain the load-bearing probes — consistent with
+the §2 / #1 / causal-control-v2 through-line.
+
+**Status.** Done (recovered: the launching SSH session dropped on a
+local-machine DNS failure/reboot *after* the scan completed
+autonomously on torque; `run.log` = "Done in 89s", 30 rows, 0 errors;
+results pulled to local 2026-05-18). Unblocks **R1** (m_scale bracket
+{2.5,3.5,5.0} + low-food_inc, pre-approved to run after #4).
+
+---
+
 ## Campaign #8 (QUEUED, fires after #3) — direct lineage co-evolution metric
 
 Goal: replace the *indirect* excess-comparison evidence for LUT↔egene

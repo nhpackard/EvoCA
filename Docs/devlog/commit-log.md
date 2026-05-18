@@ -14,9 +14,13 @@ referentially. Pure ledger-maintenance commits are not themselves
 logged. If an entry ever shows a hash not in `git log main`, it is a
 stale pre-amend hash — backfill it from the real history.
 
+## 2026-05-18
+
+- `pending` commit — #4 recovered after DNS-drop (scan finished autonomously on torque): results + notes + devlog + board; finding = RD spatial structure not robust under pure-evo; R1 unblocked
+
 ## 2026-05-17
 
-- `pending` commit — #4 scan launched; R1 approved/scheduled; #8 blocked on enabling accessor
+- `62ccb49` commit — #4 scan launched; R1 approved/scheduled; #8 blocked on enabling accessor
 - `8021a86` commit — #3 finding + honest design-limitation; #8 promoted, #3c queued
 - `e5ed170` commit — consolidated scan analysis doc + per-dir notes.md
 - `37187ee` commit — queue campaign #8 (lineage co-evolution metric)
