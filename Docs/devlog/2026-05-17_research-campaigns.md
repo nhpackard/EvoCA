@@ -84,3 +84,45 @@ mu_egenome = tax_per_egene = 0`. 258 s on torque.
   too.
 
 **Status.** Done. `results.csv` versioned. Winners feed #3.
+
+---
+
+## Causal-control v2 (local)  (`Scans/2026-05-17_causal_control_v2`)
+
+Bug-corrected rerun of the 2026-05-16 v1 control (which had exposed
+the shadow-scope bug, EGENE_only excess ≈ −26). 3 arms × 4 seeds,
+N=256, 15000 ticks. Means over seeds (cog_spec, intake, n_distinct,
+**excess_pc**, **eg_excess_pc**, **dyn_excess_pc**):
+
+| arm | cog_spec | intake | n_distinct | excess_pc | eg_excess_pc | dyn_excess_pc |
+|-----|---:|---:|---:|---:|---:|---:|
+| JOINT      | 11.1 | 0.044 | 16182 | 0.0002 | **64.8** | **33.0** |
+| LUT_only   | 25.0 | 0.055 |  9377 | 0.0001 | **0.000** | 17.3 |
+| EGENE_only | 20.4 | 0.062 |   583 | −46.4  | 31.0 | **0.000** |
+
+**Methodological validation (the headline).** The fixed-space shadows
+pass their null controls *exactly*:
+- LUT_only (egene frozen) → `eg_excess_pc` = **0.000** (no egene
+  evolution ⇒ zero egene excess).
+- EGENE_only (LUT frozen) → `dyn_excess_pc` = **0.000** (no rule
+  evolution ⇒ zero effective-dynamics excess).
+The neutral-null invariant S2d was built for now holds on the *actual*
+causal controls at full scale. The metric is sound.
+
+**Bug closed.** v1 EGENE_only excess ≈ −26 (artifact). v2: the
+*fixed-space* `eg_excess_pc` = **+31** (egene evolution genuinely
+beats neutral), while the *whole-genome* `excess_pc` = **−46** for the
+same arm — i.e. whole-genome-hash excess remains actively pathological
+for egene-driven runs, exactly the §2 prediction and precisely why
+the fixed-space shadow was necessary. Use `eg_/dyn_excess_pc`; never
+`excess_pc` for egene-driven evolution.
+
+**Science.** Cognition is individually selectable (EGENE_only
+`eg_excess_pc` = +31, LUT frozen). Effective rule dynamics are
+individually selectable (LUT_only `dyn_excess_pc` = +17, egene
+frozen). In JOINT *both* are larger than their isolated values
+(eg 65 > 31; dyn 33 > 17) ⇒ **LUT and egene co-evolution mutually
+amplify selection in both subsystems** — synergistic, not
+independent. This corroborates the scan-scale #1-vs-#2 contrast with
+a clean controlled experiment (two independent methods, same
+conclusion).

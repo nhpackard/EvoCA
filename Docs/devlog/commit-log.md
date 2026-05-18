@@ -16,7 +16,9 @@ stale pre-amend hash — backfill it from the real history.
 
 ## 2026-05-17
 
-- `pending` commit — #3 scan (egene-on-winners, 3a+3b paired)
+- `pending` commit — causal-control v2 finding (metric validated, bug closed)
+- `9bda882` commit — #3 scan (egene-on-winners, 3a+3b paired)
+- `86f2b3f` commit — board: #3 running
 - `a6dbcb3` commit — #2 finding (LUT-only; mu_lut optimum conditional on egene)
 - `1eaafcc` commit — campaign devlog + board R-track + #1 finding
 - `0abb72d` commit — pure-evo #2 (LUT-only) scan + #1 results.csv
