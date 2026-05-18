@@ -100,6 +100,55 @@ def _find_lib():
         "libevoca not found. Run `make` (or the gcc command in CLAUDE.md) first.")
 
 
+# Default state planted at every stamped cell. v=0/f=0 mirrors the
+# convention used by the alive setters (dead cells carry zeroed v/f);
+# a freshly stamped organism therefore starts from a neutral substrate
+# state and earns its own food, exactly as a reproduction child would.
+_STAMP_DEFAULT_V = 0
+_STAMP_DEFAULT_F = 0.0
+
+
+class PatchGenomes:
+    """A genome-level snapshot of a square lattice region.
+
+    Holds, in patch-local coordinates (0..side-1), every datum needed to
+    reconstruct each organism's heritable genome: the 32-byte LUT, all
+    NEGENOME_MAX egene value/mask slot bytes, the per-cell active mask,
+    and which cells were alive. Pixel-level state (v, f) is intentionally
+    NOT carried — transfer is of recipes, not of running configurations
+    (Docs/EvoCA_research_directions.md §11; egene_discussion.md
+    "evolutionary test").
+    """
+
+    __slots__ = ("side", "src_r0", "src_c0", "src_N",
+                 "lut", "egenes", "egenes_mask", "active", "alive")
+
+    def __init__(self, side, src_r0, src_c0, src_N,
+                 lut, egenes, egenes_mask, active, alive):
+        self.side        = int(side)
+        self.src_r0      = int(src_r0)   # provenance (self-transfer check)
+        self.src_c0      = int(src_c0)
+        self.src_N       = int(src_N)
+        self.lut         = lut           # (side, side, LUT_BYTES) uint8
+        self.egenes      = egenes        # (side, side, 8)         uint8
+        self.egenes_mask = egenes_mask   # (side, side, 8)         uint8
+        self.active      = active        # (side, side)            uint8
+        self.alive       = alive         # (side, side)            uint8
+
+    @property
+    def n_alive(self):
+        return int(self.alive.sum())
+
+    @property
+    def alive_fraction(self):
+        return float(self.alive.mean())
+
+    def __repr__(self):
+        return (f"PatchGenomes(side={self.side}, "
+                f"src=({self.src_r0},{self.src_c0}) of N={self.src_N}, "
+                f"n_alive={self.n_alive})")
+
+
 class EvoCA:
     """Thin ctypes wrapper around the EvoCA shared library."""
 
@@ -1408,6 +1457,156 @@ class EvoCA:
         with open(filepath, 'w') as f:
             json.dump(recipe, f, indent=2)
         return filepath
+
+    # ── Patch transfer (genome-level) ─────────────────────────────────
+    #
+    # extract_patch / stamp_patch implement the §11 transplant API of
+    # Docs/EvoCA_research_directions.md. They move *genomes* (LUT + all
+    # egene slots + active masks), never pixel state, so a transferred
+    # patch is a recipe re-seeded into a host field, not a frozen
+    # configuration. Built purely on existing per-cell accessors: the C
+    # getters return live array pointers, and evoca_set_lut() is the
+    # per-cell hook that refreshes the genome-hash cache (it folds the
+    # current egenes/active into the hash), so stamping writes egene
+    # planes first and finalises each cell with set_lut().
+
+    def _patch_bounds(self, r0, c0, side):
+        N = self._N
+        side = int(side)
+        if side <= 0:
+            raise ValueError(f"side must be positive, got {side}")
+        if side > N:
+            raise ValueError(f"side {side} exceeds lattice N={N}")
+        r0, c0 = int(r0), int(c0)
+        if not (0 <= r0 and r0 + side <= N and 0 <= c0 and c0 + side <= N):
+            raise ValueError(
+                f"patch r0={r0} c0={c0} side={side} out of bounds for "
+                f"N={N} (no periodic wrap; keep the region in-bounds)")
+        return r0, c0, side
+
+    def extract_patch(self, r0, c0, side):
+        """Snapshot the genomes of the square region whose top-left
+        corner is (r0, c0) and whose edge length is `side`.
+
+        Returns a PatchGenomes with all positions normalised to
+        patch-local coords (0..side-1). Pure read of the live C arrays;
+        the sim is left untouched."""
+        r0, c0, side = self._patch_bounds(r0, c0, side)
+        N = self._N
+        rs, cs = slice(r0, r0 + side), slice(c0, c0 + side)
+
+        lut = np.ctypeslib.as_array(
+            self._lib.evoca_get_lut(),
+            shape=(N * N * LUT_BYTES,)).reshape(N, N, LUT_BYTES)
+        egv = np.ctypeslib.as_array(
+            self._lib.evoca_get_egenes(),
+            shape=(N * N * 8,)).reshape(N, N, 8)
+        egm = np.ctypeslib.as_array(
+            self._lib.evoca_get_egenes_mask(),
+            shape=(N * N * 8,)).reshape(N, N, 8)
+        act = np.ctypeslib.as_array(
+            self._lib.evoca_get_active(),
+            shape=(N * N,)).reshape(N, N)
+        alv = np.ctypeslib.as_array(
+            self._lib.evoca_get_alive(),
+            shape=(N * N,)).reshape(N, N)
+
+        return PatchGenomes(
+            side=side, src_r0=r0, src_c0=c0, src_N=N,
+            lut=lut[rs, cs, :].copy(),
+            egenes=egv[rs, cs, :].copy(),
+            egenes_mask=egm[rs, cs, :].copy(),
+            active=act[rs, cs].copy(),
+            alive=alv[rs, cs].copy())
+
+    def stamp_patch(self, patch, r0, c0, mode='overwrite'):
+        """Write a PatchGenomes into the square region of this sim whose
+        top-left corner is (r0, c0).
+
+        mode='overwrite' : every patch cell replaces the host cell.
+        mode='invade'    : only patch-alive cells that land on a *dead*
+                           host cell are written (propagule into empty
+                           space); occupied host cells are left intact.
+
+        Stamped organisms are set alive with default v/f
+        (_STAMP_DEFAULT_V / _STAMP_DEFAULT_F); patch-dead cells in
+        'overwrite' mode kill the host cell. Returns the number of cells
+        actually written."""
+        if not isinstance(patch, PatchGenomes):
+            raise TypeError("patch must be a PatchGenomes")
+        if mode not in ('overwrite', 'invade'):
+            raise ValueError(f"mode must be 'overwrite' or 'invade', "
+                             f"got {mode!r}")
+        side = patch.side
+        r0, c0, side = self._patch_bounds(r0, c0, side)
+        N = self._N
+
+        lut = np.ctypeslib.as_array(
+            self._lib.evoca_get_lut(),
+            shape=(N * N * LUT_BYTES,)).reshape(N, N, LUT_BYTES)
+        egv = np.ctypeslib.as_array(
+            self._lib.evoca_get_egenes(),
+            shape=(N * N * 8,)).reshape(N, N, 8)
+        egm = np.ctypeslib.as_array(
+            self._lib.evoca_get_egenes_mask(),
+            shape=(N * N * 8,)).reshape(N, N, 8)
+        act = np.ctypeslib.as_array(
+            self._lib.evoca_get_active(),
+            shape=(N * N,)).reshape(N, N)
+        alv = np.ctypeslib.as_array(
+            self._lib.evoca_get_alive(),
+            shape=(N * N,)).reshape(N, N)
+        vv = np.ctypeslib.as_array(
+            self._lib.evoca_get_v(),
+            shape=(N * N,)).reshape(N, N)
+        ff = np.ctypeslib.as_array(
+            self._lib.evoca_get_f(),
+            shape=(N * N,)).reshape(N, N)
+
+        n_written = 0
+        for pr in range(side):
+            tr = r0 + pr
+            for pc in range(side):
+                tc = c0 + pc
+                src_alive = bool(patch.alive[pr, pc])
+                if mode == 'invade':
+                    # Only a live propagule cell may settle, and only on
+                    # empty (dead) ground. This is the null-respecting
+                    # invasion: it never displaces a resident.
+                    if not src_alive or alv[tr, tc]:
+                        continue
+                    _alive = 1
+                else:  # overwrite
+                    _alive = 1 if src_alive else 0
+
+                if _alive:
+                    egv[tr, tc, :] = patch.egenes[pr, pc, :]
+                    egm[tr, tc, :] = patch.egenes_mask[pr, pc, :]
+                    act[tr, tc]    = patch.active[pr, pc]
+                    vv[tr, tc]     = _STAMP_DEFAULT_V
+                    ff[tr, tc]     = _STAMP_DEFAULT_F
+                    alv[tr, tc]    = 1
+                    # set_lut() last: it rehashes the genome cache using
+                    # the egenes/active just written above.
+                    self._lib.evoca_set_lut(
+                        int(tr) * N + int(tc),
+                        patch.lut[pr, pc, :].ctypes.data_as(
+                            ctypes.POINTER(ctypes.c_uint8)))
+                else:
+                    # Patch said this cell is empty: clear the host cell
+                    # (mirrors evoca_set_alive's dead-cell zeroing) so
+                    # the transplanted region is faithful, then rehash.
+                    alv[tr, tc]    = 0
+                    vv[tr, tc]     = 0
+                    ff[tr, tc]     = 0.0
+                    act[tr, tc]    = 0
+                    lut[tr, tc, :] = 0
+                    self._lib.evoca_set_lut(
+                        int(tr) * N + int(tc),
+                        lut[tr, tc, :].ctypes.data_as(
+                            ctypes.POINTER(ctypes.c_uint8)))
+                n_written += 1
+        return n_written
 
     @property
     def N(self):
