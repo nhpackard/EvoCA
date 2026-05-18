@@ -236,6 +236,23 @@ static uint64_t  g_birth_counter = 0;    /* monotonic; 0 == "no birth"    */
 static int       g_births_last = 0;
 static int       g_deaths_last = 0;
 
+/* ── Realised per-component mutation flux (fixed-space shadows) ──────
+ * Accumulated DURING Phase-4 reproduction so the eg_activity /
+ * dyn_activity neutral baselines can be driven by the *measured* flux
+ * the run actually applied, not the nominal mu_* metaparameter
+ * (Docs/EvoCA_research_directions.md §2: "realised mutation flux …
+ * measured, not assumed"). Reset at the top of every evoca_step():
+ *   g_eg_bitflips_last  total egene bit flips applied to children this
+ *                        step (value + mask bits; the every-bit-uniform
+ *                        pass that drives ternary-key churn)
+ *   g_lut_bitflips_last total LUT bit flips applied to children
+ *   g_repro_last        reproduction events this step (== g_births_last
+ *                        but kept separate so the shadow stays correct
+ *                        even if births accounting changes) */
+static long      g_eg_bitflips_last  = 0;
+static long      g_lut_bitflips_last = 0;
+static long      g_repro_last        = 0;
+
 /* ── Neutral shadow forward decls (definitions appear after the
  *    activity-table section further below) ───────────────────────── */
 
@@ -243,6 +260,13 @@ static void neutral_apply_demography(int births, int deaths);
 static void neut_free_all(void);
 static void nact_reset(void);
 static void nact_free_all(void);
+
+/* ── Fixed-space neutral baselines (eg_activity / dyn_activity) ──────
+ * Closed-form drift shadows over the two fixed finite bucket spaces.
+ * Defined after the activity-table section; declared here so
+ * evoca_step() / evoca_init() can drive and reset them. */
+static void fs_shadow_reset(void);
+static void fs_shadow_step(int alive_pop);
 
 /* Adaptive age colormap scale: tracks max observed age, decays slowly. */
 static double    g_age_scale = 50.0;
@@ -811,6 +835,7 @@ void evoca_init(int N, float food_inc, float m_scale)
     memset(dyn_pop, 0, sizeof(dyn_pop));
     dyn_act_prev_y_init = 0;
     dyn_init_colors();
+    fs_shadow_reset();   /* fixed-space eg/dyn neutral baselines */
     g_sum_max_match = 0.0;
     g_sum_mouthful  = 0.0;
     g_eat_count = 0;
@@ -848,6 +873,7 @@ void evoca_free(void)
     memset(dyn_pop, 0, sizeof(dyn_pop));
     memset(pat_act, 0, sizeof(pat_act));
     memset(pat_pop, 0, sizeof(pat_pop));
+    fs_shadow_reset();
     gN = 0;
 }
 
@@ -1105,6 +1131,9 @@ void evoca_step(void)
     g_step++;
     g_births_last = 0;
     g_deaths_last = 0;
+    g_eg_bitflips_last  = 0;
+    g_lut_bitflips_last = 0;
+    g_repro_last        = 0;
 
     /* Phase 1: CA state update (double-buffered).
      *
@@ -1372,6 +1401,17 @@ void evoca_step(void)
             int mutated = (nf > 0 || na > 0 || ne > 0);
             births[child] = mutated ? 2 : 1;
 
+            /* Realised mutation flux for the fixed-space neutral
+             * baselines. The egene ternary key per active slot depends
+             * on the value+mask bit pass (ne) and on the presence-mask
+             * pass (na, which changes which slots contribute); both
+             * drive ternary-key churn so the eg shadow flux is na+ne.
+             * The dyn shadow keys on LUT (input,output) so its flux is
+             * the LUT bit-flip count nf. */
+            g_eg_bitflips_last  += (long)na + (long)ne;
+            g_lut_bitflips_last += (long)nf;
+            g_repro_last++;
+
             /* Refresh caches. Genome hash now depends on egenes too,
              * so we must recompute on any egene mutation as well as
              * any LUT mutation. The unchanged-from-parent fast-path
@@ -1406,6 +1446,16 @@ void evoca_step(void)
 
     /* Mirror real demography into the neutral shadow (no-op if disabled). */
     neutral_apply_demography(g_births_last, g_deaths_last);
+
+    /* Advance the fixed-space drift baselines (eg/dyn). Uses the alive
+     * count as the Wright–Fisher effective size and the realised flux
+     * accumulated above. No-op until the first eg/dyn update primes
+     * the shadow (fs_shadow_step is cheap and self-gates). */
+    {
+        int alive_pop = 0;
+        for (size_t i = 0; i < cells; i++) alive_pop += alive[i];
+        fs_shadow_step(alive_pop);
+    }
 }
 
 /* ── Activity tracking ─────────────────────────────────────────── */
@@ -1948,6 +1998,12 @@ int evoca_neutral_is_enabled(void)     { return neut_enabled; }
 int evoca_neutral_get_population(void) { return neut_enabled ? neut_n : 0; }
 int evoca_get_births_last(void)        { return g_births_last; }
 int evoca_get_deaths_last(void)        { return g_deaths_last; }
+
+/* Realised per-component mutation flux from the most recent step
+ * (see g_eg_bitflips_last / g_lut_bitflips_last / g_repro_last). */
+long evoca_get_eg_bitflips_last(void)  { return g_eg_bitflips_last; }
+long evoca_get_lut_bitflips_last(void) { return g_lut_bitflips_last; }
+long evoca_get_repro_last(void)        { return g_repro_last; }
 
 /* Alpha for the optional N-presence overlay tint, percent. Default 0
  * (disabled): the only N-derived element shown is the single white
@@ -2495,6 +2551,289 @@ int evoca_get_dyn_distinct(void)
     int n = 0;
     for (int i = 0; i < DYN_ACT_COUNT; i++) if (dyn_act[i] > 0) n++;
     return n;
+}
+
+/* ── Fixed-space neutral baselines (eg_activity / dyn_activity) ──────
+ *
+ * Docs/EvoCA_research_directions.md §2: eg_activity (729 ternary egene
+ * keys) and dyn_activity (500 LUT (input,output) buckets) live in
+ * FIXED finite bucket spaces, so their neutral models are closed-form
+ * Wright–Fisher drift baselines — no hash table, no realloc, no
+ * particle array. The 2026-05-16 causal-control campaign found the
+ * existing LUT-hash shadow models LUT bytes ONLY (get_activity hashes
+ * the FULL genome), so egene-driven excess was undefined; these two
+ * shadows close that gap.
+ *
+ * MODEL.  For a K-bucket space we maintain an occupancy *distribution*
+ * q[k] (probability vector) — the Bedau–Packard shadow's expected
+ * per-step composition under NEUTRAL inheritance (same demography &
+ * mutation as the real run, but parent choice is fitness-blind).
+ * Under the null there is no selection, so the shadow's expected
+ * composition equals the *realised* composition; it departs only via:
+ *
+ *   1. Mutation flux (realised, measured — NOT the nominal mu_*):
+ *      with realised per-component flux f the composition blends in
+ *      uniform-over-ALL-K mass,
+ *          q = (1 - m)·obs_freq + m·u_all ,   m = 1 - exp(-f),
+ *      so f = 0 ⇒ q ≡ obs_freq exactly (clonal: no heritable
+ *      variation, no selection ⇒ shadow == observed ⇒ excess ≈ 0).
+ *   2. Wright–Fisher drift on the injected variation (effective size
+ *      = realised alive pop Np): the spread mass relaxes toward the
+ *      uniform-over-occupied no-selection attractor at the WF mean-
+ *      field rate 1/Np, gated by m so it vanishes as flux → 0. The
+ *      closed-form drift variance q(1-q)/Np is available for callers
+ *      to z-score; it is not injected as stochastic noise (keeps the
+ *      baseline deterministic & reproducible).
+ *
+ * The shadow's cumulative activity receives the SAME total per-step
+ * mass T as the observed array (T = Σ observed pop this step), spread
+ * by q. So ΣN_shadow and ΣG_observed share one magnitude space and the
+ * per-component-normalised excess  ΣG/D_G − ΣN/D_N  is directly
+ * comparable, exactly mirroring python/evoca_explore.py's excess_pc_*.
+ *
+ * MODELLING CHOICE (flagged per task): §2 leaves "estimate realised
+ * mutation flux online" open. Chosen simplest defensible option:
+ * accumulate the actual Poisson-sampled bit-flip counts applied to
+ * children during Phase-4 (g_eg_bitflips_last / g_lut_bitflips_last)
+ * and divide by (events × bits-per-component) to get the realised
+ * per-component flip rate, then map to an any-flip probability via
+ * 1 - exp(-rate). This is measured, run-faithful, and zero-tunable.
+ * The WF mean-field (relax-to-uniform at 1/Np) is used to advance the
+ * baseline; the closed-form drift variance q(1-q)/Np is exposed so
+ * callers/tests can z-score, but is intentionally not applied as
+ * stochastic noise (keeps the baseline deterministic & reproducible). */
+
+#define EG_NB  EGENE_KEY_COUNT    /* 729 */
+#define DYN_NB DYN_ACT_COUNT      /* 500 */
+
+static double  eg_q[EG_NB];       /* shadow occupancy distribution    */
+static double  dyn_q[DYN_NB];
+static uint64_t eg_nact[EG_NB];   /* shadow cumulative activity        */
+static uint64_t dyn_nact[DYN_NB];
+static double  eg_nact_frac[EG_NB];   /* fractional carry (mass < 1)   */
+static double  dyn_nact_frac[DYN_NB];
+static int     fs_eg_primed  = 0;
+static int     fs_dyn_primed = 0;
+
+/* Private per-step OBSERVED eg activity, advanced every evoca_step()
+ * independently of the eg_activity probe. The probe's eg_act/eg_pop
+ * only advance when evoca_eg_activity_update() is called (typically
+ * once per sample, not per step), which would make the eg observed
+ * series undercount relative to its per-step drift baseline and to
+ * dyn_activity (whose dyn_act/dyn_pop ARE per-step via Phase 1). These
+ * private mirrors keep the eg excess symmetric with dyn and well-
+ * defined even when the eg_activity probe is disabled. They do NOT
+ * touch the probe arrays, so existing probe outputs are unchanged. */
+static uint32_t fs_eg_obs_pop[EG_NB];
+static uint64_t fs_eg_obs_act[EG_NB];
+
+/* Bits per "component" for the realised-flux → per-component-rate
+ * conversion.  eg: each active egene slot carries 12 mutable bits
+ * (6 value + 6 mask) that the every-bit pass churns, plus the 8-bit
+ * presence mask — we treat the egene ternary-key component as the
+ * 12-bit (value,mask) unit (the dominant key driver).  dyn: each LUT
+ * entry is a single bit. */
+#define EG_BITS_PER_COMPONENT  12.0
+#define DYN_BITS_PER_COMPONENT  1.0
+
+static void fs_shadow_reset(void)
+{
+    memset(eg_q,  0, sizeof(eg_q));
+    memset(dyn_q, 0, sizeof(dyn_q));
+    memset(eg_nact,  0, sizeof(eg_nact));
+    memset(dyn_nact, 0, sizeof(dyn_nact));
+    memset(eg_nact_frac,  0, sizeof(eg_nact_frac));
+    memset(dyn_nact_frac, 0, sizeof(dyn_nact_frac));
+    memset(fs_eg_obs_pop, 0, sizeof(fs_eg_obs_pop));
+    memset(fs_eg_obs_act, 0, sizeof(fs_eg_obs_act));
+    fs_eg_primed = fs_dyn_primed = 0;
+}
+
+/* Recompute the private per-step OBSERVED eg activity (alive cells'
+ * active-egene ternary keys) into fs_eg_obs_pop, accumulating into
+ * fs_eg_obs_act. Same scan as evoca_eg_activity_update() but writes
+ * only the private mirrors — the probe arrays eg_pop/eg_act are
+ * untouched, so probe behaviour is unchanged. */
+static void fs_eg_observe(void)
+{
+    size_t cells = (size_t)gN * gN;
+    memset(fs_eg_obs_pop, 0, sizeof(fs_eg_obs_pop));
+    if (!alive || !egenes || !egenes_mask || !active) return;
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) continue;
+        uint8_t a = active[i];
+        while (a) {
+            int s = __builtin_ctz(a); a &= a - 1;
+            uint8_t v = egenes[i * NEGENOME_MAX + s]      & 0x3F;
+            uint8_t m = egenes_mask[i * NEGENOME_MAX + s] & 0x3F;
+            int key = egene_ternary_key(v, m);
+            fs_eg_obs_pop[key]++;
+            fs_eg_obs_act[key]++;
+        }
+    }
+}
+
+/* One drift+flux+accumulate step for a single fixed space.
+ *   q[K]        occupancy distribution (Σ=1) — updated in place
+ *   nact[K]     cumulative shadow activity — incremented
+ *   frac[K]     sub-unit carry so small per-step mass isn't lost
+ *   obs_pop[K]  observed per-step bucket counts (real run, this step)
+ *   primed      0 until first call seeds q from the observed occupancy
+ *   flux_rate   realised per-component flip rate (flips / (events*bits))
+ *   Np          realised alive population (WF effective size)          */
+static void fs_space_step(double *q, uint64_t *nact, double *frac,
+                          const uint32_t *obs_pop, int K, int *primed,
+                          double flux_rate, int Np)
+{
+    /* Total observed mass this step. */
+    double T = 0.0;
+    int    occ = 0;
+    for (int k = 0; k < K; k++) {
+        T += (double)obs_pop[k];
+        if (obs_pop[k] > 0) occ++;
+    }
+    if (T <= 0.0) return;     /* no alive contributors: nothing to do  */
+
+    /* Observed composition this step (the realised bucket frequencies).
+     * Under the neutral NULL there is no selection, so the shadow's
+     * expected composition equals the *realised* composition — it is
+     * selection that would make them diverge. The shadow departs from
+     * this only through (a) mutation flux spreading mass toward
+     * uniform and (b) Wright–Fisher drift acting on that injected
+     * variation. With zero flux the population is effectively clonal
+     * in this bucket space (no heritable variation to drift, no
+     * selection to differ) ⇒ shadow == observed ⇒ excess ≈ 0. This is
+     * the property that makes the baseline a valid neutral model and
+     * is asserted by the zero-mutation test. */
+    if (occ < 1) occ = 1;
+    double u_occ = 1.0 / (double)occ;
+    double u_all = 1.0 / (double)K;
+    double invT  = 1.0 / T;
+
+    /* Realised per-component "any-flip" probability (measured flux,
+     * not the nominal mu_*). flux_rate ≤ 0 ⇒ m = 0 ⇒ pure tracking. */
+    double fr = flux_rate < 0.0 ? 0.0 : flux_rate;
+    double m  = 1.0 - exp(-fr);
+
+    /* Wright–Fisher drift acts ONLY on the mutation-injected fraction
+     * (no mutation ⇒ no new variants ⇒ no drift): it relaxes the
+     * spread mass toward the uniform-over-occupied no-selection
+     * attractor at the WF mean-field rate 1/Np, scaled by the flux m
+     * so it vanishes smoothly as flux → 0. */
+    if (Np < 1) Np = 1;
+    double drift = m / (double)Np;
+
+    if (!*primed) { *primed = 1; }    /* (kept for reset bookkeeping) */
+
+    for (int k = 0; k < K; k++) {
+        double obs_f = (double)obs_pop[k] * invT;     /* realised freq */
+        /* Neutral inheritance tracks the realised composition; mutation
+         * flux blends in uniform-over-ALL mass; WF drift nudges toward
+         * uniform-over-occupied. */
+        double qk = (1.0 - m) * obs_f + m * u_all;
+        double target = obs_pop[k] > 0 ? u_occ : 0.0;
+        qk += drift * (target - qk);
+        q[k] = qk;
+    }
+
+    /* Renormalise (guards FP drift) and accumulate cumulative activity
+     * with the SAME total mass T the observed array got this step. */
+    double s = 0.0;
+    for (int k = 0; k < K; k++) { if (q[k] < 0.0) q[k] = 0.0; s += q[k]; }
+    if (s <= 0.0) return;
+    double inv = 1.0 / s;
+    for (int k = 0; k < K; k++) {
+        double add = q[k] * inv * T + frac[k];
+        uint64_t whole = (uint64_t)add;
+        nact[k]  += whole;
+        frac[k]   = add - (double)whole;
+    }
+}
+
+/* Per-step driver: compute realised flux from the accumulated bit-flip
+ * counters and advance both fixed-space shadows. Called from
+ * evoca_step() after demography. Self-gates: does nothing meaningful
+ * until eg_pop/dyn_pop have been populated by an update call. */
+static void fs_shadow_step(int alive_pop)
+{
+    long events = g_repro_last;
+    /* Realised per-component flip rate; 0 when no reproductions. */
+    double eg_rate = 0.0, dyn_rate = 0.0;
+    if (events > 0) {
+        eg_rate  = (double)g_eg_bitflips_last
+                   / ((double)events * EG_BITS_PER_COMPONENT);
+        dyn_rate = (double)g_lut_bitflips_last
+                   / ((double)events * DYN_BITS_PER_COMPONENT);
+    }
+    /* Refresh the private per-step eg observed counts (probe-
+     * independent) so the eg baseline gets a per-step mass T just
+     * like dyn (whose dyn_pop is per-step via Phase 1). */
+    fs_eg_observe();
+    fs_space_step(eg_q,  eg_nact,  eg_nact_frac,  fs_eg_obs_pop, EG_NB,
+                  &fs_eg_primed,  eg_rate,  alive_pop);
+    fs_space_step(dyn_q, dyn_nact, dyn_nact_frac, dyn_pop, DYN_NB,
+                  &fs_dyn_primed, dyn_rate, alive_pop);
+}
+
+/* ── Public accessors for the fixed-space shadows ───────────────────
+ *
+ * Both return the per-component-normalised cumulative excess defined
+ * exactly as python/evoca_explore.py's excess_pc:
+ *     excess_pc = ΣG / D_G − ΣN / D_N
+ * where ΣG = Σ observed cumulative activity over occupied buckets,
+ *       D_G = # observed buckets with current pop > 0,
+ *       ΣN = Σ shadow cumulative activity over occupied buckets,
+ *       D_N = # shadow buckets currently carrying mass (q > 0 & seen).
+ * Under neutral drift ΣG/D_G ≈ ΣN/D_N ⇒ excess ≈ 0; under selection
+ * the real run concentrates activity on fewer buckets faster than
+ * drift ⇒ excess > 0.
+ *
+ * Both observed series are advanced every evoca_step() internally
+ * (eg via the private fs_eg_obs_* mirror, dyn via Phase 1), so the
+ * excess is well-defined with no caller-side update and regardless of
+ * whether the eg_activity / dyn_activity probes are enabled. */
+static double fs_excess_pc(const uint64_t *obs_act, const uint32_t *obs_pop,
+                           const uint64_t *nact, const double *q, int K)
+{
+    double sumG = 0.0; int DG = 0;
+    double sumN = 0.0; int DN = 0;
+    for (int k = 0; k < K; k++) {
+        if (obs_pop[k] > 0) { sumG += (double)obs_act[k]; DG++; }
+        if (q[k] > 1e-12 && nact[k] > 0) { sumN += (double)nact[k]; DN++; }
+    }
+    double gpc = DG > 0 ? sumG / (double)DG : 0.0;
+    double npc = DN > 0 ? sumN / (double)DN : 0.0;
+    return gpc - npc;
+}
+
+double evoca_eg_excess_pc(void)
+{
+    /* Uses the private per-step observed mirrors (probe-independent
+     * and per-step, symmetric with dyn) — NOT the probe's eg_act/
+     * eg_pop, which only advance on evoca_eg_activity_update(). */
+    return fs_excess_pc(fs_eg_obs_act, fs_eg_obs_pop,
+                        eg_nact, eg_q, EG_NB);
+}
+
+double evoca_dyn_excess_pc(void)
+{
+    return fs_excess_pc(dyn_act, dyn_pop, dyn_nact, dyn_q, DYN_NB);
+}
+
+/* Raw shadow cumulative-activity totals (Σ over occupied buckets) so
+ * callers can build their own normalisations / diagnostics. */
+double evoca_eg_shadow_total(void)
+{
+    double s = 0.0;
+    for (int k = 0; k < EG_NB; k++) s += (double)eg_nact[k];
+    return s;
+}
+
+double evoca_dyn_shadow_total(void)
+{
+    double s = 0.0;
+    for (int k = 0; k < DYN_NB; k++) s += (double)dyn_nact[k];
+    return s;
 }
 
 /* ── Egenome scalar stats probe ─────────────────────────────────────

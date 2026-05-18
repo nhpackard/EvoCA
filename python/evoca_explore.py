@@ -15,6 +15,11 @@ Metrics are organised on three axes:
     unique_top_genomes           : count of distinct genomes ever in top-1
     excess_activity_final        : ΣG − ΣN at end of run (Channon)
     excess_activity_slope        : linear slope of ΣG − ΣN over time
+    excess_pc_final/_slope       : per-component-normalised LUT-hash excess
+    eg_excess_pc_final/_slope    : fixed-space (729 ternary egene keys)
+                                   neutral-drift excess + its slope (§2)
+    dyn_excess_pc_final/_slope   : fixed-space (500 LUT input/output
+                                   buckets) neutral-drift excess + slope
 
   Spatial structure
     F_std_mean                   : mean over time of spatial std of F_food
@@ -215,6 +220,19 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
                 # the component-normalised excess (see summary block).
                 samples['N_distinct'].append(int(npop.sum()))
 
+            # Fixed-space neutral baselines (Docs/EvoCA_research_directions
+            # .md §2). These drift shadows run inside sim.step()
+            # automatically and are independent of the LUT-hash Channon
+            # shadow, so they are sampled regardless of `shadow`. They
+            # close the gap that the LUT-hash shadow leaves for
+            # egene-driven runs (get_activity hashes the FULL genome
+            # while the Channon shadow models LUT bytes only). eg_pop
+            # must be refreshed each sample; dyn_pop is maintained by
+            # Phase 1 every step.
+            sim._lib.evoca_eg_activity_update()
+            samples['eg_excess_pc'].append(sim.eg_excess_pc())
+            samples['dyn_excess_pc'].append(sim.dyn_excess_pc())
+
             samples['t'].append(t)
 
         if t < n_steps:
@@ -290,6 +308,33 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
             out['excess_pc_slope'] = float(slope_pc)
         else:
             out['excess_pc_slope'] = 0.0
+
+    # FIXED-SPACE excess (Docs/EvoCA_research_directions.md §2): the
+    # LUT-hash Channon shadow above models LUT *bytes* only, while
+    # get_activity hashes the FULL genome — so egene-driven excess was
+    # undefined. These two closed-form drift baselines (729 ternary
+    # egene keys; 500 LUT (input,output) buckets) close that gap. Each
+    # is already per-component-normalised in C exactly as excess_pc_*
+    # above (observed ΣG/D_G − drift ΣN/D_N); here we just fit the
+    # long-run slope, mirroring excess_pc_slope. Independent of the
+    # `shadow` flag (the drift shadows live inside sim.step()).
+    eg_t = np.asarray(samples['t'], dtype=float)
+    if samples['eg_excess_pc']:
+        eg_e = np.asarray(samples['eg_excess_pc'], dtype=float)
+        out['eg_excess_pc_final'] = float(eg_e[-1])
+        if len(eg_e) >= 2:
+            eg_slope, _ = np.polyfit(eg_t, eg_e, 1)
+            out['eg_excess_pc_slope'] = float(eg_slope)
+        else:
+            out['eg_excess_pc_slope'] = 0.0
+    if samples['dyn_excess_pc']:
+        dyn_e = np.asarray(samples['dyn_excess_pc'], dtype=float)
+        out['dyn_excess_pc_final'] = float(dyn_e[-1])
+        if len(dyn_e) >= 2:
+            dyn_slope, _ = np.polyfit(eg_t, dyn_e, 1)
+            out['dyn_excess_pc_slope'] = float(dyn_slope)
+        else:
+            out['dyn_excess_pc_slope'] = 0.0
 
     pop_arr = np.asarray(samples['alive_density'], dtype=float) * (N * N)
     if pop_arr.size:

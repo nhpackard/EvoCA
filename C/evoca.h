@@ -112,6 +112,34 @@ void evoca_q_activity_deciles(float *deciles_out);  /* 9 floats: p10..p90 */
 int evoca_get_births_last(void);
 int evoca_get_deaths_last(void);
 
+/* ── Realised per-component mutation flux (fixed-space shadows) ──────
+ * Bit-flip counts actually applied to children in the most recent
+ * evoca_step (measured, not the nominal mu_* metaparameter). Used to
+ * drive the eg_activity / dyn_activity neutral baselines. */
+long evoca_get_eg_bitflips_last(void);
+long evoca_get_lut_bitflips_last(void);
+long evoca_get_repro_last(void);
+
+/* ── Fixed-space neutral baselines (eg_activity / dyn_activity) ──────
+ *
+ * Closed-form Wright–Fisher drift shadows over the two FIXED finite
+ * bucket spaces (729 ternary egene keys; 500 LUT (input,output)
+ * buckets), driven by the realised per-component mutation flux. They
+ * close the gap left by the LUT-hash Channon shadow, which models LUT
+ * bytes only while get_activity hashes the full genome — so excess was
+ * undefined for egene-driven runs.
+ *
+ * evoca_eg_excess_pc / evoca_dyn_excess_pc return the per-component-
+ * normalised cumulative excess (observed ΣG/D_G − shadow ΣN/D_N),
+ * consistent with python/evoca_explore.py's excess_pc_*. ≈ 0 under
+ * neutral drift, clearly > 0 under selection. Advanced automatically
+ * inside evoca_step(); the caller must keep eg_pop/dyn_pop current via
+ * evoca_eg_activity_update() (dyn is updated by Phase 1 every step). */
+double evoca_eg_excess_pc(void);
+double evoca_dyn_excess_pc(void);
+double evoca_eg_shadow_total(void);
+double evoca_dyn_shadow_total(void);
+
 /* ── Neutral shadow population (Channon-style activity calibration) ────
  *
  * Shadow population mirroring the real run's demography under random
