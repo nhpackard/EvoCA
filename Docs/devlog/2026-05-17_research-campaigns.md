@@ -87,6 +87,34 @@ mu_egenome = tax_per_egene = 0`. 258 s on torque.
 
 ---
 
+## Campaign #8 (QUEUED, fires after #3) — direct lineage co-evolution metric
+
+Goal: replace the *indirect* excess-comparison evidence for LUT↔egene
+co-evolution with a *direct* measurement on the S2a lineage field.
+
+Design (ready to execute):
+- Run lineage ON at a #3a winner regime (LUT-pure-optimal substrate
+  with egene co-evolving) + the JOINT productive corner, multi-seed,
+  post-transient window.
+- Per parent→child edge, decompose change into ΔLUT (LUT-only hash
+  changed?) and Δegene (active egene key changed?) — snapshot per-cell
+  (birth_id, parent_id, lut-hash, egene-key) periodically; rebuild
+  chains via parent_id.
+- Statistic: correlation / excess joint-retention of (ΔLUT, Δegene)
+  across *surviving* edges **vs the neutral product of the two
+  marginal mutation frequencies**. Mutations are independent by
+  construction at the mutation step, so any correlation in surviving
+  edges beyond the mutation-rate product is *selection jointly
+  retaining co-adapted LUT+egene* — the clean, direct co-evolution
+  signal.
+- Decisive cross-check with #3: if 3a (good substrate) shows positive
+  joint-retention while 3b (frozen LUT) cannot, synergy is real
+  co-evolution, not the GoL-frozen-substrate handicap confound.
+
+Status: queued; auto-launches once #3 results are in.
+
+---
+
 ## Causal-control v2 (local)  (`Scans/2026-05-17_causal_control_v2`)
 
 Bug-corrected rerun of the 2026-05-16 v1 control (which had exposed

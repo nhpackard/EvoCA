@@ -61,6 +61,7 @@ Compute: torque (32 cores) + local. Findings in
 | 5 | genelife ring-ladder A/B | queued | — |
 | 6 | bifurcation sweep | queued | — |
 | 7 | patch-transfer 2×2 | queued | — |
+| 8 | direct lineage co-evolution metric (ΔLUT×Δegene joint-retention vs neutral) | queued (auto after #3) | spec ready in devlog; decisive 3a-vs-3b cross-check |
 | — | causal-control v2 (local) | ✅ done | shadows pass null controls EXACTLY (eg/dyn excess=0 when frozen); bug closed (eg_excess_pc +31 vs v1's −26); LUT+egene co-evo mutually amplify selection — corroborates #1/#2 |
 
 ## Integration status (2026-05-17) — ✅ MERGED & PUSHED
