@@ -16,7 +16,8 @@ stale pre-amend hash — backfill it from the real history.
 
 ## 2026-05-17
 
-- `pending` commit — queue campaign #8 (lineage co-evolution metric)
+- `pending` commit — consolidated scan analysis doc + per-dir notes.md
+- `37187ee` commit — queue campaign #8 (lineage co-evolution metric)
 - `b8c63a5` commit — causal-control v2 finding (metric validated, bug closed)
 - `9bda882` commit — #3 scan (egene-on-winners, 3a+3b paired)
 - `86f2b3f` commit — board: #3 running
