@@ -3,6 +3,8 @@ C/libevoca.so
 __pycache__/
 *.pyc
 .pytest_cache/
+Scans/**/run.log
+.venv/
 .ipynb_checkpoints/
 jupyter.out
 .DS_Store
