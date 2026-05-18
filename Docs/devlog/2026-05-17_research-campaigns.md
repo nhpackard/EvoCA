@@ -47,3 +47,40 @@ the **grid ceiling** — still unbracketed after pushing it from 1.5 to
 **Status.** Done (491 s on torque). `results.csv` versioned at
 `e6525b5`. Feeds #2/#3 (LUT-only → egene-on-winners) and #4
 (does spatial RD collapse under this objective?).
+
+---
+
+## Campaign #2 — pure-evo, LUT-only (egene frozen)  (`Scans/2026-05-17_pure_evo_lut_only`)
+
+**Setup.** 180 configs, same grid minus egene axes; `mu_egene =
+mu_egenome = tax_per_egene = 0`. 258 s on torque.
+
+**Findings.**
+- **0/180 extinct** — with the fully-specified egene frozen, the
+  population is extremely robust across the whole box.
+- `dyn_excess_pc_slope` is **positive but markedly smaller** than #1
+  joint (top configs ~3–20 vs #1's ~23–60). Freezing egene
+  *reduces* effective-rule-transition excess. Cross-campaign causal
+  inference (the causal-control logic at scan scale): **egene
+  co-evolution amplifies LUT effective-dynamics selection** — the two
+  subsystems are not independent; cognition evolving alongside the
+  rule makes the rule's effective selection stronger.
+- `excess_pc_slope` again ≈ 0 (occasionally tiny +ve) — whole-genome
+  excess remains a non-signal, consistent with #1.
+- **Optimum (contrasts #1):** LUT-only favours **high `mu_lut`
+  (0.15, ceiling)** + **high `m_scale` (2.0–2.5, ceiling)** + **low
+  `food_inc` (0.010, low edge)**. The mu_lut optimum is therefore
+  *conditional on egene*: with egene frozen, high LUT mutation is
+  favoured (raw rule exploration must substitute for the adaptive
+  cognition that's switched off); with egene co-evolving (#1), low
+  mu_lut wins and cognition does the adaptive work. This
+  mu_lut↔egene interaction is exactly the kind of metaparameter
+  relationship the program is after.
+- Spatial: top LUT-only configs keep `correlation_length` ~55–75 —
+  RD-scale structure persists under LUT-only pure-evo (relevant to
+  #4).
+- Multiple axes unbracketed at edges (`m_scale`, `mu_lut`,
+  `food_inc`-low) — feeds R1 and suggests a low-`food_inc` extension
+  too.
+
+**Status.** Done. `results.csv` versioned. Winners feed #3.

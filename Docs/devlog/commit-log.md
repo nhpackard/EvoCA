@@ -16,7 +16,8 @@ stale pre-amend hash — backfill it from the real history.
 
 ## 2026-05-17
 
-- `pending` commit — campaign devlog + board R-track + #1 finding
+- `pending` commit — #2 finding (devlog/board); #3 grid decision pending
+- `1eaafcc` commit — campaign devlog + board R-track + #1 finding
 - `0abb72d` commit — pure-evo #2 (LUT-only) scan + #1 results.csv
 - `bfee1b1` commit — hygiene: gitignore Scans run.log + .venv
 - `e6525b5` commit — Scans/2026-05-17_pure_evo_joint/scan.py (priority #1 pure-evo LUT+egene scan)
