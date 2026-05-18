@@ -208,6 +208,26 @@ static uint32_t  g_step    = 0;     /* global step counter */
 static uint8_t  *env_mask  = NULL;  /* [N*N] food regen mask; 1=regen, 0=no */
 static uint8_t  *alive     = NULL;  /* [N*N] 1=alive organism, 0=dead slot */
 
+/* ── Opt-in per-cell lineage record (research-directions §1) ──────────
+ * Default OFF; when off the Phase-4 hot path skips all lineage work and
+ * the arrays are never even allocated, so there is zero added cost. When
+ * enabled (evoca_enable_lineage(1) before evoca_init), each successful
+ * Phase-4 reproduction writes, for the child cell:
+ *   lin_parent_hash[child] = full-genome FNV-1a hash of the parent
+ *                            (== lut_hash_cache[parent], same hash the
+ *                             activity tracker uses)
+ *   lin_birth_id[child]    = monotonic birth counter (1-based; 0 = cell
+ *                            never born under tracking, e.g. founders)
+ *   lin_parent_id[child]   = parent's birth id (0 if parent was a
+ *                            founder / born before tracking)
+ * These are additive observables only; they do not influence the CA or
+ * any existing metric. */
+static int       g_lineage_on   = 0;     /* opt-in flag (set before init) */
+static uint32_t *lin_parent_hash = NULL; /* [N*N] parent full-genome hash */
+static uint64_t *lin_birth_id    = NULL; /* [N*N] this cell's birth id    */
+static uint64_t *lin_parent_id   = NULL; /* [N*N] parent's birth id       */
+static uint64_t  g_birth_counter = 0;    /* monotonic; 0 == "no birth"    */
+
 /* Per-step demography counters (used by the neutral shadow). A "birth" is
  * any successful reproduction event; a "death" is either a tax death or
  * the eviction of an alive cell by an overwriting reproduction. So
@@ -759,6 +779,13 @@ void evoca_init(int N, float food_inc, float m_scale)
     lut_color = calloc(cells,               sizeof(uint32_t));
     lut_hash_cache = calloc(cells,          sizeof(uint32_t));
     last_event_step = calloc(cells,         sizeof(uint32_t));
+    /* Lineage arrays allocated only when opted in (zero-cost when off). */
+    if (g_lineage_on) {
+        lin_parent_hash = calloc(cells, sizeof(uint32_t));
+        lin_birth_id    = calloc(cells, sizeof(uint64_t));
+        lin_parent_id   = calloc(cells, sizeof(uint64_t));
+    }
+    g_birth_counter = 0;
     env_mask = malloc(cells * sizeof(uint8_t));
     memset(env_mask, 1, cells);   /* default: all sites regenerate */
     alive = malloc(cells * sizeof(uint8_t));
@@ -806,6 +833,9 @@ void evoca_free(void)
     free(lut_color); lut_color = NULL;
     free(lut_hash_cache); lut_hash_cache = NULL;
     free(last_event_step); last_event_step = NULL;
+    free(lin_parent_hash); lin_parent_hash = NULL;
+    free(lin_birth_id);    lin_birth_id    = NULL;
+    free(lin_parent_id);   lin_parent_id   = NULL;
     free(env_mask);  env_mask  = NULL;
     free(alive);     alive     = NULL;
     evoca_activity_free();
@@ -1353,6 +1383,20 @@ void evoca_step(void)
                 lut_hash_cache[child] = lut_hash_cache[idx];
             }
 
+            /* Opt-in lineage record. Gated by g_lineage_on so the
+             * common (lineage-off) path costs nothing — the branch is
+             * perfectly predicted and the arrays are not even
+             * allocated. Parent identity = parent's full-genome hash
+             * (lut_hash_cache[idx], unchanged by reproducing into the
+             * child), plus a monotonic birth id and the parent's own
+             * birth id for parent→child chain walking. */
+            if (g_lineage_on) {
+                uint64_t bid = ++g_birth_counter;
+                lin_parent_hash[child] = lut_hash_cache[idx];
+                lin_parent_id[child]   = lin_birth_id[idx];
+                lin_birth_id[child]    = bid;
+            }
+
             /* v_curr is dynamical state, not genome — do not copy */
             float half    = f_priv[idx] * 0.5f;
             f_priv[idx]   = half;
@@ -1507,6 +1551,57 @@ int evoca_get_population(void)
     int pop = 0;
     for (size_t i = 0; i < cells; i++) pop += alive[i];
     return pop;
+}
+
+/* ── Opt-in lineage record API (research-directions §1) ──────────────
+ * Call evoca_enable_lineage(1) BEFORE evoca_init for the arrays to be
+ * allocated and Phase-4 writes to happen. Default OFF: zero added work
+ * in the hot path and no memory used. */
+void evoca_enable_lineage(int on)
+{
+    g_lineage_on = on ? 1 : 0;
+}
+
+int evoca_lineage_enabled(void)
+{
+    return g_lineage_on;
+}
+
+/* Copy the per-cell parent full-genome hash into out[N*N].
+ * 0 for cells with no recorded parent (founders / lineage off). */
+void evoca_get_lineage_parent_hash(uint32_t *out)
+{
+    size_t cells = (size_t)gN * gN;
+    if (!lin_parent_hash) {
+        for (size_t i = 0; i < cells; i++) out[i] = 0u;
+        return;
+    }
+    for (size_t i = 0; i < cells; i++) out[i] = lin_parent_hash[i];
+}
+
+/* Copy the per-cell birth id into out[N*N] (0 == cell never born under
+ * lineage tracking, e.g. a founder seeded by set_alive_all). */
+void evoca_get_lineage_birth_id(uint64_t *out)
+{
+    size_t cells = (size_t)gN * gN;
+    if (!lin_birth_id) {
+        for (size_t i = 0; i < cells; i++) out[i] = 0u;
+        return;
+    }
+    for (size_t i = 0; i < cells; i++) out[i] = lin_birth_id[i];
+}
+
+/* Copy the per-cell parent birth id into out[N*N] (0 == parent was a
+ * founder / born before tracking). Walk child.parent_id == parent's
+ * birth_id to reconstruct lineage chains. */
+void evoca_get_lineage_parent_id(uint64_t *out)
+{
+    size_t cells = (size_t)gN * gN;
+    if (!lin_parent_id) {
+        for (size_t i = 0; i < cells; i++) out[i] = 0u;
+        return;
+    }
+    for (size_t i = 0; i < cells; i++) out[i] = lin_parent_id[i];
 }
 
 void evoca_get_ages(int32_t *out)

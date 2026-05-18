@@ -170,6 +170,20 @@ int  evoca_get_population(void);
  * Dead cells get -1. */
 void evoca_get_ages(int32_t *out);
 
+/* ── Opt-in per-cell lineage record (research-directions §1) ──────────
+ * Default OFF. Call evoca_enable_lineage(1) BEFORE evoca_init to
+ * allocate the arrays and have Phase-4 reproduction record, per child:
+ * the parent's full-genome FNV-1a hash (same hash as the activity
+ * tracker), a monotonic birth id, and the parent's birth id (for
+ * parent->child chain walking). When OFF there is zero added work in
+ * the hot path and no memory used. Additive only — no effect on the
+ * CA or any existing metric. */
+void evoca_enable_lineage(int on);
+int  evoca_lineage_enabled(void);
+void evoca_get_lineage_parent_hash(uint32_t *out);  /* out[N*N] */
+void evoca_get_lineage_birth_id(uint64_t *out);     /* out[N*N] */
+void evoca_get_lineage_parent_id(uint64_t *out);    /* out[N*N] */
+
 /* ── Egenome activity tracking ─────────────────────────────────────── */
 
 void evoca_eg_activity_update(void);
