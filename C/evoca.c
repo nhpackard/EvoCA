@@ -171,6 +171,10 @@ static float  gp_dup_egene = 1.0f; /* prob that a 0→1 active flip
 static float  gtax        = 0.0f; /* priv food decrement per step */
 static float  gtax_per_egene = 0.0f; /* additional decrement per active egene */
 static float  gtax_lut    = 0.0f; /* additional decrement per LUT '1' bit */
+static float  gtax_ring   = 0.0f; /* additional decrement = gtax_ring × ring-
+                                   * dependence level (1/2/3), the same level
+                                   * the lut_complexity probe computes.
+                                   * Default 0 → bit-for-bit no-op. */
 static int    grestricted_mu = 0; /* 0=random mutation, 1=restricted to active bits */
 static int    g_diag        = 0; /* diagnostic prints */
 
@@ -255,6 +259,11 @@ static long      g_repro_last        = 0;
 
 /* ── Neutral shadow forward decls (definitions appear after the
  *    activity-table section further below) ───────────────────────── */
+
+/* lut_complexity() is defined in the LUT-complexity-probe section far
+ * below; the ring-dependence tax (Phase 2c) reuses it verbatim so the
+ * tax and the probe measure the exact same quantity. */
+static int  lut_complexity(const uint8_t *b);
 
 static void neutral_apply_demography(int births, int deaths);
 static void neut_free_all(void);
@@ -896,9 +905,11 @@ int   evoca_get_restricted_mu(void)  { return grestricted_mu; }
 void  evoca_set_tax(float t)      { gtax       = t; }
 void  evoca_set_tax_per_egene(float t) { gtax_per_egene = t; }
 void  evoca_set_tax_lut(float t)  { gtax_lut   = t; }
+void  evoca_set_tax_ring(float t) { gtax_ring  = t; }
 float evoca_get_tax(void)         { return gtax;      }
 float evoca_get_tax_per_egene(void) { return gtax_per_egene; }
 float evoca_get_tax_lut(void)     { return gtax_lut;  }
+float evoca_get_tax_ring(void)    { return gtax_ring; }
 void  evoca_set_diag(int d)      { g_diag     = d; }
 int   evoca_get_diag(void)       { return g_diag;    }
 
@@ -1185,10 +1196,12 @@ void evoca_step(void)
 
     /* Phase 2c: Tax — decrement private food; death if depleted.
      * Differentiated tax: tax = gtax + gtax_per_egene × Negene
-     *                          + gtax_lut × popcount(LUT bytes).
-     * gtax is the unconditional baseline; the other two coefficients
+     *                          + gtax_lut × popcount(LUT bytes)
+     *                          + gtax_ring × ring-level (1/2/3).
+     * gtax is the unconditional baseline; the other three coefficients
      * default to 0 so we reproduce single-rate-tax behaviour. */
-    if (gtax > 0.0f || gtax_per_egene > 0.0f || gtax_lut > 0.0f) {
+    if (gtax > 0.0f || gtax_per_egene > 0.0f || gtax_lut > 0.0f ||
+        gtax_ring > 0.0f) {
         for (size_t i = 0; i < cells; i++) {
             if (!alive[i]) continue;
             float t = gtax;
@@ -1215,6 +1228,15 @@ void evoca_step(void)
                 for (int k = 0; k < LUT_BYTES; k++)
                     pc += __builtin_popcount(lb[k]);
                 t += gtax_lut * (float)pc;
+            }
+            if (gtax_ring > 0.0f) {
+                /* Ring-dependence tax (research-directions §8):
+                 * level ∈ {1,2,3} = minimum ring set this cell's LUT
+                 * actually conditions on.  Reuse the *exact* classifier
+                 * the lut_complexity probe uses, so the tax and the
+                 * probe measure the same quantity. */
+                int lvl = lut_complexity(lut + i * LUT_BYTES);
+                t += gtax_ring * (float)lvl;
             }
             f_priv[i] -= t;
             if (f_priv[i] <= 0.0f) {
