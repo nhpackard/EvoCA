@@ -56,7 +56,7 @@ Compute: torque (32 cores) + local. Findings in
 |---|----------|--------|----------|
 | 1 | pure-evo LUT+egene | ✅ done | whole-genome excess≈0 everywhere; dyn/eg excess strongly +ve; low mu_lut + high m_scale wins (contradicts old broken-metric optimum) |
 | 2 | pure-evo LUT-only | ✅ done | 0/180 extinct; egene-freeze *reduces* dyn-excess (egene co-evo amplifies rule selection); LUT-only wants high mu_lut+m_scale, low food_inc — mu_lut optimum is conditional on egene |
-| 3 | #2 winners → egene scan | ⏸ awaiting grid decision | — |
+| 3 | #2 winners → egene scan (3a seeded-joint + 3b frozen-LUT) | ⏳ running (torque, 288 cfg) | — |
 | 4 | past evo+spatial winners → pure-evo: does RD vanish? | queued | — |
 | 5 | genelife ring-ladder A/B | queued | — |
 | 6 | bifurcation sweep | queued | — |
