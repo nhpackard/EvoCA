@@ -16,7 +16,9 @@ stale pre-amend hash — backfill it from the real history.
 
 ## 2026-05-18
 
-- `pending` commit — #4 recovered after DNS-drop (scan finished autonomously on torque): results + notes + devlog + board; finding = RD spatial structure not robust under pure-evo; R1 unblocked
+- `pending` commit — R1 results recovered & analysed (m_scale interior optimum ≈2.5–3.5, food_inc high, mu_lut×m_scale interaction, 36 % extinct): results + notes + devlog + board; board R1 resolved
+- `cad0be4` commit — R1 scan.py (bracket m_scale {2.5,3.5,5.0} + low-food_inc)
+- `1fd190e` commit — #4 recovered after DNS-drop (scan finished autonomously on torque): results + notes + devlog + board; finding = RD spatial structure not robust under pure-evo; R1 unblocked
 
 ## 2026-05-17
 

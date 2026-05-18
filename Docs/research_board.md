@@ -22,7 +22,7 @@ resolved/done; **FYI items (no decision) last**. None open right now.
 
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
-| R1 ✓ APPROVED — UNBLOCKED | research / next pure-evo scan | **User approved (2026-05-18):** bracket `m_scale ∈ {2.5,3.5,5.0}` (+ low-`food_inc` extension). Was gated on #4 → **#4 now done (2026-05-18)**, R1 ready to launch (run detached this time). | 2026-05-17 |
+| R1 ✓ DONE | research / next pure-evo scan | **Resolved 2026-05-18.** Both levers bracketed: m_scale productive optimum is **interior ≈2.5–3.5** (NOT runaway; 5.0 maximally viable but unproductive); food_inc optimum **HIGH** 0.013–0.018 (sub-0.010 closed). New finding: #1's "low mu_lut wins" is **conditional on m_scale ≤ 2.5**; U-shaped viability (36 % extinct, worst at intermediate m_scale under scarcity). Detached run survived a connectivity blackout. `Scans/2026-05-18_R1_mscale_bracket`. | 2026-05-17 |
 | D4 ✓ DONE | recipe export | Extend `metaparams_final`/`params()`/`_DEFAULTS` to the full param set (`mu_egenome`, `p_dup_egene`, `tax_per_egene` were also missing). **User: definitely extend.** Done `a1f70e2` (on `ring-tax`, merged) + round-trip test extended. | 2026-05-17 |
 | D2 ✓ DONE | S2b / `tax_lut` | Add `tax_lut`+`tax_ring` to recipe export so genelife ring-ladder configs reproduce. **User: add both.** Done `dca4afa` + `test_recipe_roundtrip.py`. | 2026-05-16 |
 | D3 ✓ RESOLVED | architecture / S2d | Worktree isolation breach (agent used absolute main paths + `cd` to main). Two-layer fix: (1) orchestrator asserts `main` clean before/after every agent — mechanism-agnostic, the real guarantee; (2) agent path-jail prompt. Relaunch verified-isolated. Standing policy for all future spawns. | 2026-05-16 |
@@ -92,6 +92,17 @@ the user's uncommitted notebooks). Hygiene fix first: untracked
 
 ## Log (newest first)
 
+- **2026-05-18** — **R1 done, recovered & analysed.** Launched
+  detached on torque (`nohup`+`disown`, `.venv` python); a
+  multi-minute VPN/torque connectivity blackout (torque drops ICMP
+  under load — SSH is the true health check; `charge` same-subnet
+  ping proved the tunnel healthy) left the detached run untouched —
+  finished in 743 s, recovered exactly like #4. **Findings:**
+  m_scale productive optimum interior ≈2.5–3.5 (runaway disproved);
+  food_inc optimum high 0.013–0.018 (low extension closed); #1's
+  low-mu_lut optimum is conditional on m_scale ≤ 2.5 (new
+  mu_lut×m_scale interaction); U-shaped viability (36 % extinct).
+  notes/devlog/board written; board R1 resolved.
 - **2026-05-18** — **Campaign #4 recovered & analysed.** Local DNS
   failure → reboot dropped the launching SSH session; the #4 scan had
   already **finished autonomously on torque** (`run.log`: "Done in

@@ -249,3 +249,82 @@ amplify selection in both subsystems** — synergistic, not
 independent. This corroborates the scan-scale #1-vs-#2 contrast with
 a clean controlled experiment (two independent methods, same
 conclusion).
+
+---
+
+## R1 — bracket the #1 unbracketed levers (m_scale, food_inc)  (`Scans/2026-05-18_R1_mscale_bracket`)
+
+**Setup.** User-approved 2026-05-18, gated on #4. Reruns the #1 joint
+design *identically* (300 cfg, 8000 ticks, N=256, same corrected
+metrics/seed/init) with only two axes changed: `m_scale ∈
+{2.5,3.5,5.0}` (bracket past #1's ceiling-pinned 2.5) and `food_inc ∈
+{0.005,0.008,0.010,0.013,0.018}` (extend below #2's 0.010 low edge).
+Rows therefore compare directly to #1. 300 rows, 0 errors, 743 s on
+torque (≈2.5 s/cfg — heavier than #1's ~1.6 s, expected at higher
+m_scale). Launched detached; survived a multi-minute VPN/torque
+connectivity blackout with zero impact (the #4 detachment lesson
+applied — `nohup`+`disown`, `.venv` python).
+
+**Headline 1 — m_scale is NOT runaway; productive optimum is
+interior ≈2.5–3.5.** Top-20 (corrected composite) m_scale frequency:
+**2.5×10, 3.5×8, 5.0×2**. m_scale 5.0 is the *most viable* (see
+Headline 3) yet barely appears among metric winners. So #1's
+2.5-at-ceiling was the *lower edge of a productive plateau*, not a
+true peak, and "more m_scale is better" is **disproved** — the lever
+is now bracketed with an interior optimum near 3. eg-excess is also
+markedly higher in R1 winners (top configs eg_excess ≈ 160–195 vs
+#1's ≈ 115–135): the higher-m_scale regime amplifies egene-cognition
+selection, consistent with #1's m_scale→cognition link, but
+saturates/declines by 5.0.
+
+**Headline 2 — food_inc optimum is HIGH; the low extension is
+closed.** Top-20 food_inc: **0.018×10, 0.013×8, 0.010×2,
+0.008/0.005 absent**. Sub-0.010 food_inc produces *zero* metric
+winners even at m_scale 5.0 where it is survivable. #2's LUT-only
+low-`food_inc` lean therefore **does not generalise to the joint
+corrected objective** — same conditional-on-egene/objective pattern
+already seen for the mu_lut optimum. The low edge is firmly bracketed
+shut.
+
+**Headline 3 — non-monotone U-shaped viability + a new
+mu_lut×m_scale interaction.** Extinction (final_pop=0) is **107/300
+(36 %)** vs #1's 16/300 (5 %), but structured:
+
+| m_scale \ food_inc | 0.005 | 0.008 | 0.010 | 0.013 | 0.018 |
+|---|---|---|---|---|---|
+| **2.5** | 23/23 | 10/12 | 6/17 | 2/23 | 0/21 |
+| **3.5** | 24/26 | 18/20 | 13/18 | 6/19 | 0/26 |
+| **5.0** | 2/19  | 2/20  | 1/19  | 0/15  | 0/22  |
+
+Extinction is *worst at intermediate* m_scale (2.5–3.5) under food
+scarcity and *lowest at m_scale 5.0 across all food_inc* — a U-shaped
+robustness landscape. Mechanism: intake `M=(m/25)·matches·F` must
+clear `tax`; at m_scale 2.5–3.5 with low F intake falls below tax →
+starvation collapse, while m_scale 5.0 clears tax even at scarce
+food. The earlier scans never saw this (m_scale capped at 2.5,
+food_inc never below 0.010). Consequently #1's **"low `mu_lut`
+wins" optimum is conditional on m_scale ≤ 2.5**: R1 top-20 mu_lut
+mode shifts to **0.15** (0.15×7, 0.03×6, 0.10×3, 0.01×2) vs #1's
+low-skewed (0.01×5, 0.03×6). mu_lut×m_scale is a genuine
+metaparameter interaction — exactly the class of relationship the
+program targets.
+
+**Through-line intact.** `excess_pc_slope` ≈ 0.000–0.001 in every top
+config (both R1 and #1) — whole-genome-hash excess remains a
+non-signal; `dyn_/eg_excess_pc` are the load-bearing probes. Fully
+consistent with #1/#2/causal-control-v2/§2.
+
+**Caveat (self-critique).** The composite used here is a z-normalised
+sum of `dyn/eg_excess_pc_slope`, `n_distinct_genomes_temporal_std`,
+`unique_top_genomes` — a faithful reconstruction of #1's ranking, not
+the canonical `evoca_from_scan_top` call. Two top-20 rows (m_scale
+2.5, mu_lut 0.15, `nDstd`≈14k–17k, modest fpop) look like
+near-collapse population *thrashing* inflating `nDstd`, not healthy
+diversity — the `nDstd` term can reward dying-population churn. The
+load-bearing evidence is therefore the **param-frequency shifts and
+the dyn/eg-excess-dominated rows (1,2,3,5,6,7: m_scale 2.5–3.5,
+food_inc 0.013–0.018, mu_lut 0.03–0.15)**, which are robust to
+ranking weights; the absolute composite ordering is not.
+
+**Status.** Done & recovered. `results.csv`/`scan_config.json` pulled
+to local; `notes.md` written. Resolves board R1.
