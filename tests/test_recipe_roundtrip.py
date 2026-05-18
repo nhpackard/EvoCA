@@ -1,9 +1,10 @@
-"""D2 regression: tax_lut and tax_ring must round-trip through .evoca
-recipes (both metaparams_init and metaparams_final), so the genelife
-ring-ladder A/B configs reproduce from a saved recipe.
-
-Guards the exact bug D2 fixed: these knobs were absent from
-params()/metaparams_final, so a saved recipe silently lost them.
+"""D2/D4 regression: the full metaparameter set must round-trip
+through .evoca recipes (both metaparams_init and metaparams_final),
+so saved configs reproduce. D2 added tax_lut/tax_ring (genelife
+ring-ladder A/B); D4 added mu_egenome/p_dup_egene/tax_per_egene
+(egene-driven §7 cognition experiments). Guards the exact bug: these
+knobs were absent from params()/metaparams_final, so a saved recipe
+silently lost them.
 """
 import os
 
@@ -47,3 +48,33 @@ def test_params_includes_tax_lut_ring():
         assert p.get('tax_ring') == pytest.approx(2e-3)
     finally:
         s.free()
+
+
+# D4: the rest of the param set (egene-driven recipes, e.g. the §7
+# cognition experiments) must also round-trip through metaparams_final.
+_D4 = dict(mu_egenome=4e-3, p_dup_egene=0.5, tax_per_egene=6e-4)
+
+
+@pytest.mark.parametrize("recipe_kind", ["init", "final"])
+def test_full_param_set_roundtrip(recipe_kind):
+    s = EvoCA()
+    s.init(32, **_D4)
+    s.state(lut='gol', egenome='uniform')
+    path = s.export_recipe(f"_pytest_d4_{recipe_kind}")
+    s.free()
+    try:
+        sim, _kw = import_run(path, recipe=recipe_kind)
+        try:
+            for k, v in _D4.items():
+                assert getattr(sim, k) == pytest.approx(v), \
+                    f"{k} lost in metaparams_{recipe_kind}"
+                assert s_params_get(sim, k) == pytest.approx(v)
+        finally:
+            sim.free()
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+
+
+def s_params_get(sim, k):
+    return sim.params().get(k)

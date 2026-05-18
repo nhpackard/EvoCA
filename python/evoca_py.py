@@ -567,7 +567,8 @@ class EvoCA:
     # ── Params export ─────────────────────────────────────────────────
 
     _DEFAULTS = dict(food_inc=0.0, m_scale=1.0,
-                      gdiff=0, mu_lut=0.0, mu_egene=0.0, tax=0.0,
+                      gdiff=0, mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
+                      p_dup_egene=1.0, tax=0.0, tax_per_egene=0.0,
                       tax_lut=0.0, tax_ring=0.0,
                       restricted_mu=0)
 
@@ -575,7 +576,9 @@ class EvoCA:
         """Return current metaparameters as a dict suitable for init(**d)."""
         return dict(N=self._N, food_inc=self.food_inc, m_scale=self.m_scale,
                     gdiff=self.gdiff, mu_lut=self.mu_lut,
-                    mu_egene=self.mu_egene, tax=self.tax,
+                    mu_egene=self.mu_egene, mu_egenome=self.mu_egenome,
+                    p_dup_egene=self.p_dup_egene, tax=self.tax,
+                    tax_per_egene=self.tax_per_egene,
                     tax_lut=self.tax_lut, tax_ring=self.tax_ring,
                     restricted_mu=self.restricted_mu)
 
@@ -1273,7 +1276,10 @@ class EvoCA:
                 'gdiff': self.gdiff,
                 'mu_lut': self.mu_lut,
                 'mu_egene': self.mu_egene,
+                'mu_egenome': self.mu_egenome,
+                'p_dup_egene': self.p_dup_egene,
                 'tax': self.tax,
+                'tax_per_egene': self.tax_per_egene,
                 'tax_lut': self.tax_lut,
                 'tax_ring': self.tax_ring,
                 'restricted_mu': self.restricted_mu,
