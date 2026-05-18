@@ -9,6 +9,8 @@ batch files carry the *why*.
 
 ## 2026-05-17
 
+- `ca1f35f` commit — `tests/README.md`: test-suite index (40 tests / 10 files, one-line descriptions)
+- `6ba31ad` commit — docs: merge review appended; commit-log ledger; board finalised
 - `9fdb3e6` merge — `bifurcation-harness` (R3 bifurcation/Feigenbaum)
 - `2bb9cd5` merge — `patch-transfer` (§11 extract/stamp + 2×2 assay)
 - `8783059` merge — `ring-tax` (§8 ring tax + D2 + D4)
