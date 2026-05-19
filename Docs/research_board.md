@@ -23,7 +23,7 @@ resolved/done; **FYI items (no decision) last**. **1 open: M1**
 
 | # | Workstream | Decision | Raised |
 |---|------------|----------|--------|
-| M1 ⚠ OPEN (merge gate) | #8 enabler | Merge branch `lut-hashes-accessor` (`09ef368`) → `main`? Purely additive accessor (`evoca_get_lut_hashes`), no dynamics change — 40 prior tests byte-for-byte unchanged, +2 new, clean `-Wall`. Gates building the #8 decisive co-evolution campaign. | 2026-05-18 |
+| M1 ⚠ OPEN (merge gate) | #8 enabler | Merge branch `lut-hashes-accessor` (`41550c3`) → `main`? Purely additive accessor (`evoca_get_lut_hashes`), no dynamics change — 40 prior tests byte-for-byte unchanged, +2 new, clean `-Wall`. **Review aid on the branch: `lut-hashes-accessor-test.ipynb`** (5 cells, all PASS, validated end-to-end). Gates building the #8 decisive co-evolution campaign. | 2026-05-18 |
 | R1 ✓ DONE | research / next pure-evo scan | **Resolved 2026-05-18.** Both levers bracketed: m_scale productive optimum is **interior ≈2.5–3.5** (NOT runaway; 5.0 maximally viable but unproductive); food_inc optimum **HIGH** 0.013–0.018 (sub-0.010 closed). New finding: #1's "low mu_lut wins" is **conditional on m_scale ≤ 2.5**; U-shaped viability (36 % extinct, worst at intermediate m_scale under scarcity). Detached run survived a connectivity blackout. `Scans/2026-05-18_R1_mscale_bracket`. | 2026-05-17 |
 | D4 ✓ DONE | recipe export | Extend `metaparams_final`/`params()`/`_DEFAULTS` to the full param set (`mu_egenome`, `p_dup_egene`, `tax_per_egene` were also missing). **User: definitely extend.** Done `a1f70e2` (on `ring-tax`, merged) + round-trip test extended. | 2026-05-17 |
 | D2 ✓ DONE | S2b / `tax_lut` | Add `tax_lut`+`tax_ring` to recipe export so genelife ring-ladder configs reproduce. **User: add both.** Done `dca4afa` + `test_recipe_roundtrip.py`. | 2026-05-16 |
@@ -94,6 +94,16 @@ the user's uncommitted notebooks). Hygiene fix first: untracked
 
 ## Log (newest first)
 
+- **2026-05-19** — **Pre-merge test-notebook protocol established.**
+  New standing convention (user): a brief runnable test notebook
+  accompanies a branch at its merge gate for hands-on human review
+  (exceptions allowed). First instance:
+  `lut-hashes-accessor-test.ipynb` committed on the branch
+  (`41550c3`), 5 cells mirroring `test_lut_hashes.py`, validated
+  end-to-end (all PASS). Branch `lut-hashes-accessor` is checked out
+  in worktree `/private/tmp/evoca_lut_hashes` — cannot also be
+  `git checkout`'d in the main folder (git one-branch-per-worktree
+  rule); inspect there or request the worktree be released.
 - **2026-05-18** — **#8 enabler built; #3c rescoped (parallel).**
   Per user, #8 accessor and #3c proceed in parallel (independent:
   C-change-in-worktree vs Python-only-on-main). #8: `lut-hashes-
