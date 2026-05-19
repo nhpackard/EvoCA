@@ -1651,6 +1651,23 @@ void evoca_get_lineage_parent_hash(uint32_t *out)
     for (size_t i = 0; i < cells; i++) out[i] = lin_parent_hash[i];
 }
 
+/* Copy the per-cell pure-LUT FNV-1a hash into out[N*N]. This is the
+ * LUT-only hash (lut_hash_fn over the 32 LUT bytes), NOT the combined
+ * LUT‖egene genome hash cached in lut_hash_cache. Needed by the #8
+ * lineage co-evolution metric to decompose a parent→child change into
+ * ΔLUT independently of Δegene. Dead cells carry a zeroed LUT, which
+ * hashes to a fixed value; callers gate on evoca_get_alive(). */
+void evoca_get_lut_hashes(uint32_t *out)
+{
+    size_t cells = (size_t)gN * gN;
+    if (!lut) {
+        for (size_t i = 0; i < cells; i++) out[i] = 0u;
+        return;
+    }
+    for (size_t i = 0; i < cells; i++)
+        out[i] = lut_hash_fn(lut + i * (size_t)LUT_BYTES);
+}
+
 /* Copy the per-cell birth id into out[N*N] (0 == cell never born under
  * lineage tracking, e.g. a founder seeded by set_alive_all). */
 void evoca_get_lineage_birth_id(uint64_t *out)

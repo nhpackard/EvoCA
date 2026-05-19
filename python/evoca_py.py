@@ -401,6 +401,9 @@ class EvoCA:
         L.evoca_get_lineage_parent_hash.argtypes = [
             ctypes.POINTER(ctypes.c_uint32)]
         L.evoca_get_lineage_parent_hash.restype  = None
+        L.evoca_get_lut_hashes.argtypes = [
+            ctypes.POINTER(ctypes.c_uint32)]
+        L.evoca_get_lut_hashes.restype  = None
         L.evoca_get_lineage_birth_id.argtypes = [
             ctypes.POINTER(ctypes.c_uint64)]
         L.evoca_get_lineage_birth_id.restype  = None
@@ -1187,6 +1190,18 @@ class EvoCA:
         lineage was not enabled."""
         out = np.zeros(self._N * self._N, dtype=np.uint32)
         self._lib.evoca_get_lineage_parent_hash(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)))
+        return out.reshape(self._N, self._N)
+
+    def get_lut_hashes(self):
+        """Return (N, N) uint32 of each cell's LUT-only FNV-1a hash
+        (hash of just the 32 LUT bytes), NOT the combined LUT‖egene
+        genome hash used by the activity tracker / lineage_parent_hash.
+        Lets the #8 lineage metric decompose parent→child change into
+        ΔLUT independently of Δegene. Dead cells hash their zeroed LUT
+        to a fixed value; gate on get_alive()."""
+        out = np.zeros(self._N * self._N, dtype=np.uint32)
+        self._lib.evoca_get_lut_hashes(
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)))
         return out.reshape(self._N, self._N)
 
