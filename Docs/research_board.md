@@ -28,6 +28,7 @@ resolved/done; **FYI items (no decision) last**. None open right now
 | D4 ✓ DONE | recipe export | Extend `metaparams_final`/`params()`/`_DEFAULTS` to the full param set (`mu_egenome`, `p_dup_egene`, `tax_per_egene` were also missing). **User: definitely extend.** Done `a1f70e2` (on `ring-tax`, merged) + round-trip test extended. | 2026-05-17 |
 | D2 ✓ DONE | S2b / `tax_lut` | Add `tax_lut`+`tax_ring` to recipe export so genelife ring-ladder configs reproduce. **User: add both.** Done `dca4afa` + `test_recipe_roundtrip.py`. | 2026-05-16 |
 | D3 ✓ RESOLVED | architecture / S2d | Worktree isolation breach (agent used absolute main paths + `cd` to main). Two-layer fix: (1) orchestrator asserts `main` clean before/after every agent — mechanism-agnostic, the real guarantee; (2) agent path-jail prompt. Relaunch verified-isolated. Standing policy for all future spawns. | 2026-05-16 |
+| F1 (FYI / follow-up) | metrics | #3c surfaced: S2d eg/dyn fixed-space shadows accumulate across a mid-run phase switch; slope-windowing mitigates but absolute excess is biased and `dyn_excess_pc` is an artifact on frozen-rich substrates. Small additive C change (re-baseline shadows at a switch point) recommended before any future phase-switch campaign leans on absolute excess. Not blocking #8 (lineage metric needs no shadow). | 2026-05-19 |
 | D1 (FYI) | S2a/b/c/d | Worktree-base quirk: agent worktrees based pre-S1; orchestrator rebased each onto `main` at the integration gate (done — all 5 S1✓, merged). No decision was needed. | 2026-05-16 |
 
 ---
@@ -64,7 +65,7 @@ Compute: torque (32 cores) + local. Findings in
 | 6 | bifurcation sweep | queued | — |
 | 7 | patch-transfer 2×2 | queued | — |
 | 8 | direct lineage co-evolution metric | **enabler MERGED (`f8d6d66`, M1).** `evoca_get_lut_hashes()` on `main`. Campaign harness now buildable: periodic `get_lut_hashes()` + active-egene-key + lineage (birth_id/parent_id) → joint-retention vs neutral marginal product. | 2026-05-17 |
-| 3c | evolve LUT-only → in-situ freeze → evolve egene (in-situ, no patch/S2c) | **spec FINALIZED & archived** → `Docs/plan-3c-coevolution-substrate.md` (user-approved 2026-05-19) | Single R1-informed regime both phases (m_scale 3.0, food_inc 0.015); phase-1 3000 / phase-2 8000; arms A(evolved-frozen)/C(evolved-co-evo, shared-fork via S1 determinism = the crux)/B+B′(GoL anchors); long-timescale ongoing-evolution diagnostic per user. Next: build harness on `main`, launch detached on torque |
+| 3c | evolve LUT-only → in-situ freeze → evolve egene | ✅ **done** (mixed/methodological) | 30/30 A/C determinism held. **3b's gap was mostly GoL-substrate death** (B 10/10 extinct; B′ viable but eg_excess≈0). Residual genuine freezing penalty C>A modest+consistent (22/30, mean +0.6, scales with substrate quality) but signal weak (≲1 vs #1's 20–135) & plateaued by 8k. **dyn_excess_pc artifact** on frozen-rich substrate (A≈+335, not biology). Decisive clean test now → #8. Spec `Docs/plan-3c-coevolution-substrate.md` |
 | — | causal-control v2 (local) | ✅ done | shadows pass null controls EXACTLY (eg/dyn excess=0 when frozen); bug closed (eg_excess_pc +31 vs v1's −26); LUT+egene co-evo mutually amplify selection — corroborates #1/#2 |
 
 ## Integration status (2026-05-17) — ✅ MERGED & PUSHED
@@ -94,6 +95,15 @@ the user's uncommitted notebooks). Hygiene fix first: untracked
 
 ## Log (newest first)
 
+- **2026-05-19** — **#3c done — mixed/methodological result.**
+  30/30 A/C determinism held (shared-fork valid). #3 3a≫3b gap is
+  **mostly GoL-substrate death** (B 10/10 extinct; B′ viable but
+  egene-excess≈0), with a **small consistent residual** freezing
+  penalty C>A (22/30, mean +0.6, scales w/ substrate quality) on a
+  **weak, plateaued** egene signal. Surfaced a **dyn_excess_pc
+  artifact** for frozen-rich substrates (memory:
+  dyn-shadow-frozen-rich-substrate). Clean decisive co-evolution
+  test now firmly = **#8**. Notes/devlog written; new follow-up F1.
 - **2026-05-19** — **#3c spec finalized & archived**
   (`Docs/plan-3c-coevolution-substrate.md`). User approved all 3
   decisions: R1-informed single regime (not #2-winner substrates —

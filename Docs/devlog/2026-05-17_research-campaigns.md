@@ -227,6 +227,86 @@ done; #8 promoted decisive, gated only on M1.)
 
 ---
 
+## Campaign #3c — egene on a frozen *evolved* substrate  (`Scans/2026-05-19_3c_coevolution_substrate`)
+
+**Setup.** Spec `Docs/plan-3c-coevolution-substrate.md`. Single
+continuous sim, in-situ phase switch (no patch/S2c). 80 rows
+(10 seeds × 3 phase-1 `mu_lut` × {A,C} + 10 B + 10 B′), 0 errors,
+650 s torque, launched detached (rode through the usual torque
+flakiness). **`determinism_ok=True` on all 30/30 A/C pairs** — the
+S1 shared-fork (D-4), the entire basis of the clean contrast, held
+exactly. Premise confirmed via the merged `get_lut_hashes()`:
+A/C `sub_frac_evolved=1.000`, ~38 000 distinct LUTs at the switch
+(phase-1=3000 is amply evolved — D-2's "1000 risks null" worry was
+right to be conservative; 3000 is solidly past it). B/B′ frac 0.0.
+
+**Result is mixed and partly methodological — reported honestly.**
+
+1. **The #3 3a≫3b gap was mostly GoL-substrate *viability
+   collapse*, not clean co-evolution synergy.** Plain frozen-GoL
+   (B), after a 3000-tick settle, is **10/10 extinct** (final_pop 0,
+   eg_slope 0 trivially) — exactly NP's "GoL dies to a dull fixed
+   point fast" intuition. So a large part of 3b's poor eg_excess was
+   *the population dying*, not *egene failing to evolve on a frozen
+   substrate*. Use **B′ (viable short-settled GoL) as the real
+   3b-analog anchor**: 0/10 extinct, final_pop ~55 600, but
+   `eg_excess_pc_slope ≈ 0` (−0.00006) — **frozen GoL ⇒ no egene
+   selection even when alive.** B itself mainly proves the regime is
+   lethal to settled GoL.
+
+2. **Residual genuine co-evolution effect, but modest and weak in
+   absolute terms.** Substrate held byte-identical, the only paired
+   contrast that isolates "freezing per se": **C−A `eg_excess_pc`
+   slope > 0 in 22/30 (whole phase-2) and 17/30 (late window), mean
+   +0.6 / +1.0.** Consistent direction (co-evolving rule helps egene
+   selection beyond a frozen evolved rule) — but the *magnitudes are
+   tiny* (per-arm |slopes| ≲ 1 vs #1/#3/causal-control's 20–135), and
+   it strengthens with substrate quality: by phase-1 `mu_lut`,
+   C−A = +0.03 (0.01) / +1.02 (0.03) / +0.80 (0.06). Net mapping to
+   the spec inference table: **C ≳ A ≫ B(dead)/B′(flat-zero)** — i.e.
+   *substrate-death dominates the 3b deficit, with a small real
+   ongoing-co-evolution component on top, on a weak-signal regime.*
+
+3. **Long-timescale (NP point 2): egene selection is NOT robustly
+   proceeding at 8000 ticks here.** Early-vs-late phase-2 windows:
+   eg_slope early strongly −ve (A −5.7, C −8.1 — switch transient as
+   egene mutation comes on), late ≈ 0 (A +0.03, C +1.06). It
+   **plateaus**, not grows, by ticks 7–8k in every arm. A clean
+   negative answer to "is evolution still proceeding robustly at that
+   timescale" *at this regime* — worth knowing.
+
+**Methodological caveat (load-bearing, must not be skipped).** A's
+`dyn_excess_pc_slope` ≈ **+335 ± 317** (vs C's ≈ +1) is an
+**artifact, not biology**. With `mu_lut=0` freezing a *rich evolved*
+substrate, realised LUT flux → 0, so the S2d dyn fixed-space neutral
+baseline degenerates toward 0 while the alive population keeps
+exercising the rich frozen rule → observed/≈0 → excess explodes. The
+causal-control v2 dyn-null (`dyn_excess_pc`=0 for EGENE_only) held
+*only because it froze GoL* (a sparse substrate); freezing an
+*evolved* substrate breaks that null. **`dyn_excess_pc` is
+uninterpretable for any frozen-evolved-substrate arm** (A here; also
+relevant to #8 and the ring-stability work). Use it only where
+`mu_lut>0` (C: ≈0 — itself consistent with R1 that this regime is not
+a strong rule-selection corner). New instance of the
+[[shadow-models-lut-only-mismatch]] family — logged to memory.
+
+**Honest bottom line.** #3c does *not* deliver a clean
+"co-evolution synergy is real and strong." It shows the headline 3b
+deficit was largely GoL **death**, leaves a **small but consistent**
+genuine freezing penalty (C>A) that scales with substrate quality,
+finds the egene signal **weak and plateaued** at this regime, and
+surfaces a **new dyn-shadow artifact** for frozen-rich substrates.
+The decisive clean co-evolution question now properly falls to **#8**
+(direct lineage joint-retention — no freezing, no shadow, immune to
+both the viability and the dyn-shadow confounds here).
+
+**Status.** Done & recovered; notes/devlog/board written. Suggest a
+follow-up board item: re-baseline the eg/dyn fixed-space shadows at a
+mid-run switch (small C addition) before any future phase-switch
+campaign leans on absolute excess.
+
+---
+
 ## Causal-control v2 (local)  (`Scans/2026-05-17_causal_control_v2`)
 
 Bug-corrected rerun of the 2026-05-16 v1 control (which had exposed
