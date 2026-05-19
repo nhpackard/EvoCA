@@ -14,10 +14,16 @@ referentially. Pure ledger-maintenance commits are not themselves
 logged. If an entry ever shows a hash not in `git log main`, it is a
 stale pre-amend hash — backfill it from the real history.
 
+## 2026-05-19
+
+- `pending` commit — board/devlog/ledger: M1 merged, #8 campaign unblocked, #3c params under discussion
+- `f8d6d66` merge — `lut-hashes-accessor` (M1): `evoca_get_lut_hashes()` #8 enabler + pre-merge notebook (brings branch commits `09ef368` accessor + `41550c3` notebook onto main)
+- `4e15987` commit — board: M1 review aid + pre-merge notebook protocol
+- *(branch-only, now merged via `f8d6d66`: `09ef368` accessor, `41550c3` test notebook)*
+
 ## 2026-05-18
 
-- `pending` commit — board/devlog: #8 enabler in-review (M1 gate), #3c rescoped to in-situ phase-switch (no patch/S2c, no C change)
-- *(branch `lut-hashes-accessor` `09ef368` — `evoca_get_lut_hashes()` #8 enabler; local, in-review, NOT on main — lands here only if M1 merges)*
+- `69024cc` commit — board/devlog: #8 enabler in-review (M1 gate), #3c rescoped to in-situ phase-switch (no patch/S2c, no C change)
 - `8231fc6` commit — R1 results recovered & analysed (m_scale interior optimum ≈2.5–3.5, food_inc high, mu_lut×m_scale interaction, 36 % extinct): results + notes + devlog + board; board R1 resolved
 - `cad0be4` commit — R1 scan.py (bracket m_scale {2.5,3.5,5.0} + low-food_inc)
 - `1fd190e` commit — #4 recovered after DNS-drop (scan finished autonomously on torque): results + notes + devlog + board; finding = RD spatial structure not robust under pure-evo; R1 unblocked
