@@ -206,7 +206,24 @@ Design (ready to execute):
   joint-retention while 3b (frozen LUT) cannot, synergy is real
   co-evolution, not the GoL-frozen-substrate handicap confound.
 
-Status: queued; auto-launches once #3 results are in.
+**Enabler built (2026-05-18).** The "snapshot per-cell lut-hash"
+step above needs a per-cell *LUT-only* hash; the activity tracker /
+`lineage_parent_hash` only expose the *combined* LUT‖egene genome
+hash (`lut_hash_cache`; the [[shadow-models-lut-only-mismatch]]
+issue). Added `evoca_get_lut_hashes(uint32_t *out)` — reuses the
+existing pure-LUT `lut_hash_fn` over each cell's 32 LUT bytes; purely
+additive, no dynamics change (the 40 pre-existing tests pass
+byte-for-byte; +2 new in `test_lut_hashes.py` pin egene-invariance —
+the property the combined hash fails — and correctness vs an
+independent Python FNV mirror; 42/42, clean `-Wall`). On branch
+`lut-hashes-accessor` (`09ef368`), local, awaiting the M1 human merge
+gate. Once merged, the #8 campaign harness can be built directly:
+periodically read `get_lut_hashes()` + active-egene-key + lineage
+(birth_id/parent_id) and apply the joint-retention statistic above.
+
+Status: enabler in-review (M1); campaign build unblocked on merge.
+(Original "auto-launches once #3 results are in" superseded — #3
+done; #8 promoted decisive, gated only on M1.)
 
 ---
 
