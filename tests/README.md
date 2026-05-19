@@ -8,7 +8,7 @@ python3 -m pytest -q tests/
 
 `conftest.py` rebuilds `C/libevoca.dylib` once per session if missing or
 stale, and provides a `make_sim` factory fixture (fresh `EvoCA`,
-auto-freed). 40 tests / 10 files. Each line below is what the test
+auto-freed). 42 tests / 11 files. Each line below is what the test
 actually asserts; the workstream tag links it to `Docs/devlog/`.
 
 ## CA core — `test_gol.py` (GoL oracles)
@@ -76,3 +76,8 @@ actually asserts; the workstream tag links it to `Docs/devlog/`.
 - `test_doubling_thresholds_and_delta_roundtrip` — fabricated doubling sweep → thresholds → δ end-to-end.
 - `test_to_scatter_flattens` — sweep results flatten to (xs, ys) scatter.
 - `test_sweep_driver_smoke` — one tiny real sweep: driver/sim wiring intact.
+
+## LUT-only hash accessor — `test_lut_hashes.py` (#8 enabler)
+
+- `test_lut_hash_is_egene_invariant_and_correct` — changing only the egenome leaves every lut-hash unchanged (the property the combined hash fails); uniform GoL LUT hashes to the independent Python FNV mirror.
+- `test_lut_hash_tracks_lut_change` — changing the LUT changes every cell's hash, matching the independent FNV mirror.

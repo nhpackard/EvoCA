@@ -212,6 +212,7 @@ int  evoca_lineage_enabled(void);
 void evoca_get_lineage_parent_hash(uint32_t *out);  /* out[N*N] */
 void evoca_get_lineage_birth_id(uint64_t *out);     /* out[N*N] */
 void evoca_get_lineage_parent_id(uint64_t *out);    /* out[N*N] */
+void evoca_get_lut_hashes(uint32_t *out);           /* out[N*N] LUT-only FNV-1a */
 
 /* ── Egenome activity tracking ─────────────────────────────────────── */
 
