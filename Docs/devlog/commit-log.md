@@ -16,7 +16,8 @@ stale pre-amend hash — backfill it from the real history.
 
 ## 2026-05-19
 
-- `pending` commit — board/devlog/ledger: M1 merged, #8 campaign unblocked, #3c params under discussion
+- `pending` commit — #3c spec finalized & archived (Docs/plan-3c-coevolution-substrate.md); board updated
+- `71e9661` commit — board/ledger: M1 merged, #8 campaign unblocked, #3c params under discussion
 - `f8d6d66` merge — `lut-hashes-accessor` (M1): `evoca_get_lut_hashes()` #8 enabler + pre-merge notebook (brings branch commits `09ef368` accessor + `41550c3` notebook onto main)
 - `4e15987` commit — board: M1 review aid + pre-merge notebook protocol
 - *(branch-only, now merged via `f8d6d66`: `09ef368` accessor, `41550c3` test notebook)*

@@ -64,7 +64,7 @@ Compute: torque (32 cores) + local. Findings in
 | 6 | bifurcation sweep | queued | — |
 | 7 | patch-transfer 2×2 | queued | — |
 | 8 | direct lineage co-evolution metric | **enabler MERGED (`f8d6d66`, M1).** `evoca_get_lut_hashes()` on `main`. Campaign harness now buildable: periodic `get_lut_hashes()` + active-egene-key + lineage (birth_id/parent_id) → joint-retention vs neutral marginal product. | 2026-05-17 |
-| 3c | evolve LUT-only → **in-situ** freeze (`mu_lut=0`) → evolve egene on the whole evolved lattice (NO patch/S2c) | design settled, **awaiting user param writeup** | scope changed (user 2026-05-18): drop patch/substrate transfer; single continuous sim, flip mutation rates in place — runtime setters already exist, **no C change**, runs on `main`. Pending: phase lengths, phase-1 source params, configs/seeds, control arms |
+| 3c | evolve LUT-only → in-situ freeze → evolve egene (in-situ, no patch/S2c) | **spec FINALIZED & archived** → `Docs/plan-3c-coevolution-substrate.md` (user-approved 2026-05-19) | Single R1-informed regime both phases (m_scale 3.0, food_inc 0.015); phase-1 3000 / phase-2 8000; arms A(evolved-frozen)/C(evolved-co-evo, shared-fork via S1 determinism = the crux)/B+B′(GoL anchors); long-timescale ongoing-evolution diagnostic per user. Next: build harness on `main`, launch detached on torque |
 | — | causal-control v2 (local) | ✅ done | shadows pass null controls EXACTLY (eg/dyn excess=0 when frozen); bug closed (eg_excess_pc +31 vs v1's −26); LUT+egene co-evo mutually amplify selection — corroborates #1/#2 |
 
 ## Integration status (2026-05-17) — ✅ MERGED & PUSHED
@@ -94,6 +94,14 @@ the user's uncommitted notebooks). Hygiene fix first: untracked
 
 ## Log (newest first)
 
+- **2026-05-19** — **#3c spec finalized & archived**
+  (`Docs/plan-3c-coevolution-substrate.md`). User approved all 3
+  decisions: R1-informed single regime (not #2-winner substrates —
+  R1 confound), phase-1 3000 / phase-2 8000, both B & B′ GoL
+  anchors. Added a first-class long-timescale ongoing-evolution
+  diagnostic (user: wants evidence evolution still proceeds robustly
+  at 8000 ticks). Crux = A-vs-C shared-fork via S1 determinism.
+  Next: build harness on `main`.
 - **2026-05-19** — **M1 merged.** `lut-hashes-accessor` →
   `main` (`f8d6d66`, `--no-ff`), user-approved after worktree review.
   dylib rebuilt on `main`, 42/42, clean `-Wall`. #8 campaign
