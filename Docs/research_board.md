@@ -64,7 +64,7 @@ Compute: torque (32 cores) + local. Findings in
 | 5 | genelife ring-ladder A/B | queued | — |
 | 6 | bifurcation sweep | queued | — |
 | 7 | patch-transfer 2×2 | queued | — |
-| 8 | direct lineage co-evolution metric | **enabler MERGED (`f8d6d66`, M1).** `evoca_get_lut_hashes()` on `main`. Campaign harness now buildable: periodic `get_lut_hashes()` + active-egene-key + lineage (birth_id/parent_id) → joint-retention vs neutral marginal product. | 2026-05-17 |
+| 8 | direct lineage co-evolution metric | **enabler merged; metric ON HOLD (2026-05-19).** Smoke-test caught binary-indicator degeneracy: `P(ΔLUT=lut-hash changed) ≈ 1` at any productive `mu_lut` (1−exp(−0.03·250)=0.9995; smoke confirmed 0.9993), so the 2×2 collapses and φ ≈ 0 *trivially*. Machinery (lineage capture, edge reconstruction, permutation null) sound & reusable; observable definitions need revision. User rethinking — flaw + 6 fix options archived in `Docs/plan-8-lineage-coevolution.md`. | 2026-05-17 |
 | 3c | evolve LUT-only → in-situ freeze → evolve egene | ✅ **done** (mixed/methodological) | 30/30 A/C determinism held. **3b's gap was mostly GoL-substrate death** (B 10/10 extinct; B′ viable but eg_excess≈0). Residual genuine freezing penalty C>A modest+consistent (22/30, mean +0.6, scales with substrate quality) but signal weak (≲1 vs #1's 20–135) & plateaued by 8k. **dyn_excess_pc artifact** on frozen-rich substrate (A≈+335, not biology). Decisive clean test now → #8. Spec `Docs/plan-3c-coevolution-substrate.md` |
 | — | causal-control v2 (local) | ✅ done | shadows pass null controls EXACTLY (eg/dyn excess=0 when frozen); bug closed (eg_excess_pc +31 vs v1's −26); LUT+egene co-evo mutually amplify selection — corroborates #1/#2 |
 
@@ -95,6 +95,16 @@ the user's uncommitted notebooks). Hygiene fix first: untracked
 
 ## Log (newest first)
 
+- **2026-05-19** — **#8 ON HOLD — metric design flaw caught in
+  smoke-testing.** Binary `ΔLUT` indicator saturates at any
+  productive `mu_lut` (`P=0.9995` at 0.03; LUT_BITS=250 makes
+  "any bit flipped" near-certain per reproduction), so the 2×2
+  collapses; φ ≈ 0 trivially. Harness machinery (lineage capture +
+  edge reconstruction + permutation null) sound and reusable; only
+  D1/D3 observable defs need revision. Spec doc amended with the
+  flaw + six possible fixes (Option A: magnitude/Hamming correlation
+  is the cleanest direct analog of the devlog statistic). User
+  rethinking; no torque launch; scan.py held local WIP, not pushed.
 - **2026-05-19** — **#3c done — mixed/methodological result.**
   30/30 A/C determinism held (shared-fork valid). #3 3a≫3b gap is
   **mostly GoL-substrate death** (B 10/10 extinct; B′ viable but

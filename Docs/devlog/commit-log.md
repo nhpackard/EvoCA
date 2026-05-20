@@ -16,7 +16,8 @@ stale pre-amend hash — backfill it from the real history.
 
 ## 2026-05-19
 
-- `pending` commit — #3c done: results + notes + devlog + board (mixed/methodological; 3b gap = GoL death; dyn-shadow artifact; clean test → #8); F1 follow-up
+- `pending` commit — #8 ON HOLD: design-doc amended with smoke-caught binary-indicator flaw + 6 fix options; board updated (harness held local WIP, not pushed)
+- `8906213` commit — #3c done: results + notes + devlog + board (mixed/methodological; 3b gap = GoL death; dyn-shadow artifact; clean test → #8); F1 follow-up
 - `524b8f8` commit — #3c harness (in-situ phase-switch scan, smoke-tested)
 - `9ba767a` commit — #3c spec finalized & archived (Docs/plan-3c-coevolution-substrate.md); board updated
 - `71e9661` commit — board/ledger: M1 merged, #8 campaign unblocked, #3c params under discussion
