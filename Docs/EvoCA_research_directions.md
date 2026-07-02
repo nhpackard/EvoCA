@@ -897,4 +897,181 @@ finite-size campaign, which drops to conditional (gated on the
 dynamical transitions).
 
 
+# On parallelization and dev logistics
+
+## NP
+
+❯ Thanks for clarification and agreement on framing.  Your added comments are useful.
+
+  Re proceeding with dev:
+
+  I'm happy that you like my suggestion of 'causal control' (your 7.3).  Let's definitely pursue this.  Do you have
+  enough specificity to launch runs on this right away?
+
+  So your roadmap 2 fixes the bug you identified?  Seems like we want to do that right away.
+
+  Sidebar:  I would like your introspection on how you found the bug noted in 2nd paragraph of your section 2.  I am
+  constantly worried that the model is complex enough, and the dynamical behavior is complex enough so that it is
+  difficult to tell if the code is bug free.  I would like to know:
+  - does your discovery of this bug suggest any further checks we might implement to search for other bugs?
+  - could we begin a test suite (using pytest or similar)?
+     - check that GoL works as it should.
+     - maybe identify some test cases where tax>XX => death tax<XX => life, and check these as a test.
+     - other?
+
+  Proceeding: my normal mode of interacting with you seems to have my personal interaction with you as a bottleneck.
+   I would like your suggestions on parlaying your manegerial powers to have multiple threads of the research program
+   going in parallel (e.g. everywhere you suggest a branch in the repo could be handled by independent agents).  I
+  read that ex-Anthropic Boris Cherny says he has 'thousands of agents running overnight' with a fairly vanilla
+  Claude code setup.  I am not suggesting that we push to thousands of agents, but I am suggesting we might move in
+  the direction of running more agents in parallel.
+
+  If I were to do things manually, I would perhaps start multiple claude code sessions.  But that would put me always
+   in the critical path of progress, and I am trying to find ways to offload these critical paths to you.
+
+  I await your suggestion here.
+
+## Claude
+
+⏺ The causal control already paid off — on its first run it surfaced a second instrumentation bug. Saving that
+finding, then answering your questions.
+
+Wrote 2 memories (ctrl+o to expand)
+
+⏺ Everything below is done and verified; the campaign and tests have already run.
+
+1. §7.3 causal control — launched, finished, and it already found a second bug
+
+Specificity was sufficient: the reciprocal controls need zero new code — run_sim already seeds lut='gol' +
+egenome='uniform' every run, so "freeze LUT" is just mu_lut=0 and "freeze egene" is just mu_egene=mu_egenome=0.
+Driver: Scans/2026-05-16_causal_control/driver.py, 3 arms × 3 seeds at the egene_discussion V3 corner (N=128, 3000
+ticks), each run in its own process (maxtasksperchild=1) so the per-process RNG is fresh — these results are
+reproducible (variance across seeds is tiny, confirming it).
+
+Results (means over 3 seeds, all non-extinct):
+
+
+| arm | spec | load | intake | n_distinct | excess_pc_slope |
+| ---| ---| ---| ---| --- | --- |
+| JOINT |  16.2|  19.3|   0.050|        2842|           +0.003 | 
+| LUT_only (egene frozen)|  25.0|  25.0|   0.054|        2056|           +0.002 | 
+|  EGENE_only (LUT frozen)| | 20.6|  29.2|   0.061|         147 |            −25.9| 
+
+
+
+Two findings:
+
+- Substantive science: with the substrate frozen (EGENE_only), cognition evolves the highest food intake (0.061 vs
+JOINT 0.050) and the most cognitive load — egene evolution genuinely improves feeding when the LUT isn't shifting
+underneath it. This is the cleanest "cognition pays" signal yet, and it's only visible because the control isolates
+it.
+- A second bug, found by the control itself: EGENE_only's excess_pc_slope ≈ −26 (consistent across seeds) is not
+"egene evolution fails." The neutral shadow in C/evoca.c carries LUT bytes only, but get_activity hashes the full
+genome (LUT ‖ egene). So excess activity compares full-genome diversity against an LUT-only baseline — it is
+undefined for any egene-driven run. This directly confirms §2's recommendation to build the fixed-space eg_activity
+shadow, and it means the EGENE_only/JOINT excess numbers must not be interpreted until that exists. Saved to project
+memory.
+
+2. Roadmap-2 fix — done
+
+python/evoca_explore.py now emits excess_pc_slope / excess_pc_final (component-normalised ΣG/D_G − ΣN/D_N, the
+Channon-2006 correction) alongside the legacy raw metric, which is retained and flagged in-code rather than silently
+dropped. One decision I deliberately did not make unilaterally: EVO_METRICS still lists excess_activity_slope.
+Switching it to excess_pc_slope changes nearest_evo's behaviour and the meaning of any future "evo" scan — that's
+your call. Recommendation: switch it, and re-rank the evo_focus scan with the corrected metric before any campaign
+trusts the mu_lut=0.06 optimum. Say the word and I'll flip it.
+
+Note this fix is necessary but not sufficient — finding #1 above shows the deeper shadow-scope bug is independent of
+the normalization.
+
+Sidebar: how I found the §2 bug, and what it implies
+
+The reasoning path, honestly: I didn't find it by reading C line-by-line. I found it by a consistency cross-check
+between two documents you'd written. scan_analysis.md reported excess_activity_slope falling while the other three
+evo metrics rose, and labelled it a "known quirk." That phrase was the trigger: a metric moving opposite to every
+correlated metric, explained away rather than explained, is a smell. I then traced the metric back to its definition
+(run_sim), then to the shadow construction in C, and the bug was visible at evoca.c:1715 — the shadow uses the same
+mutation operator as the real run, which stops being "neutral" at high μ. The generalizable move: a metric whose
+anomaly has been rationalized in prose is a prime suspect; chase it to its lowest-level definition. The causal
+control found bug #2 by a different mechanism — a designed discrepancy (freeze one subsystem, see if a metric does
+something impossible).
+
+That gives the two highest-yield bug-hunting strategies for a model this complex:
+
+1. Differential/invariant tests (cheap, deterministic): freeze a subsystem and assert a metric cannot move; assert
+conservation laws (food is transferred, not created — sum of f+F changes only by food_inc minus what tax destroys;
+reproduction splits food 50/50; dead cells are fully zeroed). These catch the "metric measures something other than
+you think" class — exactly bug #2.
+2. Analytic-oracle tests (cheap, exact): GoL is a closed-form oracle; the tax deadline ceil(f0/tax) is closed-form.
+Anywhere the model reduces to arithmetic you can compute by hand, assert the exact value.
+
+Further checks worth adding (not yet done): a food-conservation invariant test (instrument total f+F per step,
+assert the only sinks/sources are food_inc, tax, and the eating transfer — this would catch a whole class of
+accounting bugs in Phases 2–4); a reproduction invariant (child genome == parent genome when all mutation rates are
+0; food exactly halved); and a shadow-scope assertion (the shadow's diversity space must match the activity hash's
+space — the bug #2 guard).
+
+The test suite is started (tests/, runs with python3 -m pytest -q, 8 passing):
+- test_gol.py — blinker period-2, block still-life, glider (1,1)-translation, and LUT-stability-under-zero-mutation.
+The GoL oracles passing is strong evidence the CA core is correct.
+- test_tax_survival.py — high-tax kills by the exact ceil(f0/tax) deadline and not before; zero-tax persists;
+dead-cell zeroing invariant.
+- test_metrics_regression.py — locks in the roadmap-2 fix so a refactor can't silently drop it (the exact failure
+mode the original bug exploited).
+
+One of my own tests failed first run — it called get_activity without evoca_activity_update(). That's instructive:
+it's the same class of error as bug #2 (assuming a probe reflects state without the update that populates it), and
+the test suite caught it immediately. The harness works.
+
+Parallelization — proposal (awaiting your go-ahead before spawning anything)
+
+The honest constraints first, because they shape the design:
+
+- Scientific runs are CPU-bound and already parallel. Your scans saturate 12+ cores via multiprocessing.Pool. Ten
+agents each launching a scan would contend for the same cores and run slower, not faster. Agent parallelism helps
+independent code/analysis workstreams, not throughput of one CPU-bound campaign.
+- The determinism bug (evoca_set_seed) is a hard prerequisite for any parallel scientific campaign — without it,
+parallel runs aren't reproducible and the results don't compose. This gates the parallel-research vision; it should
+be the very first parallelized task's output.
+- Shared mutable repo state (the single C/libevoca.dylib, Runs/, Scans/) means concurrent agents editing/building
+collide unless isolated.
+
+Given that, the design that actually offloads you:
+
+Tier A — parallel now, independent, isolated (safe to run many): the branch-tagged directions from §12 are
+embarrassingly parallel because each is a separate branch with no shared files. Each runs as a background agent in
+its own git worktree (isolation: "worktree"), so builds and edits never collide:
+- ring-tax (§8) — C change + genelife A/B
+- mu-genome (§10) — C change + error-threshold protocol
+- patch-transfer (§11) — new API + reciprocal-control harness
+- lineage-field (§1) — opt-in C field + benchmark
+
+Plus analysis-only agents on main (read-mostly, low collision): the bifurcation-diagram harness (R3), the
+eg_activity/dyn_activity fixed-space shadows (§2), the evoca_set_seed fix (do this one first and alone — everything
+else depends on it).
+
+Tier B — coordination so you're not the bus. The bottleneck isn't compute, it's integration decisions. The mechanism
+that removes you from the critical path:
+- A single tracked Docs/research_board.md — one row per workstream: branch, owner-agent, status, last result,
+blocking-question, decision-needed. Each agent appends its result and any decision it needs; it does not block
+waiting for you.
+- A nightly orchestrator (via /schedule or a cron routine) that: pulls each worktree's status, runs the test suite
+against each branch, writes a digest to the board, and only flags the specific decisions that need a human. You read
+one digest in the morning instead of N agent transcripts.
+- Branches never auto-merge. Agents propose; merge stays a human gate (the §8/§10 dynamics-altering changes
+especially — a half-tuned tax contaminates everything).
+
+Concretely, what I'd spawn if you approve, in dependency order:
+1. Alone, first: one agent — evoca_set_seed + determinism fix on main. Everything waits on this.
+2. Then, parallel worktree agents: lineage-field, ring-tax, patch-transfer, plus a main analysis agent for the
+bifurcation harness and the eg/dyn shadows.
+3. Nightly: orchestrator digest to research_board.md.
+
+This keeps you out of the per-step loop while keeping you the merge authority. I have not spawned anything — the
+system constraint is that I should only launch sub-agents when you explicitly direct it. Tell me to proceed (and
+with which of the steps 1–3), and whether you want the nightly orchestrator on /schedule.
+
+Nothing committed. The working tree now has: the research-doc edits + Docs/references/, the evoca_explore.py fix,
+tests/, Scans/2026-05-16_causal_control/. Want me to commit these (logically grouped — doc, fix+tests, campaign)
+now?
 

@@ -31,58 +31,91 @@ This section is not particular to egenes and evolution of cognition, but a featu
 
 I propose to be able to extract a patch of the population (e.g. middle square of lattice, side length 1/3 of lattice), then insert that into another population, either initialized or itself evolved, to then observe whether the patch grows or shrinks.  growth => "evolutionary success", shrink => "evolutionary failure"
 
-# implementation status (2026-05-10)
+# Claude:
 
-Item 1 (ternary egenes + scoring + tax(b) + new probe) landed across
-commits `bb9ca18..` plus follow-ups for the new `egene` probe and
-docs.
+Good direction — a few reactions and questions before any code lands.
 
-Settled choices:
-- Encoding: parallel `egenes_value[N*N*8]` + `egenes_mask[N*N*8]`,
-  6 bits used per byte. Backward-compat default mask = 0x3F.
-- Scoring: raw_score = sum over non-wildcard cell-positions of ±1,
-  range `[−25, +25]`. Mouthful = `(m_scale/25) × max(0, raw_score) ×
-  F_food`. No normalisation.
-- Tax (option b): `tax_per_egene × sum_over_active(non_wildcard_positions)`,
-  where positions per orbit = `[1, 4, 4, 4, 4, 8]`. Max contribution
-  per cell = `tax_per_egene × 200`.
-- Mutation: `mu_egene` per-bit rate over all 8×12 = 96 bits per cell
-  (6 value + 6 mask per slot). Bits 0..5 hit value, 6..11 hit mask.
-- Species hash: includes `(value & mask, mask)` per active slot,
-  sorted lex. Wildcard bits don't shift identity.
+  Ternary egenes (0/1/*). Sharpening agreed. Storage cleanest as two uint8 per egene: value[6 bits] and mask[6 bits],
+  where mask bit = 1 means non-*. Doubles per-cell egene storage from 8 → 16 bytes (still trivial). With mask=0x3F
+  (all non-*), the new model behaves identically to the current one except for the −1 penalty term, so it's not
+  strictly backward-compat — old scan winners will eat differently.
 
-New probe `egene` (3 sub-strips, 192 px):
-- `spec` (mean cognitive specificity) y in `[0, 25]`
-- `load` (mean per-cell cognitive load) y in `[0, 200]`
-- `food` (mean intake per eater this step) y in `[0, 1]`
+  +1/−1 scoring with normalization. I'd push back gently on normalising — the natural pressure of the system is that a
+   richer egene (more non-*) has both higher max reward and higher tax, and forcing them to map to the same [0, 1]
+  range erases the "complexity costs more, pays more when right" gradient that makes it interesting. My
+  recommendation:
 
-Validation at the scan-3 productive corner (`food_inc=0.013,
-m_scale=1.2, gdiff=0.06`, N=128, 2000 ticks):
+  - raw_score = sum over the 25 cell-positions covered by non-* orbits of ±1, range [−25, +25]
+  - mouthful = (m_scale / 25) × max(0, max_over_active_egenes(raw_score)) × F_food
 
-| Run                                    | spec  | load  | intake | alive |
-|----------------------------------------|------:|------:|-------:|------:|
-| V1: zero new knobs (mask=0x3F default) | 24.4  | 24.4  | 0.056  | ok    |
-| V2: mu_egenome=0.005, tax_per_eg=1e-4  | 20.7  | 38.0  | 0.045  | ok    |
-| V3: mu_egenome=0.005, tax_per_eg=8e-4  | 15.6  | 20.1  | 0.049  | ok    |
+  Clamp at 0 because negative eating is biologically odd, but keep the un-normalised range so a 1-orbit egene tops out
+   at +1 and a 6-orbit egene tops out at +25. Open to discussion if you have a specific normalisation in mind.
 
-V1 stays near maximum specificity because masks start at 0x3F and
-only drift slowly under `mu_egene=0.003`. V2 sees specificity drift
-down toward an intermediate value while cognitive load grows from
-the unbounded Negene pressure. V3's higher per-position tax bites
-both axes — fewer slots active and fewer non-wildcard positions per
-slot, with a small intake penalty (0.045 → 0.049 was within
-run-to-run variance).
+  etax. Two readings of "non-* elements":
 
-Initial-fitness concern (cognition starts low → may not survive):
-not observed at these parameters with the scan-3 corner. Default
-`set_egenome_all` keeps mask=0x3F so the simulation seeds with
-fully-specified egenes; if `set_egenome_random_all` is used,
-specificity starts at ~12.5 (random masks) and the population
-typically still survives at the scan-3 corner with `tax_per_egene=0`.
+  - (a) literal: count of non-* orbits (0–6) — tax cap at tax_per_egene × 6.
+  - (b) count of non-* cell positions (0–25), so the corner orbit (4 cells) costs 4× the centre orbit (1 cell) —
+  closer to actual cognitive cost.
 
-# next
+  I'd default to (b); centre-orbit-only egenes with perfect match are the cheapest possible "cognition" then, which
+  feels right.
 
-- Item 2 (patch transfer): start when ready.
-- New scan grid using the cognitive metrics in the score —
-  `cog_specificity_mean`, `cog_load_mean`, `mean_intake_mean`
-  (exported as `COG_METRICS` in `evoca_explore`).
+  Measures review. With the ternary change, I'd add to the egenome probe (or a paired probe):
+
+  - mean non-* count per egene (cognitive specificity)
+  - mean non-* count per cell (sum over active egenes — total cognitive load)
+  - mean eaten food per alive cell per tick — this is the measure that actually answers "are eaters getting better?"
+  and we don't have a clean version of it yet (the closest is f_priv, but that's the stash, not the intake rate).
+
+  Channon excess and lut_div/eg_ent stay useful but become coarser indicators next to those.
+
+  Patch transfer. Clean concept — implementation details to nail down:
+
+  - Patch contents: alive, LUT, egenes, active, v_curr. Should f_priv go too (the patch carries its energy reserves)?
+  I'd say yes — otherwise the transplant starts hungry and dies before it can demonstrate fitness.
+  - F_food stays from the destination (it's the environment, not the organism).
+  - Same N required for the patch source and destination (different N would need stretching/cropping — separate
+  problem).
+  - API sketch: sim.save_patch(cx, cy, side) → dict; sim.load_patch(patch_dict, cx, cy). Both can be done on a paused
+  sim.
+  - Persistence: save/load to .evopatch JSON files under a new Patches/ dir.
+
+  Order I'd take it. Items are independent, but #1 (ternary) changes the meaning of the existing "match" metric. So:
+
+  1. Ternary egenes + scoring + tax(b) + new ternary-aware probe metrics.
+  2. Eaten-food-per-tick metric (small, drops cleanly into egenome probe or a new one).
+  3. Patch transfer (independent, do anytime).
+
+  Worth noting: the current scan winners will not behave the same under the ternary change. We should plan a fresh
+  scan after #1 lands rather than expecting old recipes to keep working.
+
+  Want me to start on #1 with the (mask, value) encoding + clamp-at-0 + tax(b), or push back further on any of this?
+
+## response
+
+1. re. +-1 and normalization:
+
+Not sure I completely understand 
+
+   'the natural pressure of the system is that a
+   richer egene (more non-*) has both higher max reward and higher tax, and forcing them to map to the same [0, 1] range erases the "complexity costs more, pays more when right" gradient that makes it interesting.'
+
+I guess there is a point:  using egene complexity defined as non-* is clean.  making +-1 distinction muddies the situation.
+
+Anyway I'm happy to try your suggestion as a starting point.  
+
+I'm a little worried that normalizing to max 25 means that initial 'dumb' egenes will be getting very little food.  maybe too little to survive.  May have to adjust taxes accordingly.
+
+2. etax:
+
+definitely (b).
+
+3. probes:  
+
+Let's make an egene probe with all 3 traces.
+
+4. order:
+
+sounds good.  let's do it.
+make sure we have commited all work to date, before beginning new commits.
+

@@ -1,10 +1,16 @@
 # EvoCA 
 
-Evolutionary Cellular Automata: a spatially inhomogeneous binary 2D CA where every cell is regarded as an organism, carrying a genome governing its local rule.  There is a resource field (food) modeled as a spatial field over a lattice the same size as the CA lattice.  Each organism at each lattice site can interact with the food field by eating a mouthful of food, transferring a fraction of the food from the food field to the organism's private stash of food.  The eating algorithm is controlled by a local pattern match using an additional piece of genetic data carried by each organism.  Every time step, the organism is taxed; its private food stash is diminished by a fixed amount.  The survival of an organism is a competition between the tax and the ability of the organism to evolve a rule genome and an eating genome to get more food than is lost by the tax.  If an organism's food stash reaches 1.0, it reproduces with genetic mutation; the offspring replaces the neighbor with the least food.  If an organism's food stash reaches 0, it dies: its  LUT is set to all zeroes. It no longer eats, its CA state is zero.  Dead cells can only come alive through a reproductive event.
+Evolutionary Cellular Automata: a spatially inhomogeneous binary 2D CA where every cell is regarded as an organism, carrying a genome governing its local rule.  There is a resource field (food) modeled as a spatial field over a lattice the same size as the CA lattice.  Each organism at each lattice site can interact with the food field by eating a mouthful of food, transferring a fraction of the food from the food field to the organism's private stash of food.  The eating algorithm is controlled by a local pattern match using an additional piece of genetic data carried by each organism.  Every time step, the organism is taxed; its private food stash is diminished by a fixed amount.  The survival of an organism is a competition between the tax and the ability of the organism to evolve a local rule genome and an eating genome to get more food than is lost by the tax.  If an organism's food stash reaches 1.0, it reproduces with genetic mutation; the offspring replaces the neighbor with the least food.  If an organism's food stash reaches 0, it dies: its  local rule LUT is set to all zeroes. It no longer eats, its CA state is zero.  Dead cells can only come alive through a neighboring reproductive event.
 
 # Implementation notes
 
 Find detailed implementation notes in [model.md](./Docs/model.md)
+
+There are various analytical features available as statistical *probes*.  Get the list of probes with:
+```
+from pprint import pprint
+pprint(available_probes())
+```
 
 The initial implementation of ths model was a collaboration between N. Packard and Claude Code
 
@@ -12,12 +18,17 @@ The initial implementation of ths model was a collaboration between N. Packard a
 
 CA dynamics are implemented in C for speed.  Control is via a python API running inside a jupyter notebook.  The API enables the launch of SDL graphics windows with widgets controling the simulation.  Launch of an example run:
 ```
+import numpy as np
+from python.evoca_py import EvoCA
+from python.controls import run_with_controls
+
 N = 512
+rng2 = np.random.default_rng(0)
 params = {'N':N,
           'food_inc':0.12,
           'm_scale':0.4,
           'mu_lut':0.001,
-          'tax':0.05,
+          'tax':0.1,
           'restricted_mu':True}
 sim = EvoCA()
 sim.init(**params)

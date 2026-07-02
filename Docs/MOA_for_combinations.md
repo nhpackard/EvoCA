@@ -1,5 +1,16 @@
 # Elucidating the Mechanism of Action of a Novel Drug Combination
 
+## prompt
+
+I have an experimental campaign that aims to produce new combination therapies for cancer using model-driven experimental design over many generations where the model is rebuilt each generation and the experiments are cell viability assays in 384 well plates.  compounds available for use in the combinations are FDA approved drugs.
+
+Supposing the campaign is successful, I would like to proceed to find the MOA of the combination.  Could you:
+* suggest a sequence of experiments to do this
+   * indicate how much progress can be made using high throughput experiments on cell models
+* include salient examples from the literature that might be appropriate, especially on the subject of MOA for combinations
+
+# Claude response
+
 This is a fascinating and timely problem. You've got a model-driven combinatorial screen that's identified a synergistic combination of FDA-approved drugs in a cell viability assay — now you need to figure out *why* it works. Here's how I'd think about sequencing that investigation.
 
 ---

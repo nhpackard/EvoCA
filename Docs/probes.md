@@ -159,7 +159,7 @@ divider line.
 Source: `evoca_egenome_stats(out)` fills a 5-element float buffer with
 `[mean_negene, std_negene, distinct_egene_values, mean_max_match,
 frac_at_max]`; `sim.egenome_stats()` returns the same data as a dict.
-
+ 
 Reading the strips together:
 
 - Mean Negene rising while distinct egenes plateau ⇒ population is
