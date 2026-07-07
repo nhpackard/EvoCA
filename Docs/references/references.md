@@ -85,3 +85,54 @@ not verify a stable identifier for are omitted rather than guessed.
   conditions for open-ended evolution through the artificial life
   world of Chromaria.* In Proc. Artificial Life 14, MIT Press,
   pp. 793–800. DOI 10.1162/978-0-262-32621-6-ch128.
+
+## Added 2026-07-07 (checkpoint deep analysis)
+
+Artificial chemistry, punctuation, resource–evolution shape, and the
+selection-variance anchor cited in the "Claude analysis (2026-07-07)"
+section of `Docs/# checkpoint 3 July 2026.md`.
+
+- **Farmer, J. D., Kauffman, S. A., Packard, N. H. (1986).**
+  *Autocatalytic replication of polymers.* Physica D 22(1–3):50–67.
+  DOI 10.1016/0167-2789(86)90233-2. (Catalyzed cleavage/condensation;
+  critical-diversity threshold for autocatalytic-set emergence — the
+  anchor for the vectorial `chem` branch, in place of swarmchem.)
+- **Rasmussen, S., Knudsen, C., Feldberg, R., Hindsholm, M. (1990).**
+  *The coreworld: emergence and evolution of cooperative structures in
+  a computational chemistry.* Physica D 42(1–3):111–134.
+  DOI 10.1016/0167-2789(90)90070-6. (Seven successive evolutionary
+  epochs — the punctuation precedent for §D.)
+- **Eldredge, N., Gould, S. J. (1972).** *Punctuated equilibria: an
+  alternative to phyletic gradualism.* In T. J. M. Schopf (ed.),
+  Models in Paleobiology, Freeman, Cooper & Co., pp. 82–115. (Origin of
+  the innovation-then-stasis pattern §D studies.)
+- **Lindgren, K. (1991).** *Evolutionary phenomena in simple dynamics.*
+  In Artificial Life II (Langton, Taylor, Farmer, Rasmussen, eds.),
+  Addison-Wesley, pp. 295–312. (Epochal/punctuated dynamics in evolving
+  iterated-game strategies — corroborating §D.)
+- **Rosenzweig, M. L. (1995).** *Species Diversity in Space and Time.*
+  Cambridge University Press. (Canonical treatment of the hump-shaped
+  productivity–diversity relationship — the ecological form of the §B
+  inverted-U.)
+- **Fisher, R. A. (1930).** *The Genetical Theory of Natural Selection.*
+  Oxford: Clarendon Press. (Fundamental theorem: rate of adaptive
+  change ∝ additive genetic variance in fitness — the §B high-resource
+  drift argument.)
+- **Sayama, H. (2009).** *Swarm Chemistry.* Artificial Life
+  15(1):105–114. DOI 10.1162/artl.2009.15.1.15101. (The model
+  `~/Projects/swarmchem` ports — cited in §E as a *negative* reference:
+  kinematic flocking, no reaction network.)
+- **Lotka, A. J. (1922).** *Contribution to the energetics of
+  evolution.* Proc. Natl. Acad. Sci. USA 8(6):147–151.
+  DOI 10.1073/pnas.8.6.147. (Companion: *Natural selection as a physical
+  principle*, PNAS 8(6):151–154, DOI 10.1073/pnas.8.6.151.)
+  Maximum-power / maximum-energy-flux principle — the §L reading of the
+  §B inverted-U as a gradient-steepness optimum.
+- **Morowitz, H. J. (1968).** *Energy Flow in Biology: Biological
+  Organization as a Problem in Thermal Physics.* Academic Press.
+  (Energy flow through a system drives its organization into cycles —
+  the §L "measure the flux you already have first" argument.)
+- **Nicolis, G., Prigogine, I. (1977).** *Self-Organization in
+  Nonequilibrium Systems: From Dissipative Structures to Order through
+  Fluctuations.* Wiley-Interscience. (Dissipative-structure theory
+  underpinning the §L source→sink through-flux framing.)
