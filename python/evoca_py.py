@@ -324,6 +324,31 @@ class EvoCA:
             ctypes.POINTER(ctypes.c_int32),
             ctypes.c_int]
         L.evoca_activity_get.restype    = ctypes.c_int
+        # Effective-rule activity (eff_activity)
+        L.evoca_eff_activity_update.argtypes = []
+        L.evoca_eff_activity_update.restype  = None
+        L.evoca_eff_activity_render_col.argtypes = [
+            ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
+        L.evoca_eff_activity_render_col.restype  = None
+        L.evoca_eff_activity_get.argtypes = [
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_int32),
+            ctypes.c_int]
+        L.evoca_eff_activity_get.restype  = ctypes.c_int
+        L.evoca_eff_count_distinct.argtypes = []
+        L.evoca_eff_count_distinct.restype  = ctypes.c_int
+        L.evoca_get_eff_hashes.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
+        L.evoca_get_eff_hashes.restype  = None
+        L.evoca_get_eff_used_mask.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
+        L.evoca_get_eff_used_mask.restype  = None
+        L.evoca_get_eff_union_mask.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
+        L.evoca_get_eff_union_mask.restype  = None
+        L.evoca_set_eff_act_ymax.argtypes = [ctypes.c_int]
+        L.evoca_set_eff_act_ymax.restype  = None
+        L.evoca_get_eff_act_ymax.argtypes = []
+        L.evoca_get_eff_act_ymax.restype  = ctypes.c_int
         # Activity quantile probe
         L.evoca_q_activity_deciles.argtypes = [ctypes.POINTER(ctypes.c_float)]
         L.evoca_q_activity_deciles.restype  = None
@@ -1344,6 +1369,86 @@ class EvoCA:
             max_n)
         return {'hash': keys[:n], 'activity': acts[:n],
                 'pop_count': pops[:n], 'color': cols[:n]}
+
+    # ── Effective-rule activity (eff_activity) ───────────────────────
+
+    def eff_activity_update(self):
+        """Accumulate the effective-rule activity table for this tick.
+
+        Keys each alive cell on its LUT MASKED to the entries the
+        population has exercised (the union of the per-cell used-masks
+        accumulated during Phase 1), folded with the same egene stream as
+        the full-genome activity key. Two genomes differing only in
+        entries never exercised by any cell collapse to one effective-
+        rule species, so silent LUT churn does not mint a new species
+        (unlike full-genome activity). Scans alive cells. The alive
+        eff-species count is <= the alive full-genome species count each
+        step (the map is a coarsening of genome space)."""
+        self._lib.evoca_eff_activity_update()
+
+    def get_eff_activity(self, max_n=4096):
+        """Return the effective-rule activity table as a dict of arrays
+        with keys 'hash', 'activity', 'pop_count', 'color'. Parallel to
+        get_activity() but over the effective-rule species key. Call
+        eff_activity_update() first to populate pop_count/activity."""
+        keys = np.zeros(max_n, dtype=np.uint32)
+        acts = np.zeros(max_n, dtype=np.uint64)
+        pops = np.zeros(max_n, dtype=np.uint32)
+        cols = np.zeros(max_n, dtype=np.int32)
+        n = self._lib.evoca_eff_activity_get(
+            keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+            pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
+            max_n)
+        return {'hash': keys[:n], 'activity': acts[:n],
+                'pop_count': pops[:n], 'color': cols[:n]}
+
+    def eff_count_distinct(self):
+        """Count of distinct effective-rule species currently alive
+        (after eff_activity_update this tick). Always <= n_distinct
+        full-genome species."""
+        return int(self._lib.evoca_eff_count_distinct())
+
+    def get_eff_hashes(self):
+        """Return (N, N) uint32 of each cell's effective-rule hash: the
+        LUT masked by the population-union used-mask, folded with the
+        cell's egenes. Flipping a LUT bit never exercised by any cell
+        leaves this unchanged (while get_lut_hashes / the full-genome key
+        would change). Dead cells hash their zeroed LUT; gate on
+        get_alive()."""
+        out = np.zeros(self._N * self._N, dtype=np.uint32)
+        self._lib.evoca_get_eff_hashes(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)))
+        return out.reshape(self._N, self._N)
+
+    def get_eff_used_mask(self):
+        """Return (N, N, LUT_BYTES) uint8 of each cell's accumulated
+        per-cell used-mask: bit-packed like the LUT, a set bit = that LUT
+        entry was exercised by the cell during Phase 1 over its lifetime.
+        This is the diagnostic substrate; the eff_activity species key
+        uses the population UNION of these (see get_eff_union_mask)."""
+        out = np.zeros(self._N * self._N * LUT_BYTES, dtype=np.uint8)
+        self._lib.evoca_get_eff_used_mask(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+        return out.reshape(self._N, self._N, LUT_BYTES)
+
+    def get_eff_union_mask(self):
+        """Return (LUT_BYTES,) uint8 population-union used-mask: the OR of
+        every cell's exercised entries since init, bit-packed like the
+        LUT. A 0 bit = a LUT entry never exercised by any cell; flipping
+        it is behaviourally silent and mints no eff-species. This is the
+        mask the eff_activity species key applies."""
+        out = np.zeros(LUT_BYTES, dtype=np.uint8)
+        self._lib.evoca_get_eff_union_mask(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+        return out
+
+    def set_eff_act_ymax(self, y):
+        self._lib.evoca_set_eff_act_ymax(int(y))
+
+    def get_eff_act_ymax(self):
+        return int(self._lib.evoca_get_eff_act_ymax())
 
     # ── Per-step demography counters ─────────────────────────────────
 

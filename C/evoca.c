@@ -207,6 +207,32 @@ static float   *F_temp = NULL;   /* [N*N] scratch for diffusion */
 static uint8_t  *births    = NULL;   /* [N*N] birth events this step */
 static uint32_t *lut_color = NULL;   /* [N*N] cached ARGB per cell */
 static uint32_t *lut_hash_cache = NULL; /* [N*N] cached FNV-1a hash */
+/* Per-cell accumulated used-mask for the effective-rule (eff_activity)
+ * species key: a LUT_BYTES bitmask per cell recording which LUT entries
+ * the cell has actually exercised during Phase 1 over its lifetime. Set
+ * additively (OR) each step for alive cells; inherited by a child at
+ * birth (the child's identical genome exercises the same entries its
+ * parent did). Reading a cell's LUT masked by this gives its effective
+ * rule. Cost: N*N*LUT_BYTES bytes (e.g. 8.4 MB at N=512). */
+static uint8_t  *eff_used_mask = NULL;   /* [N*N * LUT_BYTES] */
+/* Population-union of exercised LUT entries (OR of every alive cell's
+ * Phase-1 accesses, accumulated since init). The effective-rule SPECIES
+ * KEY masks each cell's LUT by THIS union — not by its own per-cell mask.
+ *
+ * Rationale (design conflict, resolved): a per-cell mask is neighbourhood-
+ * history dependent, so two cells with an identical genome but different
+ * realised neighbourhoods accumulate different masks and would hash to
+ * different effective-rule species — SPLITTING one genome into many.
+ * That inverts the intended "collapse genomes that differ only in unused
+ * entries" semantics (empirically eff-species ends up 3-10x larger than
+ * full-genome species). Keying on the population union instead makes the
+ * effective-rule map a pure coarsening of genome space, so (a) two
+ * genomes differing only in entries never exercised by ANY cell collapse
+ * to one species, and (b) the alive eff-species count is <= the alive
+ * full-genome species count every step. The per-cell masks are still
+ * accumulated and exposed (get_eff_used_mask) as the directed diagnostic
+ * substrate; the union is their OR. Cost of the union: LUT_BYTES (32 B). */
+static uint8_t   eff_union_mask[LUT_BYTES];
 static uint32_t  wt_hash   = 0;     /* hash of wild-type LUT */
 static uint32_t  g_step    = 0;     /* global step counter */
 static uint8_t  *env_mask  = NULL;  /* [N*N] food regen mask; 1=regen, 0=no */
@@ -738,6 +764,100 @@ static void evoca_activity_free(void)
     flux_t  = 0;
 }
 
+/* ── Effective-rule activity table (eff_activity) ───────────────────
+ * A genome-species activity that keys on each cell's LUT MASKED to the
+ * entries it actually exercises (eff_used_mask) rather than the whole
+ * 32-byte LUT. Two genomes that differ only in never-exercised entries
+ * collapse to one effective-rule species, so silent LUT churn (flipping
+ * a bit for an input that never occurs in the cell's neighbourhood
+ * distribution) does NOT mint a new species — unlike full-genome
+ * `activity`. Parallel, self-contained open-addressing table reusing the
+ * act_entry_t layout; no flux-history ring (not needed for this probe). */
+static uint32_t    *eff_keys = NULL;
+static act_entry_t *eff_vals = NULL;
+static int          eff_cap  = 0;
+static int          eff_cnt  = 0;
+static int          eff_ymax = 2000;   /* Y-scale for saturation strip */
+static int          eff_compact_threshold = ACT_COMPACT_FLOOR;
+
+static void eff_resize(void)
+{
+    int new_cap = eff_cap * 2;
+    uint32_t    *nk = calloc((size_t)new_cap, sizeof(uint32_t));
+    act_entry_t *nv = calloc((size_t)new_cap, sizeof(act_entry_t));
+    for (int i = 0; i < eff_cap; i++) {
+        if (eff_keys[i] == ACT_EMPTY) continue;
+        uint32_t slot = eff_keys[i] % (uint32_t)new_cap;
+        while (nk[slot] != ACT_EMPTY) slot = (slot + 1) % (uint32_t)new_cap;
+        nk[slot] = eff_keys[i];
+        nv[slot] = eff_vals[i];
+    }
+    free(eff_keys); free(eff_vals);
+    eff_keys = nk; eff_vals = nv; eff_cap = new_cap;
+}
+
+static act_entry_t *eff_find_or_insert(uint32_t key, int32_t color)
+{
+    if (eff_cnt * 10 >= eff_cap * 7) eff_resize();
+    uint32_t slot = key % (uint32_t)eff_cap;
+    while (eff_keys[slot] != ACT_EMPTY) {
+        if (eff_keys[slot] == key) return &eff_vals[slot];
+        slot = (slot + 1) % (uint32_t)eff_cap;
+    }
+    eff_keys[slot] = key;
+    eff_vals[slot].activity  = 0;
+    eff_vals[slot].pop_count = 0;
+    eff_vals[slot].color     = color;
+    eff_cnt++;
+    return &eff_vals[slot];
+}
+
+/* Prune extinct effective-rule species with low activity (mirror of
+ * act_compact, minus the pop-history ring). */
+static void eff_compact(uint64_t threshold)
+{
+    int keep = 0;
+    for (int i = 0; i < eff_cap; i++) {
+        if (eff_keys[i] == ACT_EMPTY) continue;
+        if (eff_vals[i].pop_count > 0 || eff_vals[i].activity >= threshold)
+            keep++;
+    }
+    int new_cap = ACT_INIT_CAP;
+    while (new_cap * 7 < keep * 10 + 10) new_cap *= 2;
+    uint32_t    *nk = calloc((size_t)new_cap, sizeof(uint32_t));
+    act_entry_t *nv = calloc((size_t)new_cap, sizeof(act_entry_t));
+    for (int i = 0; i < eff_cap; i++) {
+        if (eff_keys[i] == ACT_EMPTY) continue;
+        if (eff_vals[i].pop_count == 0 && eff_vals[i].activity < threshold)
+            continue;   /* prune */
+        uint32_t slot = eff_keys[i] % (uint32_t)new_cap;
+        while (nk[slot] != ACT_EMPTY) slot = (slot + 1) % (uint32_t)new_cap;
+        nk[slot] = eff_keys[i];
+        nv[slot] = eff_vals[i];
+    }
+    free(eff_keys); free(eff_vals);
+    eff_keys = nk; eff_vals = nv;
+    eff_cap  = new_cap;
+    eff_cnt  = keep;
+}
+
+static void evoca_eff_activity_init(void)
+{
+    eff_cap = ACT_INIT_CAP;
+    eff_cnt = 0;
+    eff_compact_threshold = ACT_COMPACT_FLOOR;
+    eff_keys = calloc((size_t)eff_cap, sizeof(uint32_t));
+    eff_vals = calloc((size_t)eff_cap, sizeof(act_entry_t));
+}
+
+static void evoca_eff_activity_free(void)
+{
+    free(eff_keys); eff_keys = NULL;
+    free(eff_vals); eff_vals = NULL;
+    eff_cap = 0;
+    eff_cnt = 0;
+}
+
 /* ── Multi-egene helpers ────────────────────────────────────────── */
 
 /* Lowest-index active slot in cell idx, or 0 if none active.
@@ -775,7 +895,12 @@ static inline void cell_genome_copy(int dst, int src)
  * resulting 2*n bytes are folded into the FNV-1a stream after the LUT
  * bytes. Two cells with the same LUT and the same set of active
  * (value, mask) pairs are the same species. */
-static uint32_t cell_genome_hash(int idx)
+/* Fill `buf` (>= 2*NEGENOME_MAX bytes) with the cell's sorted active
+ * (value, mask) egene bytes and return the byte count (2*Negene). This
+ * is the egene contribution to the genome hash, factored out so both
+ * the full-genome hash and the effective-rule hash fold in an identical
+ * egene stream. */
+static int cell_egene_buf(int idx, uint8_t *buf)
 {
     uint16_t key[NEGENOME_MAX];
     int n = 0;
@@ -797,13 +922,38 @@ static uint32_t cell_genome_hash(int idx)
         key[j+1] = x;
     }
     /* Pack as bytes (high=value, low=mask) into a contiguous buffer. */
-    uint8_t buf[2 * NEGENOME_MAX];
     for (int i = 0; i < n; i++) {
         buf[2*i]     = (uint8_t)(key[i] >> 8);
         buf[2*i + 1] = (uint8_t)(key[i] & 0xFF);
     }
-    return genome_hash_static(lut + (size_t)idx * LUT_BYTES,
-                              buf, 2 * n);
+    return 2 * n;
+}
+
+static uint32_t cell_genome_hash(int idx)
+{
+    uint8_t buf[2 * NEGENOME_MAX];
+    int nb = cell_egene_buf(idx, buf);
+    return genome_hash_static(lut + (size_t)idx * LUT_BYTES, buf, nb);
+}
+
+/* Effective-rule hash for a cell: identical to cell_genome_hash except
+ * the LUT bytes are first masked to the entries the POPULATION has
+ * exercised (eff_union_mask). Two genomes differing only in entries
+ * never exercised by any cell hash the same, so silent LUT churn does
+ * not mint a new effective-rule species. The egene contribution is
+ * folded in unmasked, matching the full-genome key (§F: "full-genome
+ * activity over the effective rule"). */
+static uint32_t eff_cell_hash(int idx)
+{
+    uint8_t masked[LUT_BYTES];
+    const uint8_t *L = lut + (size_t)idx * LUT_BYTES;
+    /* Key on the population-union mask (see eff_union_mask comment): a
+     * pure coarsening of genome space, so eff-species <= full-species. */
+    for (int b = 0; b < LUT_BYTES; b++)
+        masked[b] = (uint8_t)(L[b] & eff_union_mask[b]);
+    uint8_t buf[2 * NEGENOME_MAX];
+    int nb = cell_egene_buf(idx, buf);
+    return genome_hash_static(masked, buf, nb);
 }
 
 /* Update both per-cell caches:
@@ -842,6 +992,7 @@ void evoca_init(int N, float food_inc, float m_scale)
     births    = calloc(cells,               sizeof(uint8_t));
     lut_color = calloc(cells,               sizeof(uint32_t));
     lut_hash_cache = calloc(cells,          sizeof(uint32_t));
+    eff_used_mask  = calloc(cells * LUT_BYTES, sizeof(uint8_t));
     last_event_step = calloc(cells,         sizeof(uint32_t));
     /* Lineage arrays allocated only when opted in (zero-cost when off). */
     if (g_lineage_on) {
@@ -866,6 +1017,8 @@ void evoca_init(int N, float food_inc, float m_scale)
     g_births_last = 0;
     g_deaths_last = 0;
     evoca_activity_init();
+    evoca_eff_activity_init();
+    memset(eff_union_mask, 0, sizeof(eff_union_mask));
     nact_reset();
     memset(eg_act, 0, sizeof(eg_act));
     memset(eg_pop, 0, sizeof(eg_pop));
@@ -903,6 +1056,7 @@ void evoca_free(void)
     free(births);    births    = NULL;
     free(lut_color); lut_color = NULL;
     free(lut_hash_cache); lut_hash_cache = NULL;
+    free(eff_used_mask);  eff_used_mask  = NULL;
     free(last_event_step); last_event_step = NULL;
     free(lin_parent_hash); lin_parent_hash = NULL;
     free(lin_birth_id);    lin_birth_id    = NULL;
@@ -910,6 +1064,8 @@ void evoca_free(void)
     free(env_mask);  env_mask  = NULL;
     free(alive);     alive     = NULL;
     evoca_activity_free();
+    evoca_eff_activity_free();
+    memset(eff_union_mask, 0, sizeof(eff_union_mask));
     nact_free_all();
     neut_free_all();
     memset(eg_act,  0, sizeof(eg_act));
@@ -1204,6 +1360,13 @@ void evoca_step(void)
             v_next[idx] = (uint8_t)new_state;
             if (alive[idx]) {
                 lut_active[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+                /* Accumulate this cell's per-cell used-mask (additive)
+                 * and the population-union mask. The per-cell mask is the
+                 * exposed diagnostic substrate; the union is the basis of
+                 * the eff_activity species key. */
+                uint8_t bmask = (uint8_t)(1u << (bit & 7));
+                eff_used_mask[(size_t)idx * LUT_BYTES + (bit >> 3)] |= bmask;
+                eff_union_mask[bit >> 3] |= bmask;
                 int key = bit * 2 + new_state;
                 dyn_act[key]++;
                 dyn_pop[key]++;
@@ -1403,6 +1566,13 @@ void evoca_step(void)
 
             memcpy(lut + (size_t)child * LUT_BYTES,
                    lut + (size_t)idx   * LUT_BYTES, LUT_BYTES);
+            /* Inherit the parent's accumulated used-mask: the child's
+             * identical genome exercises the same LUT entries the parent
+             * did, so its effective-rule species is stable across birth
+             * (rather than momentarily collapsing to the empty-mask
+             * species). It keeps accumulating additively thereafter. */
+            memcpy(eff_used_mask + (size_t)child * LUT_BYTES,
+                   eff_used_mask + (size_t)idx   * LUT_BYTES, LUT_BYTES);
             cell_genome_copy(child, idx);
             /* Mutate child's LUT */
             uint8_t *child_lut = lut + (size_t)child * LUT_BYTES;
@@ -1790,6 +1960,143 @@ int evoca_activity_get(uint32_t *keys, uint64_t *activities,
         n++;
     }
     return n;
+}
+
+/* ── Effective-rule activity (eff_activity) exported API ─────────────
+ * Genome-species activity keyed on each cell's LUT masked to the entries
+ * it actually exercises (eff_used_mask). eff_activity <= activity in
+ * distinct-species count: two full-genome species that differ only in
+ * never-exercised LUT entries collapse to one effective-rule species.
+ * Call each tick to accumulate; scans alive cells only. */
+void evoca_eff_activity_update(void)
+{
+    if (!eff_keys) return;
+    size_t cells = (size_t)gN * gN;
+
+    for (int i = 0; i < eff_cap; i++)
+        if (eff_keys[i] != ACT_EMPTY)
+            eff_vals[i].pop_count = 0;
+
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) continue;
+        uint32_t h = eff_cell_hash((int)i);
+        int32_t col = (int32_t)(0xFF000000u | (h & 0x00FFFFFFu));
+        act_entry_t *e = eff_find_or_insert(h, col);
+        e->pop_count++;
+        e->activity++;
+    }
+
+    if (eff_cnt > eff_compact_threshold) {
+        eff_compact((uint64_t)eff_ymax / 10);
+        int next = eff_cnt + (eff_cnt >> 1);
+        eff_compact_threshold = (next < ACT_COMPACT_FLOOR)
+                              ? ACT_COMPACT_FLOOR : next;
+    }
+}
+
+int evoca_eff_activity_get(uint32_t *keys, uint64_t *activities,
+                           uint32_t *pop_counts, int32_t *colors, int max_n)
+{
+    int n = 0;
+    if (!eff_keys) return 0;
+    for (int i = 0; i < eff_cap && n < max_n; i++) {
+        if (eff_keys[i] == ACT_EMPTY) continue;
+        keys[n]       = eff_keys[i];
+        activities[n] = eff_vals[i].activity;
+        pop_counts[n] = eff_vals[i].pop_count;
+        colors[n]     = eff_vals[i].color;
+        n++;
+    }
+    return n;
+}
+
+/* Count distinct effective-rule species currently alive (pop_count>0). */
+int evoca_eff_count_distinct(void)
+{
+    if (!eff_keys) return 0;
+    int n = 0;
+    for (int i = 0; i < eff_cap; i++) {
+        if (eff_keys[i] == ACT_EMPTY) continue;
+        if (eff_vals[i].pop_count > 0) n++;
+    }
+    return n;
+}
+
+/* Per-cell effective-rule hash (LUT masked by used-mask, ‖ egenes).
+ * Dead cells fill their zeroed-LUT effective hash; gate on get_alive(). */
+void evoca_get_eff_hashes(uint32_t *out)
+{
+    if (!eff_used_mask) return;
+    size_t cells = (size_t)gN * gN;
+    for (size_t i = 0; i < cells; i++) out[i] = eff_cell_hash((int)i);
+}
+
+/* Per-cell accumulated used-mask (out[N*N*LUT_BYTES], bit-packed like
+ * the LUT). Bit set = that LUT entry has been exercised by the cell.
+ * Diagnostic substrate; the species KEY uses the population union. */
+void evoca_get_eff_used_mask(uint8_t *out)
+{
+    if (!eff_used_mask) return;
+    memcpy(out, eff_used_mask, (size_t)gN * gN * LUT_BYTES);
+}
+
+/* Population-union used-mask (out[LUT_BYTES], bit-packed like the LUT):
+ * the OR over all cells' exercised entries. This is the mask the
+ * effective-rule species key applies. A LUT bit that is 0 here has never
+ * been exercised by any cell, so flipping it is behaviourally silent and
+ * mints no new eff-species. */
+void evoca_get_eff_union_mask(uint8_t *out)
+{
+    memcpy(out, eff_union_mask, LUT_BYTES);
+}
+
+void evoca_set_eff_act_ymax(int y) { eff_ymax = y > 1 ? y : 1; }
+int  evoca_get_eff_act_ymax(void)  { return eff_ymax; }
+
+/* Scrolling hash-coloured strip column, mirroring
+ * evoca_activity_render_col but over the effective-rule table. Exported
+ * so an `eff_activity` probe can be wired up like `activity`. */
+void evoca_eff_activity_render_col(int32_t *col, int height)
+{
+    for (int y = 0; y < height; y++)
+        col[y] = (int32_t)0xFF111111u;
+
+    if (!eff_keys || eff_cnt == 0) return;
+
+    uint64_t ymax = (uint64_t)eff_ymax;
+    uint32_t ypop[height];
+    memset(ypop, 0, (size_t)height * sizeof(uint32_t));
+
+    /* Pass 1: extinct species — dimmed colour */
+    for (int i = 0; i < eff_cap; i++) {
+        if (eff_keys[i] == ACT_EMPTY) continue;
+        if (eff_vals[i].pop_count > 0) continue;
+        uint64_t act = eff_vals[i].activity;
+        int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
+        if (y < 0) y = 0;
+        if (y >= height) y = height - 1;
+        uint32_t c = (uint32_t)eff_vals[i].color;
+        uint8_t r = (uint8_t)(((c >> 16) & 0xFF) * 15 / 100);
+        uint8_t g = (uint8_t)(((c >>  8) & 0xFF) * 15 / 100);
+        uint8_t b = (uint8_t)(( c        & 0xFF) * 15 / 100);
+        col[y] = (int32_t)(0xFF000000u | ((uint32_t)r << 16)
+                           | ((uint32_t)g << 8) | b);
+    }
+
+    /* Pass 2: alive species — full colour, higher pop wins */
+    for (int i = 0; i < eff_cap; i++) {
+        if (eff_keys[i] == ACT_EMPTY) continue;
+        uint32_t pop = eff_vals[i].pop_count;
+        if (pop == 0) continue;
+        uint64_t act = eff_vals[i].activity;
+        int y = (height - 1) - (int)((uint64_t)(height - 1) * act / (act + ymax));
+        if (y < 0) y = 0;
+        if (y >= height) y = height - 1;
+        if (pop >= ypop[y]) {
+            col[y] = eff_vals[i].color;
+            ypop[y] = pop;
+        }
+    }
 }
 
 /* ── Activity quantile (q_activity) probe ──────────────────────── */

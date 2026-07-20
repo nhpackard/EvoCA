@@ -104,6 +104,34 @@ void evoca_activity_render_col(int32_t *col, int height);
 int  evoca_activity_get(uint32_t *keys, uint64_t *activities,
                         uint32_t *pop_counts, int32_t *colors, int max_n);
 
+/* ── Effective-rule activity (eff_activity) ─────────────────────────
+ * Genome-species activity whose species key is the cell's LUT MASKED to
+ * the entries the POPULATION has exercised (eff_union_mask = OR of the
+ * per-cell used-masks accumulated during Phase 1), folded with the same
+ * egene stream as the full-genome key. Two genomes differing only in
+ * entries never exercised by any cell collapse to one effective-rule
+ * species, so silent LUT churn does not mint a new species (unlike
+ * full-genome `activity`). Additive no-op to dynamics. The alive
+ * eff-species count is <= the alive full-genome `activity` count each
+ * step (the effective-rule map is a coarsening of genome space).
+ *
+ * NOTE: the key uses the population-union mask, not each cell's own
+ * per-cell mask. A per-cell key would SPLIT one genome across cells with
+ * divergent neighbourhood histories, making eff-species larger than
+ * full-species and defeating the collapse goal. The per-cell masks are
+ * still accumulated and exposed (get_eff_used_mask) as the diagnostic
+ * substrate the union is built from. */
+void evoca_eff_activity_update(void);
+void evoca_eff_activity_render_col(int32_t *col, int height);
+int  evoca_eff_activity_get(uint32_t *keys, uint64_t *activities,
+                            uint32_t *pop_counts, int32_t *colors, int max_n);
+int  evoca_eff_count_distinct(void);              /* alive eff-species count */
+void evoca_get_eff_hashes(uint32_t *out);         /* out[N*N] per-cell eff hash */
+void evoca_get_eff_used_mask(uint8_t *out);       /* out[N*N*LUT_BYTES] per-cell */
+void evoca_get_eff_union_mask(uint8_t *out);      /* out[LUT_BYTES] population union */
+void evoca_set_eff_act_ymax(int y);
+int  evoca_get_eff_act_ymax(void);
+
 /* ── Activity quantile probe ──────────────────────────────────────── */
 
 void evoca_q_activity_deciles(float *deciles_out);  /* 9 floats: p10..p90 */
