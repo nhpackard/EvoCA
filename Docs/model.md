@@ -59,6 +59,7 @@ and noted in the table below.
 | `tax`           | float | 0.0     | [0, 0.1]       | Constant private-food decrement per step; death if depleted |
 | `tax_per_egene` | float | 0.0     | [0, 0.01]      | Additional decrement per non-wildcard cell-position summed across the cell's active egenes (per step). Max = `tax_per_egene * 8 * 25 = tax_per_egene * 200` when every active slot has mask=0x3F. Bounds cognitive load against the unbounded "more is better" pressure of max-match eating |
 | `tax_lut`       | float | 0.0     | [0, 0.001]     | Additional decrement per LUT '1' bit per step. Penalises rule complexity |
+| `tax_ring`      | float | 0.0     | non-GUI        | Additional decrement `tax_ring * ring_level` per step, where `ring_level ∈ {1,2,3}` is the minimum ring set the LUT conditions on. Penalises the reach of the rule (research-directions §8). Set via `sim.update_tax_ring(t)` |
 | `restricted_mu` | int   | 0       | checkbox       | If 1, restrict LUT mutations to dynamically active bits |
 | `N_log_interval` | int  | 1       | non-GUI        | ProbeLogs CSV sampling interval (Python-side; the C library is unaware). 1 logs every tick; K logs every K-th sample. See `Docs/probes.md` "Probe Logging" |
 
@@ -293,15 +294,19 @@ Periodic boundary conditions.
 
 ### Phase 2c: Tax and Death
 
-For each alive cell, the per-step decrement is the sum of three terms:
+For each alive cell, the per-step decrement is the sum of four terms:
 
     t = tax
         + tax_per_egene * sum_over_active_slots(non_wildcard_positions)
         + tax_lut * popcount(LUT bytes)
+        + tax_ring * ring_level(LUT)
     f(x) -= t,   clamped to 0
 
 where `non_wildcard_positions(mask)` sums the orbit position counts
-`[1, 4, 4, 4, 4, 8]` for the orbits whose mask bit is set (range 0..25).
+`[1, 4, 4, 4, 4, 8]` for the orbits whose mask bit is set (range 0..25),
+and `ring_level(LUT) ∈ {1, 2, 3}` is the minimum ring set the LUT
+actually conditions on (1 = n1 only, 2 = n1+n2, 3 = n1+n2+n3) — the
+same classifier the LUT-complexity probe uses.
 
 - `tax` is the unconditional baseline.
 - `tax_per_egene` makes egenes that specify more cell-positions
@@ -312,9 +317,17 @@ where `non_wildcard_positions(mask)` sums the orbit position counts
   greater specificity stops paying for the extra tax.
 - `tax_lut` taxes "1" bits in the LUT, penalising rule complexity so
   innovations that don't pay for themselves get pruned.
+- `tax_ring` adds a decrement of `tax_ring * ring_level`, penalising
+  the *reach* of the rule rather than its bit-count: a rule that
+  conditions only on the nearest ring (level 1) pays `tax_ring`, one
+  that also uses the diagonal ring (level 2) pays `2 * tax_ring`, and
+  one that reaches the distance-2 ring (level 3) pays `3 * tax_ring`.
+  This gives longer-range dependence a graded metabolic cost, so a
+  ring-3 innovation is retained only if it earns its keep
+  (research-directions §8).
 
-Defaulting `tax_per_egene = tax_lut = 0` reproduces the previous
-single-rate tax exactly.
+Defaulting `tax_per_egene = tax_lut = tax_ring = 0` reproduces the
+previous single-rate tax exactly.
 
 If `f(x)` reaches 0, the cell dies: `alive(x)` is set to 0, its LUT is
 zeroed, the active mask is cleared (so `Negene = 0`), and `f(x)` is

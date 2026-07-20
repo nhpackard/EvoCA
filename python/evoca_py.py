@@ -717,6 +717,66 @@ class EvoCA:
         lines.append(")")
         return "\n".join(lines)
 
+    # ── Env / agent metaparam grouping ────────────────────────────────
+    #
+    # Two *views* over the flat metaparameter namespace (checkpoint §A /
+    # §I' A1). They are DERIVED from params() — the single source of
+    # truth (the per-attribute storage) — so there is exactly one owner
+    # of the metaparameters; do NOT fork storage into separate grouped
+    # dicts. `params()`, `params_str()`, and the .evoca recipe remain
+    # the flat, canonical API and are untouched.
+    #
+    # The niche metaphor (arctic ↔ jungle as points in env-metaparam
+    # space) assigns most knobs cleanly. The one place the boundary is
+    # non-obvious is the TAX FAMILY, which splits by *causal owner* — who
+    # imposes the cost — not by whether the word "tax" appears:
+    #   - baseline `tax` is an ENVIRONMENTAL cost-of-living: the niche
+    #     imposes it (a harsh/arctic niche = high tax) -> env group.
+    #   - `tax_per_egene` / `tax_lut` / `tax_ring` are AGENT-caused
+    #     metabolic costs: the organism pays for the complexity of the
+    #     genome it carries -> agent group. (These are the ones that
+    #     would become per-cell evolvable genes; baseline tax stays an
+    #     environmental control.)
+    _ENV_KEYS = ('N', 'food_inc', 'gdiff', 'tax')
+    _AGENT_KEYS = ('m_scale', 'mu_lut', 'mu_egene', 'mu_egenome',
+                   'p_dup_egene', 'tax_per_egene', 'tax_lut', 'tax_ring',
+                   'restricted_mu')
+
+    def env_params(self):
+        """Return the environment-metaparam view as a dict.
+
+        Derived from params(); {N, food_inc, gdiff, tax}. Baseline `tax`
+        is the niche's cost-of-living (see class comment). These are the
+        knobs one varies to move between niches (arctic ↔ jungle)."""
+        p = self.params()
+        return {k: p[k] for k in self._ENV_KEYS}
+
+    def agent_params(self):
+        """Return the agent-metaparam view as a dict.
+
+        Derived from params(); {m_scale, mu_lut, mu_egene, mu_egenome,
+        p_dup_egene, tax_per_egene, tax_lut, tax_ring, restricted_mu}.
+        These are the candidates for being carried per-cell and mutated
+        as part of the evolutionary process."""
+        p = self.params()
+        return {k: p[k] for k in self._AGENT_KEYS}
+
+    def grouped_params(self):
+        """Return {'env': env_params(), 'agent': agent_params()}.
+
+        The two views together partition params() exactly (verified by
+        the union check below) — no metaparam is dropped or duplicated."""
+        env, agent = self.env_params(), self.agent_params()
+        # Self-consistency guard: the grouping must partition params()
+        # exactly. Catches a future metaparam that gets added to
+        # params() but not to _ENV_KEYS/_AGENT_KEYS.
+        flat = set(self.params())
+        grouped = set(env) | set(agent)
+        assert grouped == flat and len(env) + len(agent) == len(flat), (
+            "env/agent grouping does not partition params(): "
+            f"missing={flat - grouped}, extra={grouped - flat}")
+        return {'env': env, 'agent': agent}
+
     # ── State initialization ─────────────────────────────────────────
 
     @property
