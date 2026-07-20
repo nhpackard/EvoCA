@@ -915,3 +915,751 @@ mechanism.
 - (already in references: Bedau–Snyder–Packard 1998; Channon 2006;
   Schneider & Kay 1994; Chaisson 2001; Kauffman & Levin 1987.)
 
+# N Responses 19 July 2026
+
+## Load-bearing claims:
+I give responses to these because they are sometimes the most direct path to specifying an action.
+
+### 1. 
+- Action:  So let's do the split into two dicts.  
+- Re. mu-genome branch, let's continue the plan to launch the per agent distinction in the development there.
+- thx for tax distinction.  
+    - Action: model.md needs to be updated; Phase 2c: Tax and Death mentions only tax, tax_per_egene, and tax_lut
+### 2
+- agree that upper resource regime tends toward neutral drift.  That is what I meant by "in the high resource regime, I'm thinking the fitness landscape is rather flat, with mild hills"  
+- Action:  Scans must have more summary info.  I'm thinking a notebook with figures that would, e.g. clearly display peaks or transitions in the data, e.g. food_inc ~ 0.013.  E.g. scatter plot of run result as function of food_inc with other scan params encoded in marker (color, size, etc).
+### 3
+- Action:  add food_per.
+- Use of env_mask can also use food_per; instead of 'F clamped to [0,1]', can have F restored to 1 at env_mask values every food_per (defaulting to current when food_per=1).
+### 4
+- Re. swarmchem:   True that swarmchem spec is not based on a reaction network directly.  But I'm not clear why it is a completely "negative reference".  If I create a swarm chem spec with many many components and random interactions between components, shouldn't I expect a reaction network to emerge?  Emergence of a reaction network from chemical bond priors is actually interesting, and to my knowledge unexplored in swarmchem literature (or correct me!).
+- Action: place chemistry branch on the research map, with a plan for its own branch.
+- Cf. 6 below, with comment on simple energy chemistry.  Should this be a branch off of chemistry, or a branch of its own?
+### 5
+- Action: plan scan using dyn_activity
+- When you say '"Give each gene its own neutral shadow" is ill-posed in the open LUT-hash space (a just-born genome has no drift history to estimate an expectation from)', this seems a pretty weak objection.  What's wrong with simply eliminating the ill-posed case by defining it to be zero (in case of no drift history)?
+### 6 and §L
+- Yes: "the gradient is nowhere *measured* and is *unstructured*".  
+- Action:  implement §C's source-field spatial gradient.  I like this, and have used it many times in the past.  Especially in Bugs context
+- Good point about EvoCA agents being sessile, and this meaningfully constrains our evolutionary narrative.  Should we consider making a motile version???  (would be a new major branch, like chemistry).  What could possibly be the move algorithm?  1) swap places with neighbor that has least food.  2) displace neighbor with least food, leave dead cell behind.  3) implement an LUT brain as in Bugs.  4) other?
+- Here is a model that would capture an explicit gradient dependence:
+  - Expand food chemistry to *two chemical species*:  food and waste.
+  - Food is gathered as currently
+  - Waste is manufactured by the metabolization of food:  any current tax does not simply decrement food, but changes it to waste.
+  - Waste must be discarded into the environment.  Roughly, I'm thinking about an inverse of the feeding algorithm; environmental food low=> easy to discard waste, environmental food high => hard to discard waste.
+  - open question: have an analog to mouthful algorithm using a waste analog to egenes (i.e. wgenes)?  Maybe we could start with a simple no-wgene version.
+  - Penalty for waste reaching max (1.0): agent dies.
+  - the point:  gradient = food-waste comprises an explicit gradient 'measurement' that conditions agent evolution.
+  - what do you think?  would this change evolution in a material way, or wind up giving pretty much same as current observations?
+
+## Sections
+
+Any comments and/or questions and/or actions left over after Load Bearing sections
+
+### §A
+
+- interesting to think of baseline tax as environmental.  I usually regard it as agent-based, with harsh environments (lower resource) evolving agents that have lower tax.  This framing requires, of course, evolvable per-agent tax.
+- Re. distribution seeding:  agree that "Construct populations with a distribution of values for one param, see if any value dominates" requires per-cell storage of that param.  Plan to explore in the mu-genome branch.
+
+### §B
+
+- when you say "**the flat landscape is
+  detectable only as raw-activity-high but excess-activity≈0.**", doesn't this suggest a new activity probe, raw-activity - excess-activity ?
+
+### §C
+ 
+- Anything wrong with simply having food_per param work on restoration of env_mask food source?  In fact, we could have env_mask active always, with default being all sites 1, shaped food being env_mask zero except specifically shaped food source.  env_mask taking values between 0, 1 (with restoration of food up to env_mask values every food_per steps) could be used to implement the gradient environments.
+
+- Definitely want to test "does temporal lumpiness create evolutionary opportunity?".  
+  - Action: Must go on the research somewhere explicitly.
+
+### §D
+
+- (1) separate punctuation / optimization or not:  
+  - Not sure I agree that punctuation and optimization can be cleanly separated.  Your suggestion for punctuation has a 'punctuation event' hapening when a new slot activates.  I suspect that such a punctuation event would yield negligible effect.  Maybe a punctuation event could be defined as adding a slot filled with random egene values.
+  - Anyway, in nature, there is no explicit separation.  Yet punctuation + optimization is observed.  So we should be able to observe it in a good model for evolution, without explicit separation.
+- (2)  How do I see "per-lineage net metabolic return"?  Do we have a probe for that?
+- (3)  Good point about frozen-substrate metric trap.  
+
+### §E
+- agree with predefined universe over stochastic on-the-fly.
+- You say "meta-mutation-rate to tune", but actually there will be metaparams to define the "predefined universe".  
+- agree with sparse-vector implementation.  But we may want to scan the resource vectors to populate additional resource planes for visualization.
+- design gap:  yes, we must decide what to do with all these resources.  My first thought is to treat them like the current food resource, with the food plane becoming a vector valued plane.  We must have a simplified version of the eating algorithm.  Having egenomes for every resource is untenable. We need a mechanism for resource communication between agents.  This could be via the invention of a new agent interaction algorithm which would be added model complication, and a pain.  Maybe have the resource gathering (eating) algorithm look at Moore neighborhood.  Resource communication between agents could than be via this enlarged eating neighborhood.  Open to other suggestions.
+
+### §F
+
+- Action:  implement "genome-level analog of the transition-level idea: an activity that keys on the cell's LUT masked to the entries it actually exercises".  What should we call it? dyn_genome_activity ??
+
+### §H
+
+You say:  "Three of the sections above (§B per-lineage net return, §D punctuation fitness proxy, §C/§F "who actually out-reproduced") reduce to parent→child bookkeeping. That field now exists in code as an opt-in SoA addition (lin_parent_hash/birth_id/parent_id, zero-cost when off)."
+
+What is "That field" that now exists?
+
+You say "It remains the single highest-leverage instrument"
+
+What is "it"?
+
+Yes: let's use the lineage field. Please expand your comment in §H a bit, with explicit research program to distinguish between adaptive and drift.
+
+### §I, §K
+
+- Expand table to include all actions identified in responses above.
+- Revise prioritized roadmap to include all actions identified in responses above.
+
+
+### §L
+
+- appreciate "Where EvoCA sits..." comments.  I mostly agree.  Must re-examine Lotka.
+- Re. "what to actually build":  chem branch has a special priority because a potential collaborator might be interested.  
+  - Action:  create the chem branch with spawned agents, perform the natural tests to retrieve current functionality with one resource field.
+
+## Big picture
+I have a couple of comments regarding the big picture of this research program:
+- We need to be more careful to digest research as it is produced.  This should entail going beyond forming md files to report the results, and should include forming notebooks to summarize results, including both md cells and graphics to clearly illustrate the major discoveries.  (this is an elaboration of my comment on enhancing result reporting of scans, above)
+
+- I think we need to consider what the aim of this endeavor should be, regarding communication with the world.  Are we aiming for a giant article?  a series of articles?  a book?  Or perhaps publication through structuring of the github repo, with notebooks reporting results?  In this last case, we would need to be a bit more rigorous about structure of the github repo.  Or consider a publication fork.
+
+---
+
+# Claude analysis (2026-07-19): response to N's replies
+
+Framing: this is a deep-analysis pass responding to your `# N Responses 19 July 2026`
+block. I re-verified every load-bearing claim against the *current* code and the
+two local repos before answering (evidence inline; the file:line citations are
+fresh this pass, not carried over). Where you pushed back I either concede with a
+reason, refine, or hold the line with a stronger argument than the first pass gave
+— never a polite split-the-difference. Where you raised a new dev path (motility,
+waste chemistry, publication structure) I treat it as a first-class candidate with
+its own verdict. The consolidated action table (§I′) and revised roadmap (§K′)
+capture **every** action you named plus the ones this pass adds; nothing is dropped.
+
+## Digest of this pass (read this if you read nothing else)
+
+1. **The three pointed factual questions, answered.** "That field"/"it" in §H = the
+   **lineage field** (`lin_parent_hash/lin_birth_id/lin_parent_id`, opt-in via
+   `evoca_enable_lineage`, `C/evoca.c:215-232,1628-1685`). The per-lineage
+   net-return probe you ask about in §D(2) **does not exist yet** — we have the
+   *intake* side (`g_sum_mouthful`, `C/evoca.c:375`) and a per-egene mean-intake
+   probe, but no lineage-keyed cumulative (intake−tax) reducer. It is a small,
+   well-scoped build on top of the lineage field, and it is the single instrument
+   most of this checkpoint depends on.
+
+2. **Your "define the ill-posed case to zero" (LB5) is not a weak-objection patch —
+   it silently changes the estimand.** In the open LUT-hash space, zero-filling the
+   no-history genomes doesn't rescue a per-gene neutral threshold; it turns *excess
+   activity* back into *raw activity* for exactly the churning majority of genomes
+   the neutral model exists to discount. Full argument below — this is the one place
+   I most firmly hold the line, with a sharper reason than the first pass.
+
+3. **Your punctuation pushback (§D-1) is right and I over-engineered the first
+   answer.** A good evolutionary model should show punctuation *emergently in one
+   run*, not via two contrived setups. I concede the two-experiment framing and
+   replace it with a single unforced run + a punctuation *detector*. And your
+   mechanistic instinct is sharper than you gave it credit for: activating an egene
+   slot is initially near-neutral-to-slightly-deleterious (it adds tax before it
+   wins any max-score), so the *signature* is a dip-then-climb in lineage net-return
+   — which is a cleaner, more literature-faithful punctuation marker than a positive
+   jump.
+
+4. **swarmchem (LB4): you're right that I overstated, but the correction is
+   narrower than your rebuttal.** Random *pairwise* interactions among many
+   components do produce emergent higher-order structure — that's real (particle
+   life / primordial-particle systems). But stock swarmchem cannot host it: its
+   coupling is *one-sided and type-blind* (an agent responds to the neighbor
+   *aggregate* via its own genome only; there is no type×type matrix — verified in
+   the code). And emergent self-**assembly** is not an emergent **reaction network**:
+   the latter needs species-identity transitions (A+B→C), which no force-based swarm
+   gives you without an explicit reaction rule. The literature for your actual
+   question ("reaction network from bond priors") is *artificial chemistry*
+   (Dittrich–Ziegler–Banzhaf; Fontana–Buss), not swarm chemistry. Net: swarmchem
+   stays a negative reference *for the chem field*, but your instinct points at a
+   genuinely under-explored question that belongs to a *motile particle* model —
+   which connects straight to your motility question.
+
+5. **The waste model (LB6) would change evolution materially — in the exact
+   direction your own §B intuition wants.** Food→waste conversion with
+   disposal-difficulty rising in crowded/rich regions installs a *density-dependent
+   cost that stays selective precisely where the food axis goes slack*. That directly
+   attacks the high-resource drift-collapse: abundance no longer means trivial
+   survival, because waste management becomes the live selective axis. It is best
+   built as the **first milestone of the chem branch** (N_chem = 2, food+waste) —
+   which also answers your "branch off chem or its own?" question. One refinement:
+   couple disposal to a *waste* field, not to the food field.
+
+6. **Motility is not "another branch like chemistry" — it is potentially a change to
+   what EvoCA *is*.** Chemistry enriches the resource while leaving the CA-on-a-fixed-
+   lattice core intact. Motility breaks the core invariant (cells sit still and play
+   a CA defined on their fixed neighbourhood). Your four move-algorithms split
+   cleanly: options 1–2 are undirected/anti-foraging as literally stated and won't
+   climb a gradient; only option 3 (the Bugs LUT-brain) gives *evolvable gradient
+   navigation*, which is the whole point of §L's motile motivation. But adopting it
+   turns EvoCA into "Bugs with CA-genomes." That may be exactly what you want — but
+   it should be a conscious identity decision, not a branch we drift into.
+
+---
+
+## Load-bearing responses
+
+### LB1 — env/agent split, mu-genome, tax placement
+
+- **Two-dict split: confirmed, do now, on `main`.** Zero dynamical risk; derive both
+  dicts from the single canonical recipe (do *not* fork storage — see §J′).
+- **mu-genome per-agent distinction: continue on the branch, storage-first.** Agreed.
+- **tax framing — you and I are not actually in conflict; the reconciliation is the
+  interesting part.** I called baseline tax "environmental"; you call it agent-based
+  (harsh/low-resource niches evolve *lower-tax* agents), which needs per-agent
+  evolvable tax. Both are right about *different layers*, and the resolution has
+  teeth: the environment sets a **cost-of-living floor** `tax_env` (a niche
+  property — arctic = high floor), and the agent carries an **evolvable
+  tax-modifier gene** above it, `tax_eff = tax_env + tax_gene`. Your harsh-niche
+  intuition is then a *prediction of the model*: in a high-`tax_env` niche,
+  selection on `tax_gene`↓ is strong. Crucially, §L says tax is the sink that makes
+  food a *gradient*; if tax could evolve all the way to 0 the gradient collapses and
+  selection dies — so the environmental **floor is thermodynamically load-bearing**,
+  not just bookkeeping. Design consequence: when tax becomes evolvable in the
+  mu-genome branch, keep a small env floor and evolve only the modifier.
+- **Action (yours, confirmed):** `model.md` Phase 2c currently lists tax,
+  tax_per_egene, tax_lut but the code's tax has a **fourth term** `tax_ring`
+  (`C/evoca.c:1197-1200`, `tax = gtax + gtax_per_egene·Negene + gtax_lut·popcount +
+  gtax_ring·ring-level`). Queued as a doc fix (A3).
+
+### LB2 — scans need real summary figures
+
+Endorse without reservation; this is the same instrument §B needs. The figure you
+describe (run-outcome vs `food_inc`, other scan params encoded in marker
+color/size/shape) is right, and I'd add three things so it does double duty as the
+§B test: (a) put **`food_inc/tax`** (the §L gradient-steepness ratio) on the x-axis
+as a second panel, since the peak should track the *ratio*, not absolute food; (b)
+overplot *raw activity* and *excess/dyn_excess* on the same axis so the drift regime
+shows up as the raw–excess divergence (LB/§B below); (c) mark the ≈0.013 window you
+already found. This is a `main` analysis notebook, and it is the natural first
+artifact of the "digest research as notebooks" big-picture point.
+
+### LB3 — food_per + env_mask unification
+
+Strong endorse, and your unification is cleaner than my first-pass "add a separate
+`F_source` array." Ground truth: `env_mask` today is **`uint8` binary**, default all
+1, and regen is *additive to a hard 1.0 cap every step* (`C/evoca.c:1180-1184`:
+`if(!env_mask[i]) continue; F+=food_inc; if(F>1) F=1`). Your proposal — make the mask
+**float-valued in [0,1]** and restore *up to the mask value* every `food_per` steps —
+collapses three features (temporal lumpiness, spatial template, gradient niche) into
+one knob, and reduces *exactly* to current behaviour at `food_per=1`, `mask≡1`. One
+design fork worth deciding consciously:
+
+- **(a) additive relaxation toward the float ceiling, fired every `food_per` steps**
+  (`F ← min(F + food_inc·food_per, mask[i])`). Keeps `food_inc` as the *rate* and the
+  mask as the *ceiling/template*; preserves the slow-relaxation mechanism that lets
+  depletion craters persist (the Bugs behaviour — confirmed: Bugs does `F ←
+  min(F+food_inc, F_src)` every step, `bugs.c:1417`). **Recommended.**
+- **(b) hard set `F ← mask[i]` every `food_per` steps.** Sawtooth pulses; also
+  interesting, but erases sub-`food_per` depletion structure at each pulse and drops
+  `food_inc` as a knob.
+
+Go with (a): it is the strictly more general one (b falls out as `food_inc→∞`), and
+it's the variant whose *mechanism* (depletion-structure lifetime, §C) we actually
+theorised. Concrete change: `env_mask` `uint8`→`float`, one modulo gate in Phase 2.
+Answering your §C sub-question directly: **nothing is wrong with routing everything
+through `env_mask`** — a single always-active float mask (default 1.0 everywhere,
+shaped values for niches/gradients, restored every `food_per`) is the right unified
+design, and it retires the idea of a third env-gating array.
+
+### LB4 — swarmchem: I overstated "negative reference"; here is the precise correction
+
+You pushed on "completely negative reference," and you're partly right, so let me be
+exact about *what* is and isn't there, because the distinction is scientifically
+load-bearing.
+
+**What stock swarmchem cannot give you (verified in the code this pass).** Its
+inter-agent coupling is **one-sided and type-blind**: an agent's acceleration depends
+only on *its own* genome (`c1..c5`, `nbhd_radius`) applied to the *aggregate* mean of
+its neighbours' positions/velocities — there is no type×type interaction, no
+per-pair parameter, no way for "A near B" to differ from "A near C". So there is no
+substrate in stock swarmchem for "random interactions *between* components": the
+model has no place to *put* a pairwise interaction. That is why it's a negative
+reference for a *reaction network*, and that claim stands.
+
+**Where your intuition is right, and it's a real phenomenon.** If you *build* a
+different model — many particle types with a **random type×type interaction matrix**
+(attraction/repulsion depending on the specific pair) — you *do* get emergent
+higher-order structure: stable clusters, membranes, self-maintaining and even
+self-replicating spatial "organisms." This is the *particle life* / *primordial
+particle systems* result (Schmickl, Stefanec & Crailsheim 2016, *Sci. Rep.*;
+Ventrella's *Clusters*), and Sayama's own *heterogeneous* Swarm Chemistry (2009)
+moves toward it. So "many components + random pairwise priors ⇒ emergent structure"
+is correct and well-precedented.
+
+**But — the distinction that decides the design.** Emergent self-*assembly* is not an
+emergent *reaction network*. A reaction network requires **species-identity
+transitions** (a particle/quantity of A *becomes* B; A+B→C with conservation and
+catalysis). Force-based particle systems produce persistent *morphologies* you could
+relabel as "molecules," but no particle ever changes *type* — there is no
+stoichiometry, no catalysis, unless you add an explicit reaction rule on
+contact. So random *bond-force* priors give emergent **shape**, not emergent
+**chemistry**. Your specific question — "does a reaction network *emerge* from bond
+priors?" — is genuinely under-explored, but its home is the **artificial chemistry**
+literature (Dittrich, Ziegler & Banzhaf 2001, *Artificial Life* 7:225-275; Fontana &
+Buss's AlChemy, 1994 — organisations/reaction networks emerging from a λ-calculus
+"bond" prior), *not* swarm chemistry, and not the flocking substrate.
+
+**Net for EvoCA.** For the **chem** branch (a resource *field* consumed by *sessile*
+agents), the swarm substrate doesn't transfer at all and FKP-1986 remains the anchor.
+Your reaction-network-from-priors question is real but lives in a **motile
+particle** model — i.e. it's actually a question for the *motility* branch, not the
+chem branch. If motility happens, revisiting "type×type priors ⇒ emergent
+reaction/assembly" there would be novel and worth it. I've added the particle-life
+and artificial-chemistry citations so the distinction is on the record.
+
+### LB5 — "give each gene its own neutral shadow, define no-history = 0"
+
+This is the one place I most firmly disagree, and I owe you a stronger reason than
+"ill-posed," because as stated that *did* sound like a hand-wave.
+
+**The zero-fill doesn't patch a boundary case — it changes what the statistic
+measures, for the majority of genes.** Recall `excess = ΣG − ΣN`
+(`evoca_explore.py:284`): the neutral term ΣN is what a *non-selective* process
+would produce, and excess is the part above that. The whole point is that a neutral
+genome *still accumulates activity* just by persisting and drifting. Now, in the
+**open LUT-hash space**, almost every genome that matters is *young and rare* — the
+churn you distrust in §F is precisely a stream of short-lived, freshly-minted hashes.
+A per-gene neutral shadow would need *that specific hash* to also exist in the shadow
+population with its own drift history; it generally does not (the shadow drifts to
+*different* hashes). So "no drift history" is not the exceptional case — **it is the
+generic case for the exact genes the metric is supposed to discipline.**
+
+Set those to zero and `excess = ΣG − 0 = ΣG`: you have quietly turned *excess
+activity* back into *raw activity* for the churning majority. The neutral correction
+then does nothing for the population that most needs it, while still "working" for
+the handful of long-lived genomes — which will *look* like a working neutral model
+while being raw activity in disguise. That's worse than no per-gene threshold,
+because it's a silent bias toward calling churn "adaptive."
+
+**Why pooling is the *correct* estimator here, not a workaround.** The neutral
+expectation for "a gene like this, arising now" is a property of the *ensemble*
+birth/death/drift dynamics, not of the individual gene's (nonexistent) history. The
+pooled/shared-threshold shadow estimates one neutral distribution from the whole
+shadow ensemble and borrows statistical strength across genes — which is exactly the
+information the zero-fill throws away. This is a bias–variance point: per-gene
+open-space shadows trade a little bias for catastrophic variance (n=1 per gene), and
+zero-filling the n=0 genes converts that into *systematic* bias.
+
+**Where your instinct is exactly right and *should* be built: the fixed spaces.** In
+the 729-key egene space and the 500-bucket dyn space, every bucket is present for the
+whole run, has a well-defined Wright–Fisher drift trajectory, and a **closed-form
+per-bucket variance** — so a per-bucket z-score `(obs − drift_mean)/drift_sd` is
+well-posed and gives you exactly the "sharper per-gene threshold, at the cost of more
+fluctuation" you asked for, with the fluctuation *bounded analytically* rather than
+guessed. That's G2 in the roadmap and I recommend it. So the honest split is: your
+per-gene instinct is *correct in the fixed spaces* (build it) and *ill-posed in the
+open space* (the pooled shadow is right; zero-fill makes it worse, not fixed). And
+the canonical middle rung — Bedau–Packard **A_new** (per-component new-activity vs a
+*single shared* threshold, G1) — is the cheapest rigorous version of "threshold each
+gene" and is turnover-invariant, which is why it also defuses the §B drift problem.
+
+- **Action (yours):** dyn_activity scan — planned as D1 (see roadmap); pairs with
+  promoting `dyn_excess` to the primary phenotypic readout.
+
+### LB6 / §L — measure the flux, structured gradient, motility, and the waste model
+
+Four distinct things here; I'll take the two you flagged as actions first, then the
+two open questions.
+
+- **Measure the flux (L1): confirmed, cheapest item, do first.** Intake side already
+  exists (`g_sum_mouthful`); the sink side (Σ tax collected + Σ death losses + Σ
+  cap-overflow) is a one-line accumulator per step. Per-capita net throughput is
+  Chaisson's Φ and hands §B its principled x-axis. `main`.
+- **Spatial source-field gradient (§C, L2): confirmed** — and it *is* the float-mask
+  generalisation from LB3, so L2 and C2 are the **same change** viewed twice (env
+  measurement + env structure). Build once.
+
+**Open question — motility (your 4 options). This is the most consequential
+architectural decision in your replies, and I want to slow you down on it.**
+Chemistry enriches the *resource* and leaves the CA core untouched. Motility touches
+the **core invariant**: EvoCA is "every cell carries a CA rule and the CA plays out
+on a *fixed* lattice." If agents move, the CA-on-a-lattice picture is no longer
+coherent — what is `v(x)`'s neighbourhood update when the occupants shuffle between
+steps? Motility doesn't extend EvoCA; it converts it toward **"Bugs with
+CA-genomes."** That might be the right destination, but name it as an identity choice.
+On the four algorithms specifically:
+
+| Option | Verdict |
+|---|---|
+| 1. swap with least-food neighbour | As stated this moves the agent *toward* the poorest cell — **anti-foraging**; it cannot climb a food gradient. Only makes sense as a mixing/diffusion rule, not adaptation. If the intent is foraging, it must be "move toward *highest*-food neighbour." |
+| 2. displace least-food neighbour, leave dead cell behind | Non-conservative; leaves vacancy "trails" (interesting spatial structure) but again undirected unless the target is chosen by gradient. A churny diffusion coupled to reproduction filling vacancies. |
+| 3. LUT brain as in Bugs | **The only evolvable, gradient-sensing option**, and the only one that makes §L's "navigate the gradient" meaningful. Verified Bugs mechanism: a **512-entry LUT** keyed on the 9-bit thresholded-food Moore neighbourhood → one of **120 moves** (8 dirs × 15 magnitudes), thresholds themselves evolvable (the egenome). This is a *second* genome alongside the CA-rule LUT — a large but principled addition. |
+| 4. other | Two I'd add: **(4a)** a *non-evolvable greedy climb* (move to highest-food Moore neighbour) as a **baseline to test whether motility helps at all** before committing to the evolvable brain; **(4b)** a single evolvable "taxis gene" (probability of stepping up-gradient) — a graded rung between passive and full-brain. |
+
+Recommendation: if you pursue motility, do it as a *separate major branch* (`motile`),
+start with **4a** (does mobility even change outcomes on a gradient world?), and only
+build the **option-3** Bugs-brain if 4a shows motility matters — because option 3 is
+the change that redefines the model, and it should be earned by evidence, not
+assumed. And note the payoff couples to LB4: a motile particle world is where your
+"reaction-network-from-priors" question actually lives.
+
+**Open question — the food+waste model. My verdict: yes, materially different, and
+in the direction your own §B intuition wants — build it as chem's first milestone.**
+Reasoning, not applause:
+
+- The current tax is a scalar sink: `f -= tax`. Your waste model converts food→waste
+  and makes *disposal* the hard part, with difficulty rising in rich/crowded regions.
+  That installs a **density-dependent cost that stays selective exactly where the
+  food axis goes slack.** In the current model, high resource ⇒ everyone survives ⇒
+  drift (the §B high-flank collapse). With waste, high resource ⇒ waste piles up ⇒
+  waste-management becomes the live selective axis ⇒ **selection does not
+  collapse at abundance**, it *changes character*. This is precisely the "even in a
+  resource-rich world there is still nontrivial evolution" exception you posited in
+  the original checkpoint — the waste model is a mechanism that *guarantees* it.
+- It is a genuine **structured internal gradient** (§L) without full vector
+  chemistry: a 2-vector (food, waste) is the minimal chem, so it doubles as the
+  validation milestone for the chem plumbing (N_chem=2 before N_chem=many). That
+  answers "branch off chem or its own?": **make food+waste the first concrete
+  deliverable *on* the chem branch.**
+- **One refinement (push-back on the coupling).** You proposed disposal-difficulty
+  keyed to the *local food* field ("inverse of feeding"). Cleaner: give waste its
+  own environmental field `W_env`, dump waste into it, disposal rate ∝ `(1 − W_env)`
+  (hard where the neighbourhood is *already waste-saturated*). Then (i) waste has its
+  own spatial gradient and plumes, (ii) the crowding penalty *emerges* (crowds make
+  local waste) instead of being imposed by conflating it with food, and (iii) it's a
+  true second compound, which is what you want the chem machinery to exercise. Start
+  without wgenes (uniform disposal) exactly as you suggest; add a wgene max-score
+  disposal later by symmetry with eating.
+- Honest uncertainty: whether this produces *sustained* new evolution or just a
+  one-time shift to a waste-limited steady state is exactly the experiment — but even
+  the null result ("waste just moves the drift-collapse to a waste-poisoning
+  collapse") would be informative about whether a second conserved currency changes
+  the selection structure.
+
+## Section-level responses (leftovers)
+
+**§A.** tax-as-agent reconciled above (LB1). Distribution-seeding on mu-genome:
+agreed, it's the natural *first* use of per-cell storage (a zero-mutation selection
+assay) and I'd run it before enabling rate-mutation.
+
+**§B — your "raw − excess" probe.** Nice instinct, and let me sharpen it with a fact
+that makes it *free*: since `excess = ΣG − ΣN`, we have **`raw − excess = ΣN` — the
+neutral shadow's own activity, which we already log** (`N_total_activity`). So the
+quantity you want isn't a new measurement; it's the shadow baseline, already in
+hand. The *diagnostic* you're really reaching for is the **adaptive fraction**
+`excess/raw` (equivalently `1 − ΣN/ΣG`): in the drift regime it →0 while raw stays
+high; at the productive peak it's maximal. That single normalised scalar is the crisp
+"is the activity adaptive or drift?" readout — a graded version of your idea. Trivial
+to add to the §B notebook; no C change.
+
+**§C.** Unified float-`env_mask` answered in LB3 (yes, route everything through it).
+"Does temporal lumpiness create evolutionary opportunity?" is logged as an explicit
+campaign (C3) on the research map, with the falsifiable prediction from the first
+pass: mean `F_env` held fixed while spatial variance rises with `food_per`, and
+turnover/excess rise with that variance (or the informative null: they don't).
+
+**§D — punctuation vs optimization. You're right; I concede the framing and
+strengthen the mechanism.** Two contrived setups was the wrong instinct — a good
+model should show punctuation *emergently in a single run*, which is exactly how
+Coreworld's seven epochs and Lindgren's strategy-epochs appear, and what
+Bedau–Packard evolutionary-activity waves *are*. So: **one unforced run + a
+punctuation detector**, not two experiments. And your mechanistic doubt is sharper
+than you claimed: with the current multi-slot egene (verified — `Negene` active
+ternary slots, mouthful = **max** score across active egenes,
+`C/evoca.c:1052,1198`), activating a slot adds a pattern to the max-pool *and* adds
+`tax_per_egene` — so a fresh random slot is **near-neutral-to-slightly-deleterious at
+birth** (it costs tax before it wins any max), and only becomes beneficial once
+optimized to out-score the incumbents. That is *textbook* punctuated equilibrium
+(innovations near-neutral at origin, adaptive after refinement), and it gives a
+concrete detectable **signature: a slot-activation event → a dip/plateau in
+lineage net-return → a climb as the slot is tuned.** Your "slot filled with random
+values" *is* what activation already does, and it confirms the dip. So the
+experiment is: single run, lineage net-return time series, detect the
+dip-then-staircase around `Negene` increments. This is better science than my
+first-pass separation — thank you for the push.
+
+**§D(2) — "how do I see per-lineage net metabolic return? do we have a probe?"** No.
+Verified: we have `g_sum_mouthful` (global intake) and the per-egene mean-intake
+probe, but **no lineage-keyed net-return reducer**. It needs building (D2), and it's
+small given the lineage field already exists: at each death/step, attribute
+`(intake − tax)` to the cell's `lin_birth_id`, reduce by lineage root (walk
+`parent_id` chains). This is the instrument §D, §B, and §H all depend on — highest-
+leverage small build in the document.
+
+**§E.** Conceded: (i) "no meta-mutation-rate" was imprecise — a predefined universe
+still has universe-defining *metaparams* (compound count, reaction density, rate
+distribution); the point that survives is *no per-run stochastic species allocation*.
+(ii) Sparse vectors as storage, **plus** optional dense per-compound planes rendered
+*on demand for visualization* — agreed, that's a viz projection, not the hot-path
+representation. (iii) Your eating design — vector food plane, simplified eating,
+resource communication via an **enlarged (Moore) eating neighbourhood** rather than a
+new agent-interaction protocol — is the right instinct (reuse the neighbourhood you
+already scan; don't invent a messaging layer). The one thing still to pin *before
+coding* remains the mapping from the resource vector to the scalar `f` that gates
+reproduction, and whether an egene targets a *compound profile* or still a *spatial
+pattern*. The food+waste milestone (LB6) is the ideal place to settle it concretely
+with N_chem=2.
+
+**§F — naming the used-mask genome activity.** `dyn_genome_activity` is
+serviceable but overloads "dyn" (which currently means the 500 *transition* buckets);
+a reader will expect a fixed 500-space. Since the new probe is a *genome-level
+species* count where the species key is the LUT **masked to entries the cell actually
+exercises**, I'd name it for what it keys on: **`eff_activity`** ("effective-rule
+activity") or **`used_lut_activity`**. My pick: **`eff_activity`**, with the docstring
+"full-genome activity over the *effective rule* (LUT restricted to exercised
+entries)," and keep `dyn_activity` for the transition-level probe. Reuses the existing
+per-step `lut_active` mask; the only new part is *per-cell* used-masking.
+
+**§H — expanded, with an explicit adaptive-vs-drift research program.** "That field"
+= the lineage field (`lin_parent_hash/lin_birth_id/lin_parent_id`); "it" = that same
+field, which I called the highest-leverage instrument because parent→child
+bookkeeping is what turns correlational activity into causal selection claims. The
+program to separate adaptation from drift, concretely:
+
+1. **Instrument:** enable lineage; build the D2 net-return reducer; log per-lineage
+   `(intake, tax, births, extinction step)`.
+2. **Neutral control by construction:** the drift shadow already gives the null. The
+   test is per-lineage: does a lineage's realised growth/net-return exceed what its
+   *shadow* (same birth/death counts, non-selective inheritance) produces? Lineages
+   that beat their shadow are under selection; those tracking it are drifting.
+3. **Two orthogonal readouts, cross-checked:** (a) **A_new** (per-component
+   new-activity vs shared threshold, G1) — turnover-invariant, so it stays honest in
+   the high-resource drift regime where raw activity lies; (b) **lineage net-return
+   staircases** — a lineage whose net-return steps *up* and *persists* is adaptive; a
+   lineage whose hash churns while net-return is flat is drift. Agreement between the
+   population-level A_new and the lineage-level staircase is the strong evidence.
+4. **The decisive sweep:** run the §B `food_inc/tax` sweep with all of the above.
+   Prediction: adaptive-fraction (`excess/raw`) and count of shadow-beating lineages
+   are **inverted-U** in the ratio; raw activity is monotone/flat. If raw is
+   inverted-U too, my drift-collapse story is wrong — that's the falsifier.
+
+This is the backbone that makes §B, §D, and §L *measurable* rather than narrated.
+
+**§L.** Lotka re-examination: the piece that actually delivers your interior optimum
+is **Odum & Pinkerton (1955)** — *maximum power at intermediate efficiency* — which
+is the sharper form of Lotka's principle and the one that predicts the inverted-U as
+a selected optimum in gradient-exploitation rate rather than a monotone "steeper is
+better." I've added it; it's the citation to lean on for the `food_inc/tax` peak.
+chem-branch priority (collaborator): acknowledged — the branch-creation +
+single-field-parity task (L3) is in the roadmap as a near-term branch item, and the
+food+waste milestone gives the collaborator something concrete and novel early.
+
+## Big picture
+
+- **Digest-as-notebooks: endorse as standing process, not a one-off.** Concretely:
+  every campaign closes with a `Research/<campaign>/` subdir co-locating its summary
+  notebook (md narrative + the figures that show the discovery) with any `.md`
+  write-up — a result and its narrative never live in separate directories. The §B/LB2
+  scan-summary notebook is the first instance and the template. I'd make "campaign
+  isn't done until its digest notebook exists" a workflow rule (it pairs with the
+  existing pre-merge test-notebook protocol).
+- **Publication aim — my recommendation, with a reason.** Don't pick "one big
+  article" now. The structure of the work (a core model + semi-independent
+  branches: resource-driving, chem, mu-genome, possibly motile) maps naturally onto a
+  **repo-as-publication with a small series of focused papers/notebooks**, not a
+  monograph. Concretely: (i) make the **GitHub repo the primary artifact** —
+  `Research/` as the results layer (per-campaign subdirs, notebook + narrative
+  co-located), `Docs/` as the spec/theory layer, a top-level
+  README that reads as a paper index; (ii) each mature branch yields *one* focused
+  methods+results notebook that can become a short paper (the neutral-model/activity
+  methodology is itself a publishable methods contribution — it's the sharpest,
+  most-defensible piece); (iii) reserve the "book/large synthesis" for after two or
+  three of those exist and the throughline (dissipative structure + heredity +
+  open-ended activity metrics) is demonstrated, not asserted. A **publication fork**
+  is premature; a *disciplined main repo* gets you the same shareability without
+  maintaining two histories. This also raises the bar on repo structure now, which
+  the digest-notebook rule already pushes toward. (Flag: this is the one area where I
+  have the least project-specific ground truth — it's a judgement call about your
+  audience and collaborators, so treat it as a recommendation to react to, not a
+  finding.)
+
+## §I′ — consolidated action table (every action, old + new)
+
+| # | Action | Source | Where | Risk |
+|---|---|---|---|---|
+| A1 | env/agent two-dict split (derive from single recipe) | LB1 | **main** | none |
+| A2 | mu-genome: per-cell agent-gene storage (mutation off), then distribution-seeding assay, then evolvable rates (env-floor + agent-modifier for tax) | LB1,§A | **branch** mu-genome | high |
+| A3 | `model.md` Phase 2c: add `tax_ring` term | LB1 | **main** (doc) | none |
+| B1 | scan-summary notebook: outcome vs `food_inc` *and* `food_inc/tax`, markers encode scan params, overlay raw vs excess, mark 0.013 | LB2,§B | **main** | none |
+| B2 | adaptive-fraction readout `excess/raw` (raw−excess = ΣN already logged) | §B | **main** | none |
+| C1 | add `food_per` (temporal regen period) | LB3 | **branch** resource-driving | med |
+| C2/L2 | `env_mask` uint8→float ceiling; additive relaxation toward mask every `food_per`; spatial gradient niches | LB3,§C,§L | **branch** resource-driving | med |
+| C3 | log "temporal lumpiness ⇒ evolutionary opportunity?" as explicit campaign w/ falsifiable prediction | §C | campaign | — |
+| D1 | dyn_activity scan; promote `dyn_excess` to primary phenotypic signal | LB5,§F | **main** | none |
+| D2 | **build** per-lineage net-return reducer on the lineage field | §D(2) | **main** (small C+py) | low |
+| D3 | single-run punctuation detector: lineage net-return dip-then-staircase at `Negene` increments | §D | **main** | none |
+| E1 | chem branch on research map + plan | LB4,§E | doc + **branch** chem | — |
+| E2 | food+waste as chem **milestone 2** (first scientific instance, N_chem=2; milestone 1 is single-food parity); needs minimal reaction-execution engine; waste has own `W_env` field, disposal ∝ (1−W_env) | LB6,§E | **branch** chem | high |
+| E3 | chem design: sparse vectors (hot path) + optional dense planes (viz); enlarged Moore eating neighbourhood for resource communication; pin vector→`f` mapping first | §E | **branch** chem | high |
+| F1 | `eff_activity` (effective-rule / used-mask genome species) | §F | **main** (C add) | low |
+| G1 | Bedau–Packard **A_new** (per-component new-activity, shared threshold) | LB5 | **main** | low |
+| G2 | per-bucket z-scoring in fixed eg(729)/dyn(500) spaces (your per-gene instinct, well-posed) | LB5 | **main** | low |
+| G3 | *decision:* do **not** build per-gene open-space shadow w/ zero-fill (changes estimand) | LB5 | — | — |
+| H1 | adaptive-vs-drift program (§H above): lineage + A_new + shadow-beating test on §B sweep | §H | **main** | low |
+| L1 | dissipation accumulator (Σ tax + death + overflow); per-capita throughput Φ; §B x-axis | §L | **main** | low |
+| L3 | create `chem` branch w/ spawned agents; parity tests for single-field functionality | §L | **branch** chem | med |
+| M1 | **DEFERRED 2026-07-19.** Motility on hold: characterize sessile EvoCA (baseline) first, so motility's contribution is attributable. Open sub-question: start motility from *EvoCA* or from *Bugs*? (see note below) | LB6 | **branch** motile (not now) | very high |
+| P1 | digest-as-notebooks standing rule; `Research/<campaign>/` (notebook + md co-located) per campaign | BigPic | process | — |
+| P2 | publication: repo-as-primary-artifact + focused notebook-papers; defer book; no fork yet | BigPic | strategic | — |
+
+## §K′ — revised prioritized roadmap
+
+**Do now (main, low/zero code, high information):**
+1. A1 env/agent split · A3 model.md tax_ring fix — trivial, unblock the niche framing.
+2. L1 flux accumulator + B1/B2 scan-summary notebook with the `food_inc/tax` axis and
+   raw-vs-excess overlay — this one figure tests the central intuition *and* validates
+   the metric (still the single highest-leverage cheap item).
+3. G1 A_new — cheapest rigorous, turnover-invariant metric; defuses drift regime.
+4. D1 promote dyn_activity/dyn_excess to primary phenotypic readout (reinterpretation).
+
+**Do next (mostly main, scoped):**
+
+5. D2 lineage net-return reducer — the instrument §B/§D/§H all need.
+6. H1 adaptive-vs-drift program on the §B sweep (needs D2 + G1).
+7. D3 punctuation detector (single unforced run) · G2 fixed-space per-bucket z-scoring
+   (your per-gene instinct, made well-posed) · F1 `eff_activity`.
+
+**Do on branches (invasive, human merge gate, pre-merge notebook):**
+
+8. resource-driving: C1 `food_per` → C2/L2 float-`env_mask` gradient. Campaign C3.
+9. mu-genome: A2 storage-first → distribution-seeding assay → evolvable tax
+   (env-floor + agent-modifier).
+10. chem (L3 branch + collaborator priority) — **general N_chem machinery first**
+    (E3 design: sparse storage + vector→`f` mapping pinned up front), then milestones
+    on it: **(1)** single-food parity → **(2)** food/waste binary (E2; needs the
+    minimal reaction-execution engine + §L structured-gradient experiment) →
+    **(3)** larger resource spaces + autocatalytic reaction-network design (FKP-style)
+    and the egene→compound-profile redesign. Ordering per N 2026-07-19 (§E′ note).
+
+**Deliberate decisions before any code:**
+- **M1 motility — DEFERRED 2026-07-19** (N's call): explore sessile EvoCA first to
+  establish what motility would *add*; and the prior question — EvoCA-as-trunk vs
+  Bugs-as-trunk — is itself unsettled (see note). Revisit after the baseline
+  campaigns (§B/§D/§H) are in hand.
+
+  *Note — EvoCA-start vs Bugs-start (framing for when we revisit).* The two models are
+  near-duals: **EvoCA** = sessile, rich genome (CA-rule LUT + eating egenome), resource
+  *field*; **Bugs** = motile, thin genome (a food-sensing LUT-brain), no CA. Motility
+  machinery (LUT-brain, `place_or_bump` occupancy, sensing) *already exists in Bugs* —
+  so "Bugs + EvoCA's CA-rule/egenome richness" may be *less* work than "EvoCA + motility
+  + resolving CA coherence." But the CA dynamics are EvoCA's distinctive scientific
+  content, which Bugs lacks entirely. The real question is which distinctive feature is
+  the trunk — the evolvable CA rule (EvoCA) or motile sensing (Bugs) — and the two are in
+  genuine tension (a CA is defined on a *fixed* neighbourhood; if occupants move, "what is
+  `v(x)`'s update?" must be answered either way). Deciding this needs the sessile baseline
+  first, which is exactly why the deferral is correct.
+- **E2 vs E3 ordering — RESOLVED 2026-07-19** (N's call): build the **general N_chem
+  universe machinery first** (the trunk), then instantiate milestones small→large on
+  it. Agreed milestone sequence:
+  1. **Parity** — retrieve current single-chem (food) results at N_chem=1 (= L3
+     regression gate).
+  2. **food/waste binary** (N_chem=2) — validates sparse storage + vector→`f` mapping;
+     runs the §B high-flank / structured-gradient experiment.
+  3. **Larger resource spaces** — where the **autocatalytic reaction-network** design
+     (FKP-style) lands; deferred to here by N.
+  Distinction to hold in the design: food→waste *is a reaction*, so a minimal
+  **reaction-execution engine** (transform A→B at a rate) is needed by milestone 2,
+  while the **reaction-network specification** (autocatalytic universe) waits for
+  milestone 3. The egene→compound-profile redesign also defers to 3 (milestones 1–2
+  have ≤2 compounds and reuse current eating on the food component). Pin **sparse
+  storage** and the **vector→`f` mapping** in the general design before milestone 2.
+- **P2 publication shape — RESOLVED 2026-07-19, structure refined 2026-07-19**
+  (N's call): **repo-as-artifact.** Layout, as settled:
+  - **`Research/` is the results layer**, organized as **per-campaign subdirs**
+    (`Research/<campaign>/`). Each subdir **co-locates** its summary notebook with
+    its `.md` write-up (and a short per-campaign README), so a result and its
+    narrative never live in separate directories. This deliberately avoids the
+    disliked pattern of a results `.md` in one place linking to a notebook in
+    another (`../Notebooks`). A top-level **`Research/README.md`** is the index /
+    reading-order that summarizes the research endeavor.
+  - **Raw artifacts stay where they land now** (`Runs/`, `Scans/`, `ProbeLogs/`).
+    `Research/` holds *curated* results and may **copy** selected raw artifacts in;
+    campaign notebooks read raw data from those dirs in place. The distinction that
+    matters: **md → notebook-in-another-dir is what we avoid** (solved by
+    co-location); **notebook → raw data** is just code reading its inputs and is
+    fine.
+  - **Notebooks keep their outputs** so GitHub renders figures inline (no run
+    needed by a visitor). Note (verified 2026-07-19): the repo does **not** strip
+    notebook outputs today — no `nbstripout` filter, `.gitattributes`, pre-commit,
+    or hook — and existing notebooks already commit *with* outputs, so `Research/`
+    needs **no special git treatment now**. If repo-wide output-stripping is added
+    later (to tame noisy *working* notebooks), exempt `Research/` with a nested
+    `Research/.gitattributes` (`*.ipynb filter=` / `*.ipynb diff=`). For a
+    publication repo the robust posture is to *not* rely on filters for `Research/`
+    and just commit outputs directly (the current default).
+  - **`Docs/` stays the hodge-podge for now** (spec/theory + planning + logs mixed);
+    the code-doc vs planning-doc split is a **publish-time** cleanup, not now.
+  - No publication fork, no book for now; top-level README reads as a paper-index.
+  This *raises the bar on repo structure now* — the P1 rule ("a campaign isn't done
+  until its `Research/<campaign>/` digest notebook exists") is the enforcement
+  mechanism, and the §B/LB2 scan-summary notebook is the first artifact built to
+  that standard.
+
+## Self-critique (adversarial pass — flaws caught and fixed before posting)
+
+1. *Motility, first draft understated the stakes.* I originally filed motility as
+   "another major branch like chemistry." An adversary rightly objects: chemistry
+   leaves the CA-on-fixed-lattice core intact; motility *breaks* it (what is the CA
+   neighbourhood update when occupants move?). Revised M1 to a *model-identity*
+   decision with a cheap 4a gate before the identity-changing option-3, rather than a
+   co-equal branch. (Changed a recommendation.)
+2. *Waste model, first draft said "materially different" without saying which
+   direction.* Vague endorsement is applause, not analysis. Revised to the specific
+   claim that waste installs a **density-dependent cost that stays selective at
+   abundance** — i.e. it targets the *exact* §B high-flank drift-collapse — and
+   flipped the coupling from food-field to a dedicated `W_env` field so the crowding
+   penalty *emerges*. (Changed an assumption and a design axis.)
+3. *"raw − excess" probe, first draft treated it as a new probe to build.* On
+   checking the formula (`excess = ΣG − ΣN`), raw − excess = ΣN, which we *already
+   log*. So the honest answer is "it's the shadow baseline you already have," and the
+   *useful* new scalar is the adaptive fraction `excess/raw`. Corrected from "build
+   it" to "you have it; here's the sharper graded version." (Removed a spurious
+   action, added a better one — the binary→graded move.)
+4. *Punctuation, first draft defended my two-experiment separation.* Under
+   adversarial re-read your single-run emergent framing is simply more correct
+   (Coreworld/Lindgren/Bedau all emergent), so I conceded and *replaced* the
+   recommendation with a detector, then found the *stronger* mechanistic point
+   (slot-activation is near-neutral-at-birth ⇒ dip-then-staircase) that my separated
+   version would have hidden. (Reversed a recommendation.)
+
+## §J′ — structural & scaling review (zoom-out)
+
+- **Single source of truth for metaparams (the §A split's one real risk).** Derive
+  both `env_metaparams`/`agent_metaparams` dicts *from* the one canonical `.evoca`
+  recipe; do not fork storage. This is the only place A1 can introduce a duplication
+  bug.
+- **`env_mask` is now doing three jobs (regen gate, spatial template, gradient).** That
+  consolidation (LB3/C2/L2) is *good* — it retires two would-be arrays — but it means
+  the float-mask semantics must be documented in one place (model.md) as the single
+  env-structure primitive, or three campaigns will each reinvent its meaning.
+- **Scaling: the dominant risk remains chem's per-step cost, not memory.** Sparse
+  vectors (E3) are the precondition for N=512, unchanged from the first pass. New
+  entry: **motility (M1) has a different scaling risk** — random-order sequential
+  movement with occupancy conflicts (Bugs' `place_or_bump` does up to 64 probes per
+  bug) is inherently serial and cache-hostile; at N=512 this could dominate the step
+  loop far more than the CA core. Prototype cost at N=256 before committing.
+- **Reuse, not parallel machinery:** F1 reuses `lut_active`; C2 generalises
+  `env_mask` (no third array); D2/D3/H1 reuse the lineage field; the waste field
+  reuses the food-field regen path with a sign flip. The one place to *resist* reuse
+  is naming: `eff_activity` must not be folded into `dyn_activity` (different key
+  space — see §F).
+
+## References added (to Docs/references/references.md)
+
+- **Odum, H. T., Pinkerton, R. C. (1955).** *Time's speed regulator: the optimum
+  efficiency for maximum power output in physical and biological systems.* American
+  Scientist 43:331-343. (Maximum power at *intermediate* efficiency — the interior
+  optimum behind §B/§L's inverted-U; the sharper form of Lotka you asked to
+  re-examine.)
+- **Sayama, H. (2009).** *Swarm Chemistry.* Artificial Life 15(1):105-114.
+  (Kinematic recipe model; heterogeneous variant gestures at type-specific coupling —
+  LB4.)
+- **Schmickl, T., Stefanec, M., Crailsheim, K. (2016).** *How a life-like system
+  emerges from a simple particle motion law.* Scientific Reports 6:37969.
+  (Primordial particle systems — emergent self-replicating structure from random
+  pairwise motion priors; the "particle life" precedent — LB4.)
+- **Dittrich, P., Ziegler, J., Banzhaf, W. (2001).** *Artificial chemistries — a
+  review.* Artificial Life 7(3):225-275. (The correct literature home for
+  "reaction network from bond priors" — LB4.)
+- **Fontana, W., Buss, L. W. (1994).** *The arrival of the fittest: toward a theory of
+  biological organization.* Bulletin of Mathematical Biology 56:1-64. (AlChemy —
+  reaction networks/organizations emerging from a λ-calculus interaction prior —
+  LB4.)
+- **Packard, N. H. (2019).** *Intrinsic adaptation in a simple model for evolution.*
+  Artificial Life 25(1). (The Bugs model — LUT-brain motility, the option-3
+  reference for M1.)
+
