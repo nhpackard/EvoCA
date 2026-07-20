@@ -348,6 +348,14 @@ class EvoCA:
         L.evoca_eg_shadow_total.restype    = ctypes.c_double
         L.evoca_dyn_shadow_total.argtypes  = []
         L.evoca_dyn_shadow_total.restype   = ctypes.c_double
+        L.evoca_eg_zscores.argtypes        = [ctypes.POINTER(ctypes.c_double)]
+        L.evoca_eg_zscores.restype         = None
+        L.evoca_dyn_zscores.argtypes       = [ctypes.POINTER(ctypes.c_double)]
+        L.evoca_dyn_zscores.restype        = None
+        L.evoca_eg_nbuckets.argtypes       = []
+        L.evoca_eg_nbuckets.restype        = ctypes.c_int
+        L.evoca_dyn_nbuckets.argtypes      = []
+        L.evoca_dyn_nbuckets.restype       = ctypes.c_int
         # Neutral shadow population (Channon-style activity calibration)
         L.evoca_neutral_enable.argtypes        = []
         L.evoca_neutral_enable.restype         = None
@@ -1385,6 +1393,50 @@ class EvoCA:
     def dyn_shadow_total(self):
         """Σ cumulative activity of the dyn_activity drift shadow."""
         return float(self._lib.evoca_dyn_shadow_total())
+
+    def get_eg_zscores(self):
+        """Per-bucket z-scores for the eg_activity fixed space (729
+        ternary-egene keys) — the well-posed per-component ("per-gene")
+        neutral shadow.  For each key k:
+
+            z[k] = (observed cumulative activity[k] − shadow drift
+                    mean[k]) / closed-form WF drift SD[k]
+
+        The drift mean is the shadow's cumulative activity and the drift
+        SD is sqrt of the accumulated Wright-Fisher drift variance
+        T²·qn(1−qn)/Np.  z ≈ 0 for every key under a null/frozen (zero
+        realised-flux) arm; z ≫ 0 on keys the real run concentrates
+        activity on faster than fitness-blind drift (selection), z < 0
+        where drift stays warmer than selection.  Keys with no
+        accumulated drift variance return 0.
+
+        Returns a float64 array of length EGENE_KEY_COUNT (729)."""
+        out = np.zeros(EGENE_KEY_COUNT, dtype=np.float64)
+        self._lib.evoca_eg_zscores(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        return out
+
+    def get_dyn_zscores(self):
+        """Per-bucket z-scores for the dyn_activity fixed space (500
+        LUT (input,output) transition buckets) — the well-posed per-
+        component neutral shadow.  Same definition as get_eg_zscores:
+
+            z[k] = (observed cumulative activity[k] − shadow drift
+                    mean[k]) / closed-form WF drift SD[k]
+
+        z ≈ 0 under a null/frozen arm, z ≫ 0 on transitions the real run
+        concentrates on faster than drift.  NOTE: dyn z-scores are
+        interpretable only where mu_lut>0 — under a frozen rich LUT
+        substrate (mu_lut=0) the shadow freezes onto the realised
+        composition, giving z ≈ 0 with no selection signal (this does
+        avoid the dyn_excess frozen-rich-substrate artefact, but the
+        arm carries no dyn signal either).
+
+        Returns a float64 array of length DYN_ACT_COUNT (500)."""
+        out = np.zeros(DYN_ACT_COUNT, dtype=np.float64)
+        self._lib.evoca_dyn_zscores(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        return out
 
     # ── N-activity probe (Channon-style neutral shadow) ──────────────
 

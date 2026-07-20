@@ -2720,6 +2720,19 @@ static uint64_t eg_nact[EG_NB];   /* shadow cumulative activity        */
 static uint64_t dyn_nact[DYN_NB];
 static double  eg_nact_frac[EG_NB];   /* fractional carry (mass < 1)   */
 static double  dyn_nact_frac[DYN_NB];
+/* Per-bucket accumulated Wright-Fisher DRIFT VARIANCE of the shadow's
+ * cumulative activity (same activity-mass units as *_nact).  Each step
+ * the bucket receives mean mass  qn*T ; a WF-drift realisation of the
+ * frequency qn has variance qn(1-qn)/Np (the closed form the shadow
+ * model implies), so the activity increment has variance
+ *   m * T^2 * qn(1-qn)/Np
+ * where m is the realised per-component mutation flux (gating the drift,
+ * exactly as it gates the mean update: no flux ⇒ no injected variation
+ * ⇒ no drift ⇒ zero variance).  Increments across steps are treated as
+ * independent WF generations, so the variances add.  sqrt(this) is the
+ * per-bucket drift SD used to z-score the observed cumulative activity.  */
+static double  eg_nact_var[EG_NB];
+static double  dyn_nact_var[DYN_NB];
 static int     fs_eg_primed  = 0;
 static int     fs_dyn_primed = 0;
 
@@ -2752,6 +2765,8 @@ static void fs_shadow_reset(void)
     memset(dyn_nact, 0, sizeof(dyn_nact));
     memset(eg_nact_frac,  0, sizeof(eg_nact_frac));
     memset(dyn_nact_frac, 0, sizeof(dyn_nact_frac));
+    memset(eg_nact_var,   0, sizeof(eg_nact_var));
+    memset(dyn_nact_var,  0, sizeof(dyn_nact_var));
     memset(fs_eg_obs_pop, 0, sizeof(fs_eg_obs_pop));
     memset(fs_eg_obs_act, 0, sizeof(fs_eg_obs_act));
     fs_eg_primed = fs_dyn_primed = 0;
@@ -2790,8 +2805,8 @@ static void fs_eg_observe(void)
  *   flux_rate   realised per-component flip rate (flips / (events*bits))
  *   Np          realised alive population (WF effective size)          */
 static void fs_space_step(double *q, uint64_t *nact, double *frac,
-                          const uint32_t *obs_pop, int K, int *primed,
-                          double flux_rate, int Np)
+                          double *nvar, const uint32_t *obs_pop, int K,
+                          int *primed, double flux_rate, int Np)
 {
     /* Total observed mass this step. */
     double T = 0.0;
@@ -2851,10 +2866,22 @@ static void fs_space_step(double *q, uint64_t *nact, double *frac,
     if (s <= 0.0) return;
     double inv = 1.0 / s;
     for (int k = 0; k < K; k++) {
-        double add = q[k] * inv * T + frac[k];
+        double qn  = q[k] * inv;              /* normalised shadow freq */
+        double add = qn * T + frac[k];
         uint64_t whole = (uint64_t)add;
         nact[k]  += whole;
         frac[k]   = add - (double)whole;
+        /* Closed-form WF drift variance of this step's activity
+         * increment (activity-mass units): T^2 * qn(1-qn)/Np, GATED by
+         * the realised mutation flux m — exactly as the mean update is
+         * gated (drift = m/Np).  The deviation of observed from shadow
+         * under the neutral null arises only from drift on the mutation-
+         * injected fraction, so its null variance must scale with m: no
+         * flux ⇒ no injected variation ⇒ no drift ⇒ zero variance, and
+         * the shadow tracks the realised composition exactly (any
+         * residual observed−nact is sub-count renorm carry, not signal,
+         * and is correctly divided by a zero-variance ⇒ z=0 guard). */
+        nvar[k] += m * T * T * qn * (1.0 - qn) / (double)Np;
     }
 }
 
@@ -2877,10 +2904,10 @@ static void fs_shadow_step(int alive_pop)
      * independent) so the eg baseline gets a per-step mass T just
      * like dyn (whose dyn_pop is per-step via Phase 1). */
     fs_eg_observe();
-    fs_space_step(eg_q,  eg_nact,  eg_nact_frac,  fs_eg_obs_pop, EG_NB,
-                  &fs_eg_primed,  eg_rate,  alive_pop);
-    fs_space_step(dyn_q, dyn_nact, dyn_nact_frac, dyn_pop, DYN_NB,
-                  &fs_dyn_primed, dyn_rate, alive_pop);
+    fs_space_step(eg_q,  eg_nact,  eg_nact_frac,  eg_nact_var,
+                  fs_eg_obs_pop, EG_NB, &fs_eg_primed,  eg_rate,  alive_pop);
+    fs_space_step(dyn_q, dyn_nact, dyn_nact_frac, dyn_nact_var,
+                  dyn_pop, DYN_NB, &fs_dyn_primed, dyn_rate, alive_pop);
 }
 
 /* ── Public accessors for the fixed-space shadows ───────────────────
@@ -2943,6 +2970,67 @@ double evoca_dyn_shadow_total(void)
     for (int k = 0; k < DYN_NB; k++) s += (double)dyn_nact[k];
     return s;
 }
+
+/* ── Per-bucket z-scores (the well-posed per-gene neutral shadow) ────
+ *
+ * For each fixed-space bucket k:
+ *     z[k] = (observed cumulative activity[k] − drift mean[k]) / drift SD[k]
+ * where the drift mean is the shadow's cumulative activity nact[k] and
+ * the drift SD is sqrt(nvar[k]), the accumulated closed-form Wright-
+ * Fisher drift variance T^2·qn(1-qn)/Np summed over steps.  This is the
+ * per-component ("per-gene") version of the aggregate excess: it makes
+ * the "each present gene has its own neutral shadow, threshold it
+ * separately" instinct well-posed in these FIXED spaces (it is ill-posed
+ * in the open LUT-hash space, where a just-born genome has no drift
+ * history — do NOT attempt it there).
+ *
+ *   z ≈ 0  under a null/frozen arm: with zero realised mutation flux the
+ *          shadow tracks the realised composition exactly, so the
+ *          numerator is 0 (z=0) for every bucket.
+ *   z ≫ 0  on buckets the real run concentrates activity on faster than
+ *          fitness-blind drift (selected keys / transitions); z < 0 on
+ *          buckets drift keeps warmer than selection does.
+ *
+ * Buckets with no accumulated drift variance (never seen, or pinned at
+ * qn∈{0,1}) yield z=0 — undefined-but-harmless rather than a divide-by-
+ * zero.  Fills a caller-provided buffer of EG_NB / DYN_NB doubles.
+ *
+ * NOTE (dyn only): dyn z-scores are interpretable only where mu_lut>0.
+ * Under a frozen rich LUT substrate (mu_lut=0) the observed rule keeps
+ * firing while flux→0 freezes the shadow onto the realised composition;
+ * the per-bucket numerator is then ≈0 (z≈0) by construction, so the
+ * dyn_excess frozen-rich-substrate artefact does NOT reappear here, but
+ * the z-scores also carry no selection signal in that arm. */
+static void fs_zscores(const uint64_t *obs_act, const uint64_t *nact,
+                       const double *nvar, int K, double *out)
+{
+    for (int k = 0; k < K; k++) {
+        double var = nvar[k];
+        if (var > 1e-12) {
+            double dev = (double)obs_act[k] - (double)nact[k];
+            out[k] = dev / sqrt(var);
+        } else {
+            out[k] = 0.0;
+        }
+    }
+}
+
+/* eg: 729 ternary-egene keys.  out must hold >= EG_NB doubles. */
+void evoca_eg_zscores(double *out)
+{
+    fs_zscores(fs_eg_obs_act, eg_nact, eg_nact_var, EG_NB, out);
+}
+
+/* dyn: 500 (LUT input,output) transition buckets.  out must hold
+ * >= DYN_NB doubles. */
+void evoca_dyn_zscores(double *out)
+{
+    fs_zscores(dyn_act, dyn_nact, dyn_nact_var, DYN_NB, out);
+}
+
+/* Bucket counts (so callers need not hard-code 729 / 500). */
+int evoca_eg_nbuckets(void)  { return EG_NB;  }
+int evoca_dyn_nbuckets(void) { return DYN_NB; }
 
 /* ── Egenome scalar stats probe ─────────────────────────────────────
  *

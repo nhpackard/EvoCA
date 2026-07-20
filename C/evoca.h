@@ -141,6 +141,23 @@ double evoca_dyn_excess_pc(void);
 double evoca_eg_shadow_total(void);
 double evoca_dyn_shadow_total(void);
 
+/* Per-bucket z-scores — the per-component ("per-gene") neutral shadow,
+ * well-posed in these FIXED spaces (ill-posed in the open LUT-hash
+ * space, do not attempt there). For each bucket k:
+ *     z[k] = (observed cumulative activity[k] − shadow drift mean[k])
+ *            / sqrt(closed-form WF drift variance[k])
+ * z ≈ 0 for every bucket under a null/frozen (zero-flux) arm; z ≫ 0 on
+ * buckets the real run concentrates on faster than drift (selection),
+ * z < 0 where drift stays warmer than selection. Buckets with no
+ * accumulated drift variance yield z=0. Fill caller buffers of length
+ * evoca_eg_nbuckets() (729) / evoca_dyn_nbuckets() (500). Advanced
+ * automatically inside evoca_step() alongside the excess accessors.
+ * NOTE: dyn z-scores are interpretable only where mu_lut>0. */
+void evoca_eg_zscores(double *out);
+void evoca_dyn_zscores(double *out);
+int  evoca_eg_nbuckets(void);
+int  evoca_dyn_nbuckets(void);
+
 /* ── Neutral shadow population (Channon-style activity calibration) ────
  *
  * Shadow population mirroring the real run's demography under random
