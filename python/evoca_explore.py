@@ -128,20 +128,19 @@ _PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff',
                'restricted_mu')
 
 
-def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
-            shadow=True, init='halfplane'):
-    """
-    Run one EvoCA configuration headless.
+def build_sim(params, N=256, seed=0, init='halfplane'):
+    """Construct and initialise one EvoCA configuration headless.
+
+    Shared by run_sim() and python/dyn_analysis.py so both use the
+    identical fixed initialisation (GoL LUT, plus-shape egenome,
+    density-0.5 v, halfplane/fraction alive seeding).
 
     params: dict with keys from _PARAM_KEYS. Defaults applied if missing.
-    n_steps: total ticks.
-    sample_every: tick interval at which we snapshot all metrics.
     N: grid side length.
-    seed: numpy seed for v_curr initialisation.
-    shadow: whether to enable Channon-style neutral shadow + N-activity.
+    seed: numpy seed for v_curr init; also reseeds the C PRNG.
     init: 'halfplane' (left half alive) or 'fraction' (random 50%).
 
-    Returns a dict of summary metrics + parameter echo.
+    Returns a live EvoCA instance (caller is responsible for .free()).
     """
     rng = np.random.default_rng(seed)
 
@@ -160,6 +159,25 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
         sim.set_alive_fraction(0.5)
     else:
         raise ValueError(f"unknown init: {init}")
+    return sim
+
+
+def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
+            shadow=True, init='halfplane'):
+    """
+    Run one EvoCA configuration headless.
+
+    params: dict with keys from _PARAM_KEYS. Defaults applied if missing.
+    n_steps: total ticks.
+    sample_every: tick interval at which we snapshot all metrics.
+    N: grid side length.
+    seed: numpy seed for v_curr initialisation.
+    shadow: whether to enable Channon-style neutral shadow + N-activity.
+    init: 'halfplane' (left half alive) or 'fraction' (random 50%).
+
+    Returns a dict of summary metrics + parameter echo.
+    """
+    sim = build_sim(params, N=N, seed=seed, init=init)
 
     if shadow:
         sim.neutral_enable()
