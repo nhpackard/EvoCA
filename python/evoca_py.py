@@ -450,6 +450,9 @@ class EvoCA:
         #    mean intake per alive eater this step]
         L.evoca_egene_stats.argtypes  = [ctypes.POINTER(ctypes.c_float)]
         L.evoca_egene_stats.restype   = None
+        # Dissipation / energy-flux accounting (checkpoint §L): out[0..15]
+        L.evoca_get_dissipation.argtypes = [ctypes.POINTER(ctypes.c_double)]
+        L.evoca_get_dissipation.restype  = None
         # Dyn-activity probe (LUT-entry-level): 500 buckets
         L.evoca_dyn_activity_render_col.argtypes = [
             ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
@@ -1144,6 +1147,61 @@ class EvoCA:
             'mean_specificity': float(out[0]),
             'mean_load':        float(out[1]),
             'mean_intake':      float(out[2]),
+        }
+
+    def get_dissipation(self):
+        """Energy-flux / dissipation readout (checkpoint §L, action L1).
+
+        EvoCA is a dissipative structure: food (free energy) is injected
+        each step (source = food_inc over regen cells) and destroyed
+        through three sinks — (a) tax removed from private food, (b) the
+        remaining food of a cell killed by eviction, (c) food_inc lost to
+        the F=1 regeneration cap. Eating (mouthful) is an internal
+        F_food→f_priv transfer, not a sink.
+
+        Returns a dict (all values in food units):
+          Per-step (last sim.step()):
+            'source_step', 'diss_step', 'tax_step', 'death_step',
+            'overflow_step', 'mouthful_step' (agent intake this step)
+          Cumulative (since init):
+            'source_cum', 'diss_cum', 'tax_cum', 'death_cum',
+            'overflow_cum'
+          Instantaneous:
+            'alive'         alive count (Φ denominator)
+            'phi'           per-capita energy throughput
+                            = diss_step / alive (Chaisson energy-rate-
+                            density; 0 when alive==0)
+            'storage_env'   current Σ F_food
+            'storage_priv'  current Σ f_priv
+            'storage'       storage_env + storage_priv
+            'step'          current step counter
+
+        Whole-system energy identity across one step:
+            source_step == d(storage) + diss_step
+        (checked in metric-flux-test.ipynb)."""
+        out = np.zeros(16, dtype=np.float64)
+        self._lib.evoca_get_dissipation(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        storage_env  = float(out[13])
+        storage_priv = float(out[14])
+        return {
+            'source_step':   float(out[0]),
+            'diss_step':     float(out[1]),
+            'tax_step':      float(out[2]),
+            'death_step':    float(out[3]),
+            'overflow_step': float(out[4]),
+            'source_cum':    float(out[5]),
+            'diss_cum':      float(out[6]),
+            'tax_cum':       float(out[7]),
+            'death_cum':     float(out[8]),
+            'overflow_cum':  float(out[9]),
+            'alive':         int(out[10]),
+            'mouthful_step': float(out[11]),
+            'phi':           float(out[12]),
+            'storage_env':   storage_env,
+            'storage_priv':  storage_priv,
+            'storage':       storage_env + storage_priv,
+            'step':          int(out[15]),
         }
 
     def get_egenes_mask(self):

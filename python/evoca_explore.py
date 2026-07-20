@@ -280,6 +280,22 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
             samples['eg_excess_pc'].append(sim.eg_excess_pc())
             samples['dyn_excess_pc'].append(sim.dyn_excess_pc())
 
+            # Energy-flux / dissipation readout (checkpoint §L, action L1).
+            # Per-capita throughput Φ is the principled x-axis material for
+            # the §B food_inc/tax sweep; the cumulative sinks let a run be
+            # summarised by its total dissipation and source/sink balance.
+            diss = sim.get_dissipation()
+            samples['diss_phi'].append(diss['phi'])
+            samples['diss_step'].append(diss['diss_step'])
+            samples['diss_tax_step'].append(diss['tax_step'])
+            samples['diss_death_step'].append(diss['death_step'])
+            samples['diss_overflow_step'].append(diss['overflow_step'])
+            samples['diss_source_step'].append(diss['source_step'])
+            samples['diss_mouthful_step'].append(diss['mouthful_step'])
+            samples['diss_source_cum'].append(diss['source_cum'])
+            samples['diss_cum'].append(diss['diss_cum'])
+            samples['diss_storage'].append(diss['storage'])
+
             samples['t'].append(t)
 
         if t < n_steps:
@@ -313,6 +329,20 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
     _agg('cog_specificity', 'cog_specificity')
     _agg('cog_load', 'cog_load')
     _agg('mean_intake', 'mean_intake')
+
+    # Energy-flux / dissipation (checkpoint §L, action L1). Φ is the
+    # per-capita throughput; the *_cum finals give the whole-run
+    # source/sink balance.
+    _agg('diss_phi', 'diss_phi')
+    _agg('diss_step', 'diss_step')
+    _agg('diss_tax_step', 'diss_tax_step')
+    _agg('diss_death_step', 'diss_death_step')
+    _agg('diss_overflow_step', 'diss_overflow_step')
+    _agg('diss_source_step', 'diss_source_step')
+    _agg('diss_mouthful_step', 'diss_mouthful_step')
+    if samples['diss_source_cum']:
+        out['diss_source_cum_final'] = float(samples['diss_source_cum'][-1])
+        out['diss_cum_final'] = float(samples['diss_cum'][-1])
 
     out['unique_top_genomes'] = len(dominator_history)
 

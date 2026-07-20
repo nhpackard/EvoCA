@@ -236,6 +236,16 @@ void evoca_egenome_stats(float *out);
  * (range 0..1)]. */
 void evoca_egene_stats(float *out);
 
+/* Dissipation / energy-flux accounting (checkpoint §L, action L1).
+ * Fills out[0..15] with the source→sink free-energy through-flux:
+ *   [0] source_step [1] diss_step [2] tax_step [3] death_step
+ *   [4] overflow_step [5] source_cum [6] diss_cum [7] tax_cum
+ *   [8] death_cum [9] overflow_cum [10] alive [11] mouthful_step
+ *   [12] phi (=diss_step/alive) [13] storage_env [14] storage_priv
+ *   [15] step. All values in food units. See evoca.c for full doc. */
+#define EVOCA_DISS_N 16
+void evoca_get_dissipation(double *out);
+
 /* Dyn-activity probe: 500 buckets indexed by (input * 2 + output),
  * where input is the 250-value LUT bit index from
  * LUT_IDX(v_x, n1, n2, n3) and output is the new cell state.

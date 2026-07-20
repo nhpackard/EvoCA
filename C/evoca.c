@@ -374,6 +374,37 @@ static int      dyn_act_prev_y_init = 0;
 static double   g_sum_max_match = 0.0;     /* sum of max signed scores  */
 static double   g_sum_mouthful  = 0.0;     /* sum of clamped mouthfuls  */
 static int      g_eat_count     = 0;       /* alive cells that ate      */
+
+/* ── Dissipation / energy-flux accounting (checkpoint §L, action L1) ──
+ * EvoCA is a dissipative structure: food (free energy) is created from
+ * nothing each step (source) and destroyed through three sinks. These
+ * accumulators only *read* existing quantities as they are already
+ * modified in the step loop — they add no dynamics. Per-step values are
+ * reset at the top of each evoca_step(); cumulative values persist from
+ * init until evoca_free()/evoca_init().
+ *
+ * Source : food_inc nominally injected over env_mask cells (Phase 2).
+ * Sinks  : (a) tax actually removed from private food   (Phase 2c)
+ *          (b) remaining private food of a cell killed by eviction
+ *              (Phase 4 reproduction overwriting an alive neighbour)
+ *          (c) food_inc discarded past the F=1 regeneration cap (Phase 2)
+ * A tax-death leaves f_priv exactly 0, so its whole remaining store is
+ * booked under (a); only eviction contributes (b). Eating (mouthful)
+ * moves food F_food→f_priv and is an internal transfer, not a sink.
+ *
+ * Whole-system energy identity (checked by metric-flux-test.ipynb):
+ *   source_step == d(storage)/step + dissipation_step
+ * where storage = ΣF_food + Σf_priv and
+ *   dissipation_step = tax_step + death_step + overflow_step. */
+static double   g_source_step        = 0.0; /* food_inc injected this step   */
+static double   g_diss_tax_step      = 0.0; /* tax removed this step         */
+static double   g_diss_death_step    = 0.0; /* eviction death-loss this step */
+static double   g_diss_overflow_step = 0.0; /* cap overflow this step        */
+static double   g_source_cum         = 0.0; /* cumulative counterparts       */
+static double   g_diss_tax_cum       = 0.0;
+static double   g_diss_death_cum      = 0.0;
+static double   g_diss_overflow_cum  = 0.0;
+static int      g_alive_last         = 0;   /* alive count at end of step    */
 static uint8_t  wt_egenome_val = 0;           /* wild-type egenome */
 static int      eg_act_ymax = 2000;          /* Y-scale for egenome activity */
 
@@ -848,6 +879,12 @@ void evoca_init(int N, float food_inc, float m_scale)
     g_sum_max_match = 0.0;
     g_sum_mouthful  = 0.0;
     g_eat_count = 0;
+    /* Dissipation accounting: clear cumulative totals for the fresh run. */
+    g_source_step = g_diss_tax_step = g_diss_death_step
+                  = g_diss_overflow_step = 0.0;
+    g_source_cum = g_diss_tax_cum = g_diss_death_cum
+                 = g_diss_overflow_cum = 0.0;
+    g_alive_last = 0;
     evoca_set_n_ent(g_n_ent);   /* reset pattern arrays, keep current n_ent */
 }
 
@@ -1145,6 +1182,12 @@ void evoca_step(void)
     g_eg_bitflips_last  = 0;
     g_lut_bitflips_last = 0;
     g_repro_last        = 0;
+    /* Per-step dissipation sinks (checkpoint §L). Reset here; the
+     * cumulative totals are advanced at the end of the step. */
+    g_source_step        = 0.0;
+    g_diss_tax_step      = 0.0;
+    g_diss_death_step    = 0.0;
+    g_diss_overflow_step = 0.0;
 
     /* Phase 1: CA state update (double-buffered).
      *
@@ -1180,8 +1223,13 @@ void evoca_step(void)
     /* Phase 2: Environmental food regeneration (respects env_mask) */
     for (size_t i = 0; i < cells; i++) {
         if (!env_mask[i]) continue;
+        g_source_step += (double)gfood_inc;   /* nominal energy injected */
         F_food[i] += gfood_inc;
-        if (F_food[i] > 1.0f) F_food[i] = 1.0f;
+        if (F_food[i] > 1.0f) {
+            /* Overflow past the F=1 cap is discarded → sink (c). */
+            g_diss_overflow_step += (double)(F_food[i] - 1.0f);
+            F_food[i] = 1.0f;
+        }
     }
 
     /* Phase 2b: Food diffusion. floor(gdiff) full 3×3 box-blur passes,
@@ -1238,8 +1286,14 @@ void evoca_step(void)
                 int lvl = lut_complexity(lut + i * LUT_BYTES);
                 t += gtax_ring * (float)lvl;
             }
+            /* Tax actually removed from private food → sink (a). If the
+             * cell is taxed to death its entire remaining store leaves
+             * f_priv (which then clamps to 0), so the removed amount is
+             * the pre-tax f_priv, not the full nominal t. */
+            float f_before = f_priv[i];
             f_priv[i] -= t;
             if (f_priv[i] <= 0.0f) {
+                g_diss_tax_step += (double)f_before;
                 f_priv[i] = 0.0f;
                 alive[i] = 0;
                 g_deaths_last++;
@@ -1248,6 +1302,8 @@ void evoca_step(void)
                 memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
                 active[i] = 0;
                 cell_rehash((int)i);
+            } else {
+                g_diss_tax_step += (double)t;   /* survivor pays full t */
             }
         }
     }
@@ -1327,7 +1383,12 @@ void evoca_step(void)
             }
             int child = best_r * N + best_c;
             /* Eviction = death of inhabitant; reproduction = birth. */
-            if (alive[child]) g_deaths_last++;
+            if (alive[child]) {
+                /* The evicted cell's remaining private food is discarded
+                 * when the child overwrites it below → sink (b). */
+                g_diss_death_step += (double)f_priv[child];
+                g_deaths_last++;
+            }
             alive[child] = 1;
             g_births_last++;
 
@@ -1477,7 +1538,15 @@ void evoca_step(void)
         int alive_pop = 0;
         for (size_t i = 0; i < cells; i++) alive_pop += alive[i];
         fs_shadow_step(alive_pop);
+        g_alive_last = alive_pop;
     }
+
+    /* Advance cumulative dissipation totals (checkpoint §L). Purely a
+     * running sum of the per-step sinks read above — no dynamics. */
+    g_source_cum        += g_source_step;
+    g_diss_tax_cum      += g_diss_tax_step;
+    g_diss_death_cum    += g_diss_death_step;
+    g_diss_overflow_cum += g_diss_overflow_step;
 }
 
 /* ── Activity tracking ─────────────────────────────────────────── */
@@ -2975,6 +3044,62 @@ void evoca_egene_stats(float *out)
              ? (float)sum_cell_load / (float)alive_cnt : 0.0f;
     out[2] = g_eat_count > 0
              ? (float)(g_sum_mouthful / (double)g_eat_count) : 0.0f;
+}
+
+/* ── Dissipation / energy-flux accounting (checkpoint §L, action L1) ──
+ *
+ * Fill out[0..DISS_N-1] with the energy-flux readout. All values are in
+ * food units (same scale as F_food / f_priv). Per-step values reflect the
+ * most recent evoca_step(); cumulative values are since evoca_init().
+ *
+ *   [ 0] source_step        food_inc injected this step (Σ over env cells)
+ *   [ 1] diss_step          total dissipation this step (tax+death+overflow)
+ *   [ 2] diss_tax_step      (a) tax removed from private food this step
+ *   [ 3] diss_death_step    (b) evicted-cell food discarded this step
+ *   [ 4] diss_overflow_step (c) food_inc lost to the F=1 cap this step
+ *   [ 5] source_cum         cumulative injected
+ *   [ 6] diss_cum           cumulative total dissipation
+ *   [ 7] diss_tax_cum       cumulative (a)
+ *   [ 8] diss_death_cum     cumulative (b)
+ *   [ 9] diss_overflow_cum  cumulative (c)
+ *   [10] alive              alive count at end of last step (Φ denominator)
+ *   [11] mouthful_step      Σ agent intake this step (F_food→f_priv transfer)
+ *   [12] phi                per-capita throughput = diss_step / alive
+ *   [13] storage_env        current Σ F_food  (O(N²) recompute)
+ *   [14] storage_priv       current Σ f_priv  (O(N²) recompute)
+ *   [15] step               current step counter
+ *
+ * The two storage totals are computed on demand so the whole-system
+ * energy identity  source_step == d(storage) + diss_step  is checkable
+ * from a single call pair. */
+void evoca_get_dissipation(double *out)
+{
+    size_t cells = (size_t)gN * gN;
+    double diss_step = g_diss_tax_step + g_diss_death_step
+                     + g_diss_overflow_step;
+    double diss_cum  = g_diss_tax_cum + g_diss_death_cum
+                     + g_diss_overflow_cum;
+    double storage_env = 0.0, storage_priv = 0.0;
+    for (size_t i = 0; i < cells; i++) {
+        storage_env  += (double)F_food[i];
+        storage_priv += (double)f_priv[i];
+    }
+    out[0]  = g_source_step;
+    out[1]  = diss_step;
+    out[2]  = g_diss_tax_step;
+    out[3]  = g_diss_death_step;
+    out[4]  = g_diss_overflow_step;
+    out[5]  = g_source_cum;
+    out[6]  = diss_cum;
+    out[7]  = g_diss_tax_cum;
+    out[8]  = g_diss_death_cum;
+    out[9]  = g_diss_overflow_cum;
+    out[10] = (double)g_alive_last;
+    out[11] = g_sum_mouthful;
+    out[12] = g_alive_last > 0 ? diss_step / (double)g_alive_last : 0.0;
+    out[13] = storage_env;
+    out[14] = storage_priv;
+    out[15] = (double)g_step;
 }
 
 /* ── LUT complexity classification ─────────────────────────────── */
