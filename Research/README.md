@@ -40,7 +40,18 @@ Conventions:
 
 A campaign **is not done until its `Research/<campaign>/` digest notebook
 exists** (pairs with the pre-merge test-notebook protocol). See the P1/P2
-decisions in [`../Docs/# checkpoint 3 July 2026.md`](../Docs/#%20checkpoint%203%20July%202026.md).
+decisions in [`../Docs/checkpoint 3 July 2026.md`](../Docs/checkpoint%203%20July%202026.md).
+
+## Drafting workflow
+
+Digest notebooks are **drafted** by the `research-migrate` agent into
+`Research/_drafts/<campaign>.ipynb` — a staging area, so the top level
+stays clean and no per-campaign subdir is created until a result is
+approved. Review a draft there; on **your approval** it graduates to its
+per-campaign home `Research/<campaign>/<campaign>.ipynb`, and only then
+does its link replace the `⏳` in the index below. **Entry of a notebook
+link in the table is gated by your approval** — an existing draft never
+auto-populates the table.
 
 ## Index (reading order)
 

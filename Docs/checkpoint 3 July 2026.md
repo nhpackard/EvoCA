@@ -1625,7 +1625,7 @@ exception that must be justified by a dependency or the merge gate.
 | `mu-genome` | A2 storage-first | worktree (semi-permanent) | feature branch |
 | `chem` | E1/E3 machinery + milestone-1 parity gate | worktree (semi-permanent) | feature branch |
 | `dyn-promote` | D1 | **main** | analysis / reinterpretation |
-| `research-migrate` | P1 first digest notebooks (see candidates below) | **main** | notebook / doc |
+| `research-migrate` | P1 digest-notebook **drafts** → `Research/_drafts/` (approval-gated; see candidates below) | worktree | notebook / doc |
 
 That is **11 tracks in parallel.** The five `metric-*` worktrees are
 exactly the shape of the S2a–e batch that already rebased and merged with
