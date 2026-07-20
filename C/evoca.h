@@ -92,6 +92,13 @@ void evoca_set_egenome_random_all(uint8_t wt);
 void evoca_set_egenome_pair_all(uint8_t value, uint8_t mask);
 void evoca_set_f_all(float f);
 void evoca_set_F_all(float F);
+/* Per-cell agent mutation-rate gene (mutation-of-mutation Wave-1 storage
+ * scaffold). Inherited on reproduction but read nowhere that affects
+ * dynamics, and not itself mutated, so runs stay bit-for-bit identical to
+ * pre-gene behaviour. Seed a scalar with _all, or an N*N row-major float
+ * array for the distribution-seeding assay. */
+void  evoca_set_mu_lut_gene_all(float g);
+void  evoca_set_mu_lut_gene(const float *g);
 void     evoca_set_env_mask(const uint8_t *mask);
 uint8_t *evoca_get_env_mask(void);
 
@@ -356,6 +363,7 @@ void evoca_colorize(int32_t *pixels, int colormode);
 uint8_t *evoca_get_v(void);
 float   *evoca_get_F(void);
 float   *evoca_get_f(void);
+float   *evoca_get_mu_lut_gene(void);  /* [N*N] per-cell LUT mutation rate */
 /* Returns pointer to a [N*N] scratch array holding, for each cell, the
  * lowest-index active slot's egene byte (0 if no slot is active). The
  * scratch is rebuilt on each call. Read-only; for Python display use. */

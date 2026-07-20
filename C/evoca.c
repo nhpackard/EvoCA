@@ -210,6 +210,16 @@ static uint8_t *egenes_mask     = NULL;
 static uint8_t *active          = NULL;
 static uint8_t *egenome_scratch = NULL;
 static float   *f_priv = NULL;   /* [N*N]            */
+/* Per-cell agent mutation-rate gene (mutation-of-mutation, Wave-1 storage
+ * scaffold). Struct-of-Arrays: one float per cell holding that cell's own
+ * LUT per-bit mutation rate. In this Wave-1 scope the gene is INHERITED on
+ * reproduction but READ NOWHERE that affects dynamics (the actual mutation
+ * draw still uses the global gmu_lut), and the gene itself is NOT mutated —
+ * so behaviour is bit-for-bit identical to the pre-gene code. It is
+ * initialised to the global gmu_lut at evoca_init and can be re-seeded to
+ * an arbitrary spatial distribution via evoca_set_mu_lut_gene(_all) for the
+ * zero-mutation distribution-seeding assay. */
+static float   *mu_lut_gene = NULL;  /* [N*N] per-cell LUT mutation rate */
 static float   *F_food = NULL;   /* [N*N]            */
 static float   *F_temp = NULL;   /* [N*N] scratch for diffusion */
 static uint8_t  *births    = NULL;   /* [N*N] birth events this step */
@@ -1112,6 +1122,11 @@ void evoca_init(int N, float food_inc, float m_scale)
     active = calloc(cells,               sizeof(uint8_t));
     egenome_scratch = calloc(cells,      sizeof(uint8_t));
     f_priv = calloc(cells,               sizeof(float));
+    mu_lut_gene = calloc(cells,          sizeof(float));
+    /* Seed the per-cell mutation-rate gene to the current global gmu_lut.
+     * Consumes no RNG, so bitwise-identical to pre-gene runs. Read nowhere
+     * that affects dynamics in this Wave-1 scope. */
+    for (size_t i = 0; i < cells; i++) mu_lut_gene[i] = gmu_lut;
     F_food = calloc(cells,               sizeof(float));
     F_temp = calloc(cells,               sizeof(float));
     births    = calloc(cells,               sizeof(uint8_t));
@@ -1180,6 +1195,7 @@ void evoca_free(void)
     free(active); active = NULL;
     free(egenome_scratch); egenome_scratch = NULL;
     free(f_priv); f_priv = NULL;
+    free(mu_lut_gene); mu_lut_gene = NULL;
     free(F_food); F_food = NULL;
     free(F_temp); F_temp = NULL;
     free(births);    births    = NULL;
@@ -1316,6 +1332,23 @@ void evoca_set_egenome_random_all(uint8_t wt) {
 void evoca_set_f_all(float f)
 {
     for (size_t i = 0; i < (size_t)gN * gN; i++) f_priv[i] = f;
+}
+
+/* Seed every cell's mutation-rate gene to a single scalar. Used to reset the
+ * gene field or to establish a uniform baseline before selection assays.
+ * Storage-only in Wave-1: does not affect dynamics. */
+void evoca_set_mu_lut_gene_all(float g)
+{
+    for (size_t i = 0; i < (size_t)gN * gN; i++) mu_lut_gene[i] = g;
+}
+
+/* Seed the per-cell mutation-rate gene from an N*N float array (row-major).
+ * Enables the zero-mutation distribution-seeding assay: construct a spatial
+ * or random distribution of rate-gene values, run, and watch which value's
+ * carriers dominate. Storage-only in Wave-1: does not affect dynamics. */
+void evoca_set_mu_lut_gene(const float *g)
+{
+    memcpy(mu_lut_gene, g, (size_t)gN * gN * sizeof(float));
 }
 
 void evoca_set_F_all(float F)
@@ -1743,6 +1776,12 @@ void evoca_step(void)
             memcpy(eff_used_mask + (size_t)child * LUT_BYTES,
                    eff_used_mask + (size_t)idx   * LUT_BYTES, LUT_BYTES);
             cell_genome_copy(child, idx);
+            /* Inherit the per-cell mutation-rate gene (mutation-of-mutation
+             * Wave-1 storage scaffold). The child copies the parent's gene
+             * exactly; the gene is NOT itself mutated and is READ NOWHERE
+             * that affects dynamics in this scope, so this line is a pure
+             * no-op with respect to simulation output. */
+            mu_lut_gene[child] = mu_lut_gene[idx];
             /* Mutate child's LUT */
             uint8_t *child_lut = lut + (size_t)child * LUT_BYTES;
             int nf;
@@ -4024,6 +4063,7 @@ void evoca_colorize(int32_t *pixels, int colormode)
 uint8_t *evoca_get_v(void)      { return v_curr; }
 float   *evoca_get_F(void)      { return F_food; }
 float   *evoca_get_f(void)      { return f_priv; }
+float   *evoca_get_mu_lut_gene(void) { return mu_lut_gene; }
 uint8_t *evoca_get_egenome(void)
 {
     /* Rebuild scratch with the lowest-index active slot's egene byte
