@@ -238,6 +238,35 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
                 # the component-normalised excess (see summary block).
                 samples['N_distinct'].append(int(npop.sum()))
 
+                # Bedau–Packard NEW ACTIVITY A_new (checkpoint §G /
+                # §I′ G1). Count the real LUT-genome components whose
+                # cumulative activity exceeds a SINGLE shared
+                # neutral-derived threshold. The threshold is the
+                # top-decile (p90) of the neutral shadow's per-component
+                # cumulative activity — the same "n_p90" the strip-chart
+                # draws (evoca_get_n_p90), but computed here in RAW
+                # activity units rather than the ÷D display scale, so it
+                # is directly comparable to the raw G activities (C
+                # evoca.c:1789-1791 guarantees N- and G-activity share
+                # one magnitude space). Both sides use currently-present
+                # (pop>0) components, exactly as excess_pc does. A_new is
+                # TURNOVER-INVARIANT: it counts how many real components
+                # stand above the neutral band at time t, regardless of
+                # their identities — the canonical literature statistic
+                # (Bedau, Snyder & Packard 1998; Channon 2006) that the
+                # pooled ΣG−ΣN excess and the component-normalised
+                # excess_pc lack. Additive: existing metrics untouched.
+                n_acts = Nt['activity'][npop].astype(float)
+                a_new_thresh = (float(np.percentile(n_acts, 90))
+                                if n_acts.size else 0.0)
+                if n_g:
+                    g_acts = G['activity'][gp].astype(float)
+                    a_new = int((g_acts > a_new_thresh).sum())
+                else:
+                    a_new = 0
+                samples['a_new'].append(a_new)
+                samples['a_new_thresh'].append(a_new_thresh)
+
             # Fixed-space neutral baselines (Docs/EvoCA_research_directions
             # .md §2). These drift shadows run inside sim.step()
             # automatically and are independent of the LUT-hash Channon
@@ -326,6 +355,25 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
             out['excess_pc_slope'] = float(slope_pc)
         else:
             out['excess_pc_slope'] = 0.0
+
+        # BEDAU–PACKARD NEW ACTIVITY A_new (§G / §I′ G1). Per-sample
+        # A_new (count of real components above the shared neutral p90
+        # threshold) is collected in the loop; here we emit the final
+        # value and the long-run slope, mirroring excess_pc_*. Unlike
+        # the pooled excess metrics, A_new is turnover-invariant — a
+        # count of distinct components standing above the neutral band,
+        # not a magnitude difference — so it stays interpretable in the
+        # high-resource drift regime where ΣG−ΣN loses meaning. Additive
+        # only; excess_activity_* and excess_pc_* above are unchanged.
+        if samples['a_new']:
+            a_new_arr = np.asarray(samples['a_new'], dtype=float)
+            out['a_new_final'] = float(a_new_arr[-1])
+            out['a_new_thresh_final'] = float(samples['a_new_thresh'][-1])
+            if len(a_new_arr) >= 2:
+                a_new_slope, _ = np.polyfit(t_arr, a_new_arr, 1)
+                out['a_new_slope'] = float(a_new_slope)
+            else:
+                out['a_new_slope'] = 0.0
 
     # FIXED-SPACE excess (Docs/EvoCA_research_directions.md §2): the
     # LUT-hash Channon shadow above models LUT *bytes* only, while
