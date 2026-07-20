@@ -209,7 +209,7 @@ static uint8_t *egenes          = NULL;
 static uint8_t *egenes_mask     = NULL;
 static uint8_t *active          = NULL;
 static uint8_t *egenome_scratch = NULL;
-static float   *f_priv = NULL;   /* [N*N]            */
+static float   *f_priv = NULL;   /* [N*N]  reduction CACHE: == chem_reduce_to_f */
 /* Per-cell agent mutation-rate gene (mutation-of-mutation, Wave-1 storage
  * scaffold). Struct-of-Arrays: one float per cell holding that cell's own
  * LUT per-bit mutation rate. In this Wave-1 scope the gene is INHERITED on
@@ -221,6 +221,25 @@ static float   *f_priv = NULL;   /* [N*N]            */
  * zero-mutation distribution-seeding assay. */
 static float   *mu_lut_gene = NULL;  /* [N*N] per-cell LUT mutation rate */
 static float   *F_food = NULL;   /* [N*N]            */
+
+/* ── Vector-valued resource ("chem") state — milestone 1 ────────────────
+ * SPARSE per-cell agent-local resource store (the tractability decision,
+ * checkpoint §E/E3): each cell carries up to CHEM_MAX active-compound slots,
+ * mirroring the egene-slot layout. chem_ns[cell] = number of live slots;
+ * chem_id[cell*CHEM_MAX+s] = compound id; chem_amt[cell*CHEM_MAX+s] = amount.
+ *
+ * The scalar private food f_priv is the vector->scalar reduction of this
+ * store (f = Σ_slots chem_energy[id]*amt) and is kept as a hot-read cache so
+ * headroom/repro-gate/probes/Python getters need no per-read reduction.
+ *
+ * At N_chem==1 every live cell has exactly one slot (id 0), chem_energy[0]==1,
+ * so the reduction is the identity and f_priv tracks the pre-change scalar
+ * bit-for-bit. Reactions and multi-compound intake are milestones 2-3. */
+static int      g_n_chem = 1;                 /* compound-universe size */
+static float    chem_energy[CHEM_MAX_N];      /* per-compound reduction weight */
+static uint8_t *chem_ns  = NULL;   /* [N*N]           live slot count per cell */
+static uint8_t *chem_id  = NULL;   /* [N*N*CHEM_MAX]  compound id per slot */
+static float   *chem_amt = NULL;   /* [N*N*CHEM_MAX]  amount per slot */
 static float   *F_temp = NULL;   /* [N*N] scratch for diffusion */
 static uint8_t  *births    = NULL;   /* [N*N] birth events this step */
 static uint32_t *lut_color = NULL;   /* [N*N] cached ARGB per cell */
@@ -1034,6 +1053,49 @@ static inline void cell_rehash(int i)
     lut_hash_cache[i] = cell_genome_hash(i);
 }
 
+/* ── Vector-valued resource ("chem") helpers — milestone 1 ──────────
+ * All private-food arithmetic routes through these so the sparse store is
+ * the storage-of-record and f_priv is its cached reduction. At N_chem==1
+ * each operates on the single compound-0 slot, and because chem_energy[0]==1
+ * the recomputed f_priv is bit-for-bit the pre-change scalar. These add ZERO
+ * PRNG draws, so the step RNG stream is unchanged (parity precondition). */
+
+/* Vector->scalar reduction: the private food f that gates reproduction. */
+static inline float chem_reduce_to_f(int idx)
+{
+    const uint8_t ns = chem_ns[idx];
+    const float  *amt = chem_amt + (size_t)idx * CHEM_MAX;
+    const uint8_t *id = chem_id  + (size_t)idx * CHEM_MAX;
+    float f = 0.0f;
+    for (uint8_t s = 0; s < ns; s++) f += chem_energy[id[s]] * amt[s];
+    return f;
+}
+
+/* Set a cell's store to a single compound-0 slot holding `amount`
+ * (the N_chem==1 representation) and refresh the f_priv cache. */
+static inline void chem_cell_set(int idx, float amount)
+{
+    chem_ns[idx] = 1;
+    chem_id [(size_t)idx * CHEM_MAX] = 0;
+    chem_amt[(size_t)idx * CHEM_MAX] = amount;
+    f_priv[idx] = chem_reduce_to_f(idx);
+}
+
+/* Deposit into compound 0 (eating). At N_chem==1 this is the only intake. */
+static inline void chem_cell_add(int idx, float delta)
+{
+    chem_amt[(size_t)idx * CHEM_MAX] += delta;
+    if (chem_ns[idx] == 0) { chem_ns[idx] = 1; chem_id[(size_t)idx*CHEM_MAX] = 0; }
+    f_priv[idx] = chem_reduce_to_f(idx);
+}
+
+/* Empty a cell's store (death). f_priv is set to 0 by the caller. */
+static inline void chem_cell_clear(int idx)
+{
+    chem_ns[idx] = 0;
+    chem_amt[(size_t)idx * CHEM_MAX] = 0.0f;
+}
+
 /* ── Lifecycle ──────────────────────────────────────────────────── */
 
 /* ── Per-lineage net-return reducer: table helpers ─────────────────
@@ -1129,6 +1191,11 @@ void evoca_init(int N, float food_inc, float m_scale)
     for (size_t i = 0; i < cells; i++) mu_lut_gene[i] = gmu_lut;
     F_food = calloc(cells,               sizeof(float));
     F_temp = calloc(cells,               sizeof(float));
+    /* Sparse agent-local chem store (per-cell active-compound slot list). */
+    chem_ns  = calloc(cells,               sizeof(uint8_t));
+    chem_id  = calloc(cells * CHEM_MAX,    sizeof(uint8_t));
+    chem_amt = calloc(cells * CHEM_MAX,    sizeof(float));
+    for (int c = 0; c < CHEM_MAX_N; c++) chem_energy[c] = 1.0f;
     births    = calloc(cells,               sizeof(uint8_t));
     lut_color = calloc(cells,               sizeof(uint32_t));
     lut_hash_cache = calloc(cells,          sizeof(uint32_t));
@@ -1198,6 +1265,9 @@ void evoca_free(void)
     free(mu_lut_gene); mu_lut_gene = NULL;
     free(F_food); F_food = NULL;
     free(F_temp); F_temp = NULL;
+    free(chem_ns);  chem_ns  = NULL;
+    free(chem_id);  chem_id  = NULL;
+    free(chem_amt); chem_amt = NULL;
     free(births);    births    = NULL;
     free(lut_color); lut_color = NULL;
     free(lut_hash_cache); lut_hash_cache = NULL;
@@ -1234,6 +1304,42 @@ void evoca_free(void)
 
 void evoca_set_food_inc(float f)   { gfood_inc   = f; }
 void evoca_set_m_scale(float m)    { gm_scale    = m; }
+
+/* Chem compound-universe size. Milestone 1 implements only N_chem==1
+ * (single-food parity); larger universes need the reaction engine and the
+ * multi-compound intake of milestones 2-3. We surface the limitation rather
+ * than silently pretend: unsupported values are clamped to 1 and reported. */
+int evoca_set_n_chem(int n)
+{
+    if (n == 1) { g_n_chem = 1; return 1; }
+    fprintf(stderr,
+        "evoca_set_n_chem: N_chem=%d unsupported at milestone 1 "
+        "(only single-food N_chem=1 implemented); clamping to 1.\n", n);
+    g_n_chem = 1;
+    return 0;
+}
+int evoca_get_n_chem(void) { return g_n_chem; }
+
+void evoca_set_chem_energy(int compound, float energy)
+{
+    if (compound < 0 || compound >= CHEM_MAX_N) return;
+    /* Milestone 1: weights other than 1 are not supported. Intake, tax,
+     * the 50/50 split, the eating headroom (1 - f) and the dissipation
+     * accountant all move AMOUNTS, so a weight != 1 on compound 0 lets
+     * f exceed 1 and breaks the energy identity (measured residual ~2e3
+     * over 50 steps at weight 2). Surface and clamp, as evoca_set_n_chem
+     * does, until milestones 2-3 define energy-weighted intake. */
+    if (energy != 1.0f)
+        fprintf(stderr,
+            "evoca_set_chem_energy: weight %g unsupported at milestone 1 "
+            "(only 1.0); keeping 1.0.\n", (double)energy);
+    chem_energy[compound] = 1.0f;
+}
+float evoca_get_chem_energy(int compound)
+{
+    return (compound >= 0 && compound < CHEM_MAX_N) ? chem_energy[compound]
+                                                    : 0.0f;
+}
 void  evoca_set_gdiff(float d)     { ggdiff      = d; }
 float evoca_get_gdiff(void)        { return ggdiff;   }
 void  evoca_set_mu_lut(float m)    { gmu_lut     = m; }
@@ -1331,7 +1437,22 @@ void evoca_set_egenome_random_all(uint8_t wt) {
 
 void evoca_set_f_all(float f)
 {
-    for (size_t i = 0; i < (size_t)gN * gN; i++) f_priv[i] = f;
+    /* Seed the sparse store (single compound-0 slot) and refresh the f_priv
+     * cache. At N_chem==1 this leaves f_priv[i]==f exactly, as before. */
+    for (size_t i = 0; i < (size_t)gN * gN; i++) chem_cell_set((int)i, f);
+}
+
+/* Rebuild the chem store from the f_priv cache after a caller wrote
+ * f_priv directly through the evoca_get_f() pointer (Python's
+ * stamp_patch does this). Without the resync the store keeps the old
+ * amount and the next chem_cell_add (tax, eating) silently restores it
+ * into f_priv. Every cell gets a single compound-0 slot holding f_priv,
+ * so f_priv is unchanged (chem_energy[0] == 1) and, as in
+ * evoca_set_f_all, the operation is exact at N_chem == 1. */
+void evoca_chem_sync_from_f(void)
+{
+    for (size_t i = 0; i < (size_t)gN * gN; i++)
+        chem_cell_set((int)i, f_priv[i]);
 }
 
 /* Seed every cell's mutation-rate gene to a single scalar. Used to reset the
@@ -1642,8 +1763,11 @@ void evoca_step(void)
                 lin_tax_cell[i] += (double)t;
                 g_lin_tax_total += (double)t;
             }
-            f_priv[i] -= t;
+            /* Tax debits the energy compound (compound 0 at N_chem==1); the
+             * f_priv cache is refreshed by chem_cell_add. */
+            chem_cell_add((int)i, -t);
             if (f_priv[i] <= 0.0f) {
+                chem_cell_clear((int)i);
                 g_diss_tax_step += (double)f_before;
                 f_priv[i] = 0.0f;
                 /* Tax death: flush this cell's life accumulators into its
@@ -1681,7 +1805,9 @@ void evoca_step(void)
             float headroom = 1.0f - f_priv[idx];
             if (mouthful > headroom) mouthful = headroom;
             F_food[idx] -= mouthful;
-            f_priv[idx] += mouthful;
+            /* Intake deposits into the agent's energy compound (compound 0 at
+             * N_chem==1); chem_cell_add refreshes the f_priv cache. */
+            chem_cell_add(idx, mouthful);
             /* Per-lineage net return: accumulate the realised mouthful
              * (post-headroom-clamp = actual food moved) into this cell's
              * cheap per-cell life accumulator; folded into the lineage
@@ -1904,10 +2030,13 @@ void evoca_step(void)
                 lret_find_or_insert(lut_hash_cache[child])->births++;
             }
 
-            /* v_curr is dynamical state, not genome — do not copy */
-            float half    = f_priv[idx] * 0.5f;
-            f_priv[idx]   = half;
-            f_priv[child] = half;
+            /* v_curr is dynamical state, not genome — do not copy.
+             * Food (not genome) splits 50/50: halve the parent's store and
+             * give the child an equal single-compound store. At N_chem==1
+             * `half == f_priv[idx]*0.5f`, identical to the pre-change split. */
+            float half = f_priv[idx] * 0.5f;
+            chem_cell_set(idx,   half);
+            chem_cell_set(child, half);
         }
     }
 
@@ -4102,6 +4231,7 @@ void evoca_set_alive(const uint8_t *arr)
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) {
             v_curr[i] = 0;
+            chem_cell_clear((int)i);
             f_priv[i] = 0.0f;
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
             active[i] = 0;
@@ -4124,6 +4254,7 @@ void evoca_set_alive_fraction(float frac)
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) {
             v_curr[i] = 0;
+            chem_cell_clear((int)i);
             f_priv[i] = 0.0f;
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
             active[i] = 0;
@@ -4149,6 +4280,7 @@ void evoca_set_alive_patch(int radius)
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) {
             v_curr[i] = 0;
+            chem_cell_clear((int)i);
             f_priv[i] = 0.0f;
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
             active[i] = 0;
@@ -4172,6 +4304,7 @@ void evoca_set_alive_halfplane(int axis)
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) {
             v_curr[i] = 0;
+            chem_cell_clear((int)i);
             f_priv[i] = 0.0f;
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
             active[i] = 0;

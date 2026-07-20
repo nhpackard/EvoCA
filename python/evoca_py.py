@@ -168,6 +168,7 @@ class EvoCA:
         self.tax_ring      = 0.0
         self.restricted_mu = 0
         self.food_per      = 1      # env food-regen period (>=1); 1 = no-op
+        self.n_chem        = 1      # chem compound-universe size (m1: only 1)
         self._n_ent      = 2
         self.egenome      = 0
         # Diagnostic logger sample interval (Python-side; not a C
@@ -192,6 +193,15 @@ class EvoCA:
         L.evoca_set_food_inc.restype    = None
         L.evoca_set_m_scale.argtypes    = [ctypes.c_float]
         L.evoca_set_m_scale.restype     = None
+        # Chem machinery (milestone 1: only N_chem=1 supported).
+        L.evoca_set_n_chem.argtypes     = [ctypes.c_int]
+        L.evoca_set_n_chem.restype      = ctypes.c_int
+        L.evoca_get_n_chem.argtypes     = []
+        L.evoca_get_n_chem.restype      = ctypes.c_int
+        L.evoca_set_chem_energy.argtypes = [ctypes.c_int, ctypes.c_float]
+        L.evoca_set_chem_energy.restype  = None
+        L.evoca_get_chem_energy.argtypes = [ctypes.c_int]
+        L.evoca_get_chem_energy.restype  = ctypes.c_float
         L.evoca_set_gdiff.argtypes      = [ctypes.c_float]
         L.evoca_set_gdiff.restype       = None
         L.evoca_get_gdiff.argtypes      = []
@@ -261,6 +271,8 @@ class EvoCA:
         L.evoca_get_active.restype       = ctypes.POINTER(ctypes.c_uint8)
         L.evoca_set_f_all.argtypes      = [ctypes.c_float]
         L.evoca_set_f_all.restype       = None
+        L.evoca_chem_sync_from_f.argtypes = []
+        L.evoca_chem_sync_from_f.restype  = None
         L.evoca_set_F_all.argtypes      = [ctypes.c_float]
         L.evoca_set_F_all.restype       = None
         L.evoca_set_env_mask.argtypes   = [ctypes.POINTER(ctypes.c_uint8)]
@@ -576,7 +588,7 @@ class EvoCA:
              p_dup_egene=1.0,
              tax=0.0, tax_per_egene=0.0, tax_lut=0.0, tax_ring=0.0,
              restricted_mu=0, food_per=1, n_ent=2,
-             N_log_interval=1, lineage=False):
+             N_log_interval=1, lineage=False, n_chem=1):
         # Opt-in lineage record (research-directions §1). The C flag must
         # be set before evoca_init so the arrays get allocated. Default
         # OFF -> zero added work in the Phase-1/Phase-4 hot path.
@@ -602,6 +614,11 @@ class EvoCA:
         self._n_ent     = int(n_ent)
         self.N_log_interval = max(1, int(N_log_interval))
         self._lib.evoca_init(N, self.food_inc, self.m_scale)
+        # Chem compound-universe size. Milestone 1 supports only N_chem=1
+        # (single-food parity); the C setter clamps + warns otherwise.
+        self.n_chem = int(n_chem)
+        self._lib.evoca_set_n_chem(self.n_chem)
+        self.n_chem = int(self._lib.evoca_get_n_chem())  # reflect any clamp
         self._lib.evoca_set_gdiff(self.gdiff)
         self._lib.evoca_set_mu_lut(self.mu_lut)
         self._lib.evoca_set_mu_egene(self.mu_egene)
@@ -636,6 +653,7 @@ class EvoCA:
             'tax_ring': self.tax_ring,
             'restricted_mu': self.restricted_mu,
             'food_per': self.food_per,
+            'n_chem': self.n_chem,
         }
 
     def free(self):
@@ -747,7 +765,7 @@ class EvoCA:
                       gdiff=0, mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
                       p_dup_egene=1.0, tax=0.0, tax_per_egene=0.0,
                       tax_lut=0.0, tax_ring=0.0,
-                      restricted_mu=0, food_per=1)
+                      restricted_mu=0, food_per=1, n_chem=1)
 
     def params(self):
         """Return current metaparameters as a dict suitable for init(**d)."""
@@ -757,7 +775,8 @@ class EvoCA:
                     p_dup_egene=self.p_dup_egene, tax=self.tax,
                     tax_per_egene=self.tax_per_egene,
                     tax_lut=self.tax_lut, tax_ring=self.tax_ring,
-                    restricted_mu=self.restricted_mu, food_per=self.food_per)
+                    restricted_mu=self.restricted_mu, food_per=self.food_per,
+                    n_chem=self.n_chem)
 
     def params_str(self):
         """Return a copy-pasteable sim.init(...) call with defaults annotated."""
@@ -1004,6 +1023,25 @@ class EvoCA:
     def set_f_all(self, f):
         self._lib.evoca_set_f_all(float(f))
         self._state_params['f_init'] = float(f)
+
+    # ── Chem machinery (milestone 1: single-food parity) ───────────────
+    def set_n_chem(self, n):
+        """Set the compound-universe size. Milestone 1 supports only N_chem=1;
+        the C side clamps + warns otherwise. Returns the effective value."""
+        self._lib.evoca_set_n_chem(int(n))
+        self.n_chem = int(self._lib.evoca_get_n_chem())
+        return self.n_chem
+
+    def get_n_chem(self):
+        return int(self._lib.evoca_get_n_chem())
+
+    def set_chem_energy(self, compound, energy):
+        """Reduction weight for a compound in the vector->f mapping
+        (default 1.0 for every compound; compound 0 is the energy 'food')."""
+        self._lib.evoca_set_chem_energy(int(compound), float(energy))
+
+    def get_chem_energy(self, compound):
+        return float(self._lib.evoca_get_chem_energy(int(compound)))
 
     def set_F_all(self, F):
         self._lib.evoca_set_F_all(float(F))
@@ -1913,6 +1951,7 @@ class EvoCA:
                 'tax_ring': self.tax_ring,
                 'restricted_mu': self.restricted_mu,
                 'food_per': self.food_per,
+                'n_chem': self.n_chem,
             },
             'initialization': dict(self._state_params),
             'display': {
@@ -2073,6 +2112,10 @@ class EvoCA:
                         lut[tr, tc, :].ctypes.data_as(
                             ctypes.POINTER(ctypes.c_uint8)))
                 n_written += 1
+        # f was written straight into f_priv above; rebuild the chem
+        # store from it, or the next tax/eat would restore the host
+        # cell's old private food into the stamped organism.
+        self._lib.evoca_chem_sync_from_f()
         return n_written
 
     @property
