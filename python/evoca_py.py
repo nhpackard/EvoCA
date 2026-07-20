@@ -167,6 +167,7 @@ class EvoCA:
         self.tax_lut       = 0.0
         self.tax_ring      = 0.0
         self.restricted_mu = 0
+        self.food_per      = 1      # env food-regen period (>=1); 1 = no-op
         self._n_ent      = 2
         self.egenome      = 0
         # Diagnostic logger sample interval (Python-side; not a C
@@ -231,6 +232,10 @@ class EvoCA:
         L.evoca_set_restricted_mu.restype  = None
         L.evoca_get_restricted_mu.argtypes = []
         L.evoca_get_restricted_mu.restype  = ctypes.c_int
+        L.evoca_set_food_per.argtypes      = [ctypes.c_int]
+        L.evoca_set_food_per.restype       = None
+        L.evoca_get_food_per.argtypes      = []
+        L.evoca_get_food_per.restype       = ctypes.c_int
         L.evoca_set_diag.argtypes          = [ctypes.c_int]
         L.evoca_set_diag.restype           = None
         L.evoca_get_diag.argtypes          = []
@@ -564,7 +569,7 @@ class EvoCA:
              mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
              p_dup_egene=1.0,
              tax=0.0, tax_per_egene=0.0, tax_lut=0.0, tax_ring=0.0,
-             restricted_mu=0, n_ent=2,
+             restricted_mu=0, food_per=1, n_ent=2,
              N_log_interval=1, lineage=False):
         # Opt-in lineage record (research-directions §1). The C flag must
         # be set before evoca_init so the arrays get allocated. Default
@@ -587,6 +592,7 @@ class EvoCA:
         self.tax_lut       = float(tax_lut)
         self.tax_ring      = float(tax_ring)
         self.restricted_mu = int(restricted_mu)
+        self.food_per   = max(1, int(food_per))
         self._n_ent     = int(n_ent)
         self.N_log_interval = max(1, int(N_log_interval))
         self._lib.evoca_init(N, self.food_inc, self.m_scale)
@@ -600,6 +606,7 @@ class EvoCA:
         self._lib.evoca_set_tax_lut(self.tax_lut)
         self._lib.evoca_set_tax_ring(self.tax_ring)
         self._lib.evoca_set_restricted_mu(self.restricted_mu)
+        self._lib.evoca_set_food_per(self.food_per)
         self._lib.evoca_set_n_ent(self._n_ent)
         self._state_params = {}
         self._init_metaparams = {
@@ -615,6 +622,7 @@ class EvoCA:
             'tax_lut': self.tax_lut,
             'tax_ring': self.tax_ring,
             'restricted_mu': self.restricted_mu,
+            'food_per': self.food_per,
         }
 
     def free(self):
@@ -695,6 +703,16 @@ class EvoCA:
         self.restricted_mu = int(r)
         self._lib.evoca_set_restricted_mu(self.restricted_mu)
 
+    def update_food_per(self, p):
+        """Set the environmental food-regeneration period (>=1).
+
+        p=1 regenerates every step (bit-for-bit the pre-food_per
+        behaviour); p=K fires only every K-th step, adding
+        food_inc*K when it fires so the mean input rate is unchanged
+        but temporal lumpiness rises."""
+        self.food_per = max(1, int(p))
+        self._lib.evoca_set_food_per(self.food_per)
+
     def update_act_ymax(self, y):
         self._lib.evoca_set_act_ymax(int(y))
 
@@ -716,7 +734,7 @@ class EvoCA:
                       gdiff=0, mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
                       p_dup_egene=1.0, tax=0.0, tax_per_egene=0.0,
                       tax_lut=0.0, tax_ring=0.0,
-                      restricted_mu=0)
+                      restricted_mu=0, food_per=1)
 
     def params(self):
         """Return current metaparameters as a dict suitable for init(**d)."""
@@ -726,7 +744,7 @@ class EvoCA:
                     p_dup_egene=self.p_dup_egene, tax=self.tax,
                     tax_per_egene=self.tax_per_egene,
                     tax_lut=self.tax_lut, tax_ring=self.tax_ring,
-                    restricted_mu=self.restricted_mu)
+                    restricted_mu=self.restricted_mu, food_per=self.food_per)
 
     def params_str(self):
         """Return a copy-pasteable sim.init(...) call with defaults annotated."""
@@ -1852,6 +1870,7 @@ class EvoCA:
                 'tax_lut': self.tax_lut,
                 'tax_ring': self.tax_ring,
                 'restricted_mu': self.restricted_mu,
+                'food_per': self.food_per,
             },
             'initialization': dict(self._state_params),
             'display': {

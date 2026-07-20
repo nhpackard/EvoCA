@@ -176,6 +176,14 @@ static float  gtax_ring   = 0.0f; /* additional decrement = gtax_ring × ring-
                                    * the lut_complexity probe computes.
                                    * Default 0 → bit-for-bit no-op. */
 static int    grestricted_mu = 0; /* 0=random mutation, 1=restricted to active bits */
+static int    gfood_per     = 1;  /* env food-regen PERIOD: regen fires only
+                                   * every gfood_per-th step. When it fires it
+                                   * adds gfood_inc*gfood_per, so the long-run
+                                   * mean input rate is held fixed while the
+                                   * temporal lumpiness (and the lifetime of
+                                   * self-generated depletion structure) rises
+                                   * with gfood_per. gfood_per=1 => fires every
+                                   * step adding gfood_inc: bit-for-bit no-op. */
 static int    g_diag        = 0; /* diagnostic prints */
 
 /* Restricted mutation: tracks which LUT bit indices are queried each step */
@@ -1230,6 +1238,8 @@ float evoca_get_tax(void)         { return gtax;      }
 float evoca_get_tax_per_egene(void) { return gtax_per_egene; }
 float evoca_get_tax_lut(void)     { return gtax_lut;  }
 float evoca_get_tax_ring(void)    { return gtax_ring; }
+void  evoca_set_food_per(int p)  { gfood_per  = (p < 1) ? 1 : p; }
+int   evoca_get_food_per(void)   { return gfood_per; }
 void  evoca_set_diag(int d)      { g_diag     = d; }
 int   evoca_get_diag(void)       { return g_diag;    }
 
@@ -1510,15 +1520,25 @@ void evoca_step(void)
                 active_bits[n_active++] = i;
     }
 
-    /* Phase 2: Environmental food regeneration (respects env_mask) */
-    for (size_t i = 0; i < cells; i++) {
-        if (!env_mask[i]) continue;
-        g_source_step += (double)gfood_inc;   /* nominal energy injected */
-        F_food[i] += gfood_inc;
-        if (F_food[i] > 1.0f) {
-            /* Overflow past the F=1 cap is discarded → sink (c). */
-            g_diss_overflow_step += (double)(F_food[i] - 1.0f);
-            F_food[i] = 1.0f;
+    /* Phase 2: Environmental food regeneration (respects env_mask).
+     * food_per is the regeneration PERIOD: regen fires only every
+     * gfood_per-th step, and when it fires it adds gfood_inc*gfood_per.
+     * This holds the long-run mean input rate fixed while lumping it in
+     * time, so grazing carves depletion structure that persists for
+     * gfood_per steps instead of being erased every tick. gfood_per=1
+     * fires every step adding gfood_inc*1 == gfood_inc (exact in IEEE
+     * 754), a bit-for-bit no-op relative to the pre-food_per code. */
+    if (gfood_per <= 1 || (g_step % (uint32_t)gfood_per) == 0u) {
+        float inc = gfood_inc * (float)gfood_per;
+        for (size_t i = 0; i < cells; i++) {
+            if (!env_mask[i]) continue;
+            g_source_step += (double)inc;   /* nominal energy injected */
+            F_food[i] += inc;
+            if (F_food[i] > 1.0f) {
+                /* Overflow past the F=1 cap is discarded → sink (c). */
+                g_diss_overflow_step += (double)(F_food[i] - 1.0f);
+                F_food[i] = 1.0f;
+            }
         }
     }
 

@@ -52,6 +52,7 @@ and noted in the table below.
 | `food_inc`      | float | 0.0     | [0, 0.5]       | Environmental food added per cell per step            |
 | `m_scale`       | float | 1.0     | [0, 10]        | Mouthful scale factor for eating                      |
 | `gdiff`         | int   | 0       | [0, 10]        | Food diffusion passes (3x3 box blur) per step         |
+| `food_per`      | int   | 1       | [1, 64]        | Environmental food-regen period. Regen fires every `food_per`-th step, adding `food_inc * food_per` (mean input rate unchanged; lengthens depletion-structure lifetime). 1 = bit-for-bit no-op |
 | `mu_lut`        | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction      |
 | `mu_egene`      | float | 0.0     | [0, 0.05]      | Per-egene-bit flip probability on reproduction (across all 8×12 = 96 bits per cell — 6 value bits + 6 mask bits per slot — including inactive slots, which drift as pseudogenes) |
 | `mu_egenome`    | float | 0.0     | [0, 0.05]      | Per-active-bit flip probability on reproduction (across the 8 presence bits). Flips that would take Negene to 0 are rejected |
@@ -281,7 +282,18 @@ into `active_bits[]` for use in Phase 4.
 
 ### Phase 2: Environmental Food Regeneration
 
-    F(x) += food_inc,   clamped to [0, 1]
+    every food_per-th step:  F(x) += food_inc * food_per,   clamped to [0, 1]
+
+`food_per` (int, default 1) is the regeneration **period**: regeneration
+fires only on steps where `step % food_per == 0`, and when it fires it adds
+`food_inc * food_per`. This holds the long-run mean input rate fixed
+(`food_inc` per step averaged over the period) while lumping it in time, so
+that between replenishments agent grazing carves depletion structure that
+persists for `food_per` steps instead of being erased every tick — the
+temporal analogue of the spatial `F_source` template. With `food_per = 1`
+this is exactly `F(x) += food_inc` every step (multiply by 1.0 is exact in
+IEEE 754), i.e. bit-for-bit identical to the pre-`food_per` behaviour.
+Regeneration still respects `env_mask`.
 
 ### Phase 2b: Food Diffusion
 
@@ -511,7 +523,7 @@ sim.init(N, food_inc=0.0, m_scale=1.0, gdiff=0,
          mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
          p_dup_egene=1.0,
          tax=0.0, tax_per_egene=0.0, tax_lut=0.0,
-         restricted_mu=0, N_log_interval=1)
+         restricted_mu=0, food_per=1, N_log_interval=1)
     # Allocate N x N lattice, set metaparameters.
     # All grids initialized to zero.
 
@@ -532,6 +544,7 @@ sim.update_p_dup_egene(p)  # float in [0,1], dup-on-activate probability
 sim.update_tax(t)            # float, constant priv-food decrement per step
 sim.update_tax_per_egene(t)  # float, additional decrement per active egene
 sim.update_tax_lut(t)        # float, additional decrement per LUT '1' bit
+sim.update_food_per(p)       # int >=1, env food-regen period (1 = no-op)
 sim.update_N_log_interval(n) # int, ProbeLogs sample interval (Python-side)
 sim.update_restricted_mu(r)  # int (0 or 1)
 sim.update_act_ymax(y)       # int, Y-scale for LUT activity chart

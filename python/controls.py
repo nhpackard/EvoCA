@@ -825,6 +825,9 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     sl_gdiff = widgets.FloatSlider(
         value=sim.gdiff, min=0.0, max=gd_max, step=gd_step,
         description="gdiff:", readout_format=".2f", **sl_kw)
+    sl_food_per = widgets.IntSlider(
+        value=sim.food_per, min=1, max=max(64, 2 * sim.food_per), step=1,
+        description="food_per:", **sl_kw)
     mul_max, mul_step = _flt_lims(sim.mu_lut,     1e-6)
     # _flt_lims keeps the step floor at 1e-6 (fine control at typical
     # scan values around 0.001) but caps the range tightly when init=0.
@@ -916,7 +919,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     _rows = [
         widgets.HBox([btn_pause, btn_restart, btn_step, btn_step200,
                       btn_quit, btn_save, txt_descriptor, btn_export]),
-        sl_food_inc, sl_m_scale, sl_gdiff,
+        sl_food_inc, sl_m_scale, sl_gdiff, sl_food_per,
         sl_mu_lut, sl_mu_egene, sl_mu_egenome,
         sl_tax, sl_tax_per_egene, sl_tax_lut, sl_tax_ring,
     ]
@@ -1292,6 +1295,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     _make_slider_cb("food_inc",   sl_food_inc)
     _make_slider_cb("m_scale",    sl_m_scale)
     _make_slider_cb("gdiff",      sl_gdiff)
+    _make_slider_cb("food_per",   sl_food_per)
     _make_slider_cb("mu_lut",     sl_mu_lut)
     _make_slider_cb("mu_egene",   sl_mu_egene)
     _make_slider_cb("mu_egenome", sl_mu_egenome)
