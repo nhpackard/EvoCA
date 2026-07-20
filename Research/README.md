@@ -44,8 +44,17 @@ decisions in [`../Docs/# checkpoint 3 July 2026.md`](../Docs/#%20checkpoint%203%
 
 ## Index (reading order)
 
-_No campaigns migrated yet. Add a row per campaign as its digest lands._
+Rows appear when a campaign **starts** (Campaign + Question filled); the
+Headline and Notebook columns fill in when its digest notebook is built.
+`⏳` = digest notebook not yet migrated (science may already be done).
+Candidates below are drawn from campaign work to date, strongest /
+most-publication-defensible first.
 
 | Campaign | Question | Headline result | Notebook |
 |----------|----------|-----------------|----------|
-| _(none yet)_ | | | |
+| neutral-model-methodology | Can excess-activity metrics separate adaptive evolution from drift/turnover? | Fixed-space eg(729)/dyn(500) shadows + reciprocal-freeze controls; two shadow-scope bugs caught | ⏳ |
+| resource-driving-inverted-U | Does evolvability peak at intermediate resource, and is the true axis `food_inc/tax` (gradient steepness)? | _in progress_ | ⏳ |
+| pure-evo-regime (#1/#2) | What regime maximizes open-ended activity under joint vs LUT-only evolution? | Whole-genome excess ≈ 0; dyn/eg excess strongly +ve; low `mu_lut` + high `m_scale` wins (mu_lut optimum conditional on egene co-evo) | ⏳ |
+| coevolution-substrate (#3/#3c) | Does egene co-evolution amplify rule selection; is a freezing penalty real? | Egene-freeze reduces dyn-excess; #3c mostly GoL-substrate death confound + `dyn_excess_pc` frozen-rich artifact | ⏳ |
+| RD-robustness (#4) | Is reaction-diffusion spatial structure robust under pure-evo optimization? | No — corrL washes out; static-colony cases are lowest-`dyn_excess` | ⏳ |
+| viability-brackets (R1) | Where are the productive optima in (`m_scale`, `food_inc`)? | `m_scale` interior ≈2.5–3.5; `food_inc` high 0.013–0.018; U-shaped viability | ⏳ |

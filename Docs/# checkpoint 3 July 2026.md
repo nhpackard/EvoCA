@@ -1499,6 +1499,7 @@ food+waste milestone gives the collaborator something concrete and novel early.
 ## §K′ — revised prioritized roadmap
 
 **Do now (main, low/zero code, high information):**
+
 1. A1 env/agent split · A3 model.md tax_ring fix — trivial, unblock the niche framing.
 2. L1 flux accumulator + B1/B2 scan-summary notebook with the `food_inc/tax` axis and
    raw-vs-excess overlay — this one figure tests the central intuition *and* validates
@@ -1526,6 +1527,7 @@ food+waste milestone gives the collaborator something concrete and novel early.
     and the egene→compound-profile redesign. Ordering per N 2026-07-19 (§E′ note).
 
 **Deliberate decisions before any code:**
+
 - **M1 motility — DEFERRED 2026-07-19** (N's call): explore sessile EvoCA first to
   establish what motility would *add*; and the prior question — EvoCA-as-trunk vs
   Bugs-as-trunk — is itself unsettled (see note). Revisit after the baseline
@@ -1588,6 +1590,100 @@ food+waste milestone gives the collaborator something concrete and novel early.
   until its `Research/<campaign>/` digest notebook exists") is the enforcement
   mechanism, and the §B/LB2 scan-summary notebook is the first artifact built to
   that standard.
+
+## §K″ — parallel execution plan (what runs concurrently)
+
+The §K′ lists are **priority-ordered, not sequential.** Almost everything
+in "Do now" and "Do next" is mutually independent and should run as
+**concurrent agents**, not one-after-another. The only hard serialization
+points are the human merge gate and a handful of explicit data
+dependencies (called out below). This section makes the parallelism
+manifest so agents can be spawned in waves.
+
+**Isolation rule (why worktrees).** Concurrent agents that edit
+`C/evoca.c` / rebuild `libevoca.dylib` on a single working tree collide.
+So **every code change runs in its own `git worktree`+branch** (the proven
+S2a–e batch pattern from the 2026-05 integration), and only analysis /
+notebook / doc work runs directly on `main`. Merge stays a human gate; an
+orchestrator digest to `Docs/research_board.md` collects each agent's
+result + any decision it needs, so review is one digest, not N
+transcripts. Standing preference (N): **spawn parallel agents whenever the
+work is independent** — the default is concurrency, serial is the
+exception that must be justified by a dependency or the merge gate.
+
+### Wave 1 — launch now, all concurrent (no cross-dependencies)
+
+| Agent / branch | §I′ actions | Isolation | Kind |
+|---|---|---|---|
+| `env-agent-split` | A1 + A3 | worktree | py + doc, trivial |
+| `metric-flux` | L1 | worktree | small additive C+py |
+| `metric-anew` | G1 | worktree | small additive C+py |
+| `metric-zscore` | G2 | worktree | small additive C+py |
+| `eff-activity` | F1 | worktree | small additive C+py |
+| `lineage-return` | D2 | worktree | small additive C+py |
+| `resource-driving` | C1 (→ C2/L2) | worktree (semi-permanent) | feature branch |
+| `mu-genome` | A2 storage-first | worktree (semi-permanent) | feature branch |
+| `chem` | E1/E3 machinery + milestone-1 parity gate | worktree (semi-permanent) | feature branch |
+| `dyn-promote` | D1 | **main** | analysis / reinterpretation |
+| `research-migrate` | P1 first digest notebooks (see candidates below) | **main** | notebook / doc |
+
+That is **11 tracks in parallel.** The five `metric-*` worktrees are
+exactly the shape of the S2a–e batch that already rebased and merged with
+zero cross-branch conflicts, so this is a known-good fan-out, not a
+gamble. Each Wave-1 code branch ships with its pre-merge test notebook per
+protocol.
+
+### Wave 2 — gated on Wave-1 merges (dependencies explicit)
+
+| Agent / action | Waits on | Why |
+|---|---|---|
+| `H1` adaptive-vs-drift program on the §B sweep | `lineage-return` (D2) + `metric-anew` (G1) | the shadow-beating test needs both instruments merged |
+| `B1/B2` final scan-summary figures | `metric-flux` (L1) + `metric-anew` (G1) | the `food_inc/tax` axis and raw-vs-excess overlay need those metrics — but scaffold the notebook in Wave 1 and drop figures in when they land |
+| `D3` punctuation detector | `lineage-return` (D2) | needs per-lineage net-return |
+| `C3` resource-driving campaign | `resource-driving` branch validated | runs on the new dynamics |
+| chem **milestone 2** (food/waste, E2) | `chem` machinery (E3) + minimal reaction engine | food→waste is a reaction |
+
+### Deliberately serial (not parallelizable)
+
+- The **human merge gate** between waves (branches never auto-merge;
+  dynamics-altering `resource-driving`/`mu-genome`/`chem` especially).
+- The **chem milestone ordering** E-1→2→3 (parity → food/waste → larger
+  spaces + autocatalytic network) — each milestone gates the next.
+- Anything on the **`motile`** branch — deferred (M1).
+
+### First Research/ entries — candidates (2026-07-20)
+
+`research-migrate` (Wave 1) seeds `Research/` from completed campaign
+work. Candidates below, strongest first; the WIP index table lives in
+`Research/README.md` (Campaign + Question filled now; Headline + Notebook
+fill as each digest notebook is built). Ordering favors the most
+publication-defensible pieces.
+
+1. **`neutral-model-methodology`** — *Can excess-activity metrics separate
+   adaptive evolution from drift/turnover?* The flagship methods
+   contribution: fixed-space eg(729)/dyn(500) shadows, reciprocal-freeze
+   causal controls, and the two shadow-scope bugs those controls caught.
+   (The checkpoint flags this as the sharpest, most-defensible piece.)
+2. **`resource-driving-inverted-U`** — *Does evolvability peak at
+   intermediate resource, and is the true axis `food_inc/tax` (gradient
+   steepness)?* The §B/LB2 flagship; **science in progress** (the template
+   digest notebook), so Headline stays open.
+3. **`pure-evo-regime`** (campaigns #1/#2) — *What metaparameter regime
+   maximizes open-ended activity under joint vs LUT-only evolution?*
+   Headline: whole-genome excess ≈ 0 everywhere; dyn/eg excess strongly
+   positive; low `mu_lut` + high `m_scale` wins; the `mu_lut` optimum is
+   conditional on egene co-evolution.
+4. **`coevolution-substrate`** (#3/#3c) — *Does egene co-evolution amplify
+   rule selection; is a freezing penalty real?* Headline: egene-freeze
+   reduces dyn-excess; #3c mostly GoL-substrate death confound + the
+   `dyn_excess_pc` frozen-rich artifact (methodological result).
+5. **`RD-robustness`** (#4) — *Is reaction-diffusion spatial structure
+   robust under pure-evolutionary optimization?* Headline: no — corrL
+   washes out; the static-colony cases are the lowest-`dyn_excess` ones
+   (corroborates the suspect-the-metric intuition).
+6. **`viability-brackets`** (R1) — *Where are the productive optima in
+   (`m_scale`, `food_inc`)?* Headline: `m_scale` interior ≈2.5–3.5,
+   `food_inc` high 0.013–0.018, U-shaped viability.
 
 ## Self-critique (adversarial pass — flaws caught and fixed before posting)
 
