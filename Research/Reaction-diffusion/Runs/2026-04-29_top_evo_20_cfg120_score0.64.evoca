@@ -2,7 +2,7 @@
   "version": 3,
   "created": "2026-04-29T15:52:09",
   "descriptor": "top_evo_20_cfg120_score0.64",
-  "source_scan": "2026-04-27_evo_focus",
+  "source_scan": "Research/Activity-metrics/Scans/2026-04-27_evo_focus",
   "source_config_idx": 120,
   "N": 256,
   "metaparams_init": {

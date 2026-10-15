@@ -1812,16 +1812,21 @@ class EvoCA:
 
     # ── Recipe export ────────────────────────────────────────────────
 
-    def export_recipe(self, descriptor, probes=None, colormode=0):
-        """Export current initialization recipe to Runs/<date>_<descriptor>.evoca.
+    def export_recipe(self, descriptor, probes=None, colormode=0,
+                      workstream=None, runs_dir=None):
+        """Export current initialization recipe to
+        <runs_dir>/<date>_<descriptor>.evoca. runs_dir defaults to
+        Research/<workstream>/Runs; workstream defaults to the
+        EVOCA_WORKSTREAM env var, else Research/_unsorted/Runs.
 
         Returns the filepath written.
         """
         import json, os
         from datetime import datetime
+        import evoca_paths
 
-        runs_dir = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), 'Runs')
+        if runs_dir is None:
+            runs_dir = evoca_paths.runs_dir(workstream)
         os.makedirs(runs_dir, exist_ok=True)
 
         safe_desc = descriptor.replace(' ', '_')
@@ -2055,7 +2060,8 @@ def available_state_init():
 def import_run(filepath=None, recipe='init', lib_path=None, N=None):
     """Load a .evoca recipe file and return (sim, display_kwargs).
 
-    If called with no arguments, lists available recipes in Runs/.
+    If called with no arguments, lists available recipes in
+    Research/*/Runs/. A bare filename (no directory) is looked up there.
 
     recipe: 'init' uses the initial metaparams, 'final' uses the
             metaparams at export time (after any slider adjustments).
@@ -2067,25 +2073,30 @@ def import_run(filepath=None, recipe='init', lib_path=None, N=None):
 
     Usage:
         import_run()                    # list available recipes
-        sim, kw = import_run('Runs/2026-03-15_my_run.evoca')
+        sim, kw = import_run('2026-03-15_my_run.evoca')   # bare name: searched in Research/*/Runs
         sim, kw = import_run(path, N=512)
         run_with_controls(sim, **kw)
     """
     import json
     from pathlib import Path
 
+    import evoca_paths
     if filepath is None:
-        runs_dir = Path(__file__).resolve().parent.parent / 'Runs'
-        if not runs_dir.is_dir():
-            print("No Runs/ directory found.")
-            return []
-        recipes = sorted(runs_dir.glob('*.evoca'))
+        recipes = evoca_paths.all_runs()
         if not recipes:
-            print("No .evoca files in Runs/.")
+            print("No .evoca files in Research/*/Runs/.")
             return []
+        root = evoca_paths.RESEARCH
         for r in recipes:
-            print(r.name)
-        return [str(r) for r in recipes]
+            print(os.path.relpath(r, root))
+        return recipes
+    if not os.path.exists(filepath) and os.sep not in str(filepath):
+        hits = [r for r in evoca_paths.all_runs()
+                if os.path.basename(r) == filepath]
+        if len(hits) != 1:
+            raise FileNotFoundError(
+                f"{filepath!r}: {len(hits)} matches in Research/*/Runs/")
+        filepath = hits[0]
 
     with open(filepath) as f:
         data = json.load(f)

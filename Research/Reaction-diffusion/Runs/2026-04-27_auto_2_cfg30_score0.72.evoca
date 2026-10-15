@@ -2,7 +2,7 @@
   "version": 3,
   "created": "2026-04-27T14:47:34",
   "descriptor": "auto_2_cfg30_score0.72",
-  "source_scan": "2026-04-27_initial",
+  "source_scan": "Research/Reaction-diffusion/Scans/2026-04-27_initial",
   "source_config_idx": 30,
   "N": 256,
   "metaparams_init": {

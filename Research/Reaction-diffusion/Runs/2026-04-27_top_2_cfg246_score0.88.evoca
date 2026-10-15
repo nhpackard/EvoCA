@@ -2,7 +2,7 @@
   "version": 3,
   "created": "2026-04-27T22:32:34",
   "descriptor": "top_2_cfg246_score0.88",
-  "source_scan": "2026-04-27_push_edges",
+  "source_scan": "Research/Reaction-diffusion/Scans/2026-04-27_push_edges",
   "source_config_idx": 246,
   "N": 256,
   "metaparams_init": {

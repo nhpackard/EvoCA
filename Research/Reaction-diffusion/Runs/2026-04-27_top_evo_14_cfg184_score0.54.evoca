@@ -2,7 +2,7 @@
   "version": 3,
   "created": "2026-04-27T23:06:00",
   "descriptor": "top_evo_14_cfg184_score0.54",
-  "source_scan": "2026-04-27_push_edges",
+  "source_scan": "Research/Reaction-diffusion/Scans/2026-04-27_push_edges",
   "source_config_idx": 184,
   "N": 256,
   "metaparams_init": {

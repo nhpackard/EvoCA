@@ -1,6 +1,6 @@
 """Priority #3 — egene scan on the LUT-only (#2) winners. BOTH modes.
 
-Reads ../2026-05-17_pure_evo_lut_only/results.csv, ranks by the
+Reads Research/Activity-metrics/Scans/2026-05-17_pure_evo_lut_only/results.csv, ranks by the
 LUT-only pure-evo composite, takes the top-12 distinct base regimes,
 and for each runs an egene-knob sweep in two modes:
 
@@ -27,14 +27,23 @@ from multiprocessing import Pool
 
 import numpy as np
 
+def _repo_root(p):
+    """Walk up to the repo root (marker C/evoca.h) — depth-independent."""
+    while not os.path.exists(os.path.join(p, 'C', 'evoca.h')):
+        if os.path.dirname(p) == p:
+            raise FileNotFoundError('EvoCA repo root not found')
+        p = os.path.dirname(p)
+    return p
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-PYTHON_DIR = os.path.normpath(os.path.join(HERE, '..', '..', 'python'))
+PYTHON_DIR = os.path.normpath(os.path.join(_repo_root(HERE), 'python'))
 if PYTHON_DIR not in sys.path:
     sys.path.insert(0, PYTHON_DIR)
 from evoca_explore import run_sim, save_scan_config   # noqa: E402
 
-LUT_ONLY_CSV = os.path.normpath(os.path.join(
-    HERE, '..', '2026-05-17_pure_evo_lut_only', 'results.csv'))
+LUT_ONLY_CSV = os.path.join(_repo_root(HERE), 'Research', 'Activity-metrics',
+                            'Scans', '2026-05-17_pure_evo_lut_only', 'results.csv')
 
 N_BASE = 12
 EGENE_AXES = {

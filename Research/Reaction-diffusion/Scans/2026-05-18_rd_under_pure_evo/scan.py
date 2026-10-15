@@ -9,7 +9,7 @@ metaparams and run them long, then ask whether spatial structure
 *decays over the run* (final ≪ mean ⇒ collapsing toward static/death)
 or *persists* (final ≈ mean ⇒ RD robust without spatial optimisation).
 
-Bases: the 30 `Runs/2026-04-27_top_*` balanced-composite winners
+Bases: the 30 `Research/Reaction-diffusion/Runs/2026-04-27_top_*` balanced-composite winners
 (excludes top_evo/top_spatial/auto). Each run records spatial
 final-vs-mean plus the corrected pure-evo metrics, multi-seed.
 """
@@ -21,8 +21,17 @@ import sys
 import time
 from multiprocessing import Pool
 
+def _repo_root(p):
+    """Walk up to the repo root (marker C/evoca.h) — depth-independent."""
+    while not os.path.exists(os.path.join(p, 'C', 'evoca.h')):
+        if os.path.dirname(p) == p:
+            raise FileNotFoundError('EvoCA repo root not found')
+        p = os.path.dirname(p)
+    return p
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
+ROOT = _repo_root(HERE)
 sys.path.insert(0, os.path.join(ROOT, 'python'))
 from evoca_explore import run_sim, save_scan_config   # noqa: E402
 
@@ -35,7 +44,7 @@ SAMPLE_EVERY = 100
 
 def load_bases():
     out, seen = [], set()
-    for p in sorted(glob.glob(os.path.join(ROOT, 'Runs',
+    for p in sorted(glob.glob(os.path.join(ROOT, 'Research', 'Reaction-diffusion', 'Runs',
                                            '2026-04-27_top_*.evoca'))):
         b = os.path.basename(p)
         if 'top_evo' in b or 'top_spatial' in b or 'auto' in b:

@@ -35,8 +35,17 @@ from multiprocessing import Pool
 
 import numpy as np
 
+def _repo_root(p):
+    """Walk up to the repo root (marker C/evoca.h) — depth-independent."""
+    while not os.path.exists(os.path.join(p, 'C', 'evoca.h')):
+        if os.path.dirname(p) == p:
+            raise FileNotFoundError('EvoCA repo root not found')
+        p = os.path.dirname(p)
+    return p
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.normpath(os.path.join(HERE, '..', '..'))
+ROOT = _repo_root(HERE)
 sys.path.insert(0, os.path.join(ROOT, 'python'))
 
 from evoca_py import EvoCA, make_gol_lut, LUT_BYTES        # noqa: E402

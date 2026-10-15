@@ -2,7 +2,7 @@
   "version": 3,
   "created": "2026-04-27T13:09:44",
   "descriptor": "top_evo_4_cfg35_score0.81",
-  "source_scan": "2026-04-27_initial",
+  "source_scan": "Research/Reaction-diffusion/Scans/2026-04-27_initial",
   "source_config_idx": 35,
   "N": 256,
   "metaparams_init": {
