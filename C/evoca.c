@@ -4,24 +4,65 @@
 #include <math.h>
 #include <stdio.h>
 
-/* xorshift32 PRNG — stochastic tie-breaking in reproduction */
-static uint32_t g_rng = 0x12345678u;
-static inline uint32_t rng_next(void)
+/* xorshift32 PRNG step on an explicit state word. */
+static inline uint32_t xorshift32(uint32_t *s)
 {
-    g_rng ^= g_rng << 13;
-    g_rng ^= g_rng >> 17;
-    g_rng ^= g_rng << 5;
-    return g_rng;
+    uint32_t x = *s;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return *s = x;
 }
 
-/* Deterministically reset the PRNG state from `seed`.
+#define RNG_DEFAULT_SEED 0x12345678u
+
+/* Dynamics PRNG — reproduction tie-breaking, mutation, init helpers.
+ * Every draw that can influence the real lattice comes from here. */
+static uint32_t g_rng = RNG_DEFAULT_SEED;
+static inline uint32_t rng_next(void) { return xorshift32(&g_rng); }
+
+/* Shadow PRNG — a SEPARATE stream consumed only by the Channon neutral
+ * shadow (neutral_apply_demography / neut_mutate_inplace). Keeping the
+ * shadow off the dynamics stream makes it a pure observer: enabling it
+ * cannot change the real trajectory (before this split, shadow-on and
+ * shadow-off runs with the same seed diverged because shadow draws
+ * advanced g_rng). Derived from the dynamics seed by shadow_seed_from()
+ * so shadow runs are reproducible per seed. 0 = "not yet derived" (a
+ * valid xorshift32 state is never 0); the first draw then derives it
+ * from the default seed, matching a process that never called
+ * evoca_set_seed. */
+static uint32_t g_shadow_rng = 0;
+
+/* splitmix64 finalizer of (seed XOR fixed tag): decorrelates the shadow
+ * stream from the dynamics stream that starts at `seed` itself. */
+static uint32_t shadow_seed_from(uint32_t seed)
+{
+    uint64_t z = (uint64_t)seed ^ 0x5348414457524E47ull;  /* "SHADWRNG" */
+    z += 0x9E3779B97F4A7C15ull;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+    z ^= z >> 31;
+    uint32_t r = (uint32_t)(z >> 32);
+    return r ? r : 0x9E3779B9u;  /* xorshift32 must not start at 0 */
+}
+
+static inline uint32_t shadow_rng_next(void)
+{
+    if (!g_shadow_rng) g_shadow_rng = shadow_seed_from(RNG_DEFAULT_SEED);
+    return xorshift32(&g_shadow_rng);
+}
+
+/* Deterministically reset BOTH PRNG streams from `seed`.
  * xorshift32 must never be seeded with 0 (it would stay stuck at 0),
  * so seed==0 is remapped to a fixed nonzero constant. With no call to
- * this function the RNG keeps its original default state, so behaviour
- * is unchanged for callers that never reseed. */
+ * this function the RNGs keep their default state, so behaviour
+ * is unchanged for callers that never reseed. This is the only place
+ * either stream is reseeded; the shadow stream is always derived from
+ * the (remapped) dynamics seed so the two never drift apart. */
 void evoca_set_seed(uint32_t seed)
 {
-    g_rng = seed ? seed : 0x12345678u;
+    g_rng        = seed ? seed : RNG_DEFAULT_SEED;
+    g_shadow_rng = shadow_seed_from(g_rng);
 }
 
 /*
@@ -131,8 +172,10 @@ static int32_t hash_to_color(uint32_t h, uint32_t wt)
     return (int32_t)(0xFF000000u | (h & 0x00FFFFFFu));
 }
 
-/* Poisson sample using Knuth's algorithm with the existing PRNG. */
-static int poisson_sample(float lambda)
+/* Poisson sample (Knuth's algorithm) drawing uniforms from the stream
+ * whose step function is `next` (rng_next for dynamics, shadow_rng_next
+ * for the neutral shadow). */
+static int poisson_sample_from(uint32_t (*next)(void), float lambda)
 {
     if (lambda < 1e-6f) return 0;
     float L = expf(-lambda);
@@ -140,9 +183,15 @@ static int poisson_sample(float lambda)
     int k = 0;
     do {
         k++;
-        p *= (float)(rng_next() & 0xFFFFFF) / 16777216.0f;
+        p *= (float)(next() & 0xFFFFFF) / 16777216.0f;
     } while (p > L);
     return k - 1;
+}
+
+/* Dynamics-stream Poisson sample. */
+static int poisson_sample(float lambda)
+{
+    return poisson_sample_from(rng_next, lambda);
 }
 
 /* ── Grid state ─────────────────────────────────────────────────── */
@@ -2641,7 +2690,18 @@ void evoca_q_activity_deciles(float *deciles_out)
  * Shadow members carry only LUT bytes + cached hash — no positions,
  * food, egenome, age, alive flag. Activity buckets share the same
  * lut_hash_fn() with G-activity, so N-activity and G-activity live in
- * the same magnitude space. */
+ * the same magnitude space.
+ *
+ * RNG: every random draw here (victim choice, parent choice, Poisson
+ * flip count, flip positions, empty-shadow reseed) comes from the
+ * dedicated shadow stream shadow_rng_next(), never from the dynamics
+ * stream rng_next(). The shadow is therefore a pure observer: with the
+ * same seed, shadow-on and shadow-off runs have bit-identical lattice
+ * trajectories (tests/test_shadow_rng.py). Before branch `shadow-rng`
+ * (Oct 2026) the shadow shared the dynamics stream, so shadow-on
+ * trajectories from earlier code are not bit-reproducible now; their
+ * statistics are draws from the same process and are unaffected in
+ * distribution. */
 
 static uint8_t  *neut_luts    = NULL;   /* [neut_cap * LUT_BYTES]   */
 static uint32_t *neut_hashes  = NULL;   /* [neut_cap]                */
@@ -2766,13 +2826,13 @@ static void neut_mutate_inplace(uint8_t *child_lut)
 {
     int nf;
     if (grestricted_mu && n_active > 0) {
-        nf = poisson_sample(gmu_lut * n_active);
+        nf = poisson_sample_from(shadow_rng_next, gmu_lut * n_active);
         for (int f = 0; f < nf; f++)
-            lut_flip(child_lut, active_bits[rng_next() % n_active]);
+            lut_flip(child_lut, active_bits[shadow_rng_next() % n_active]);
     } else {
-        nf = poisson_sample(gmu_lut * LUT_BITS);
+        nf = poisson_sample_from(shadow_rng_next, gmu_lut * LUT_BITS);
         for (int f = 0; f < nf; f++)
-            lut_flip(child_lut, rng_next() % LUT_BITS);
+            lut_flip(child_lut, shadow_rng_next() % LUT_BITS);
     }
 }
 
@@ -2803,7 +2863,7 @@ static void neutral_apply_demography(int births, int deaths)
 
     if (deaths > neut_n) deaths = neut_n;
     for (int d = 0; d < deaths; d++) {
-        int victim = (int)(rng_next() % (uint32_t)neut_n);
+        int victim = (int)(shadow_rng_next() % (uint32_t)neut_n);
         int last   = neut_n - 1;
         /* Decrement victim's bucket pop_count (incremental maintenance). */
         int s = nact_find_slot(neut_hashes[victim]);
@@ -2827,12 +2887,12 @@ static void neutral_apply_demography(int births, int deaths)
     for (int b = 0; b < births; b++) {
         uint8_t *child_lut = neut_luts + (size_t)neut_n * LUT_BYTES;
         if (neut_n > 0) {
-            int p = (int)(rng_next() % (uint32_t)neut_n);
+            int p = (int)(shadow_rng_next() % (uint32_t)neut_n);
             memcpy(child_lut, neut_luts + (size_t)p * LUT_BYTES, LUT_BYTES);
         } else {
             /* Defensive: shadow emptied. Seed with a random LUT. */
             for (int i = 0; i < LUT_BYTES; i++)
-                child_lut[i] = (uint8_t)(rng_next() & 0xFF);
+                child_lut[i] = (uint8_t)(shadow_rng_next() & 0xFF);
         }
         neut_mutate_inplace(child_lut);
         uint32_t h = lut_hash_fn(child_lut);
