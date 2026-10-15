@@ -1,0 +1,26 @@
+# Reaction-diffusion: issues and directions
+_Updated 2026-10-15_
+
+## Decisions needed (N)
+- **RXD-D1**: What is the second objective for RD selection? — Options: (a) evolutionary activity as before (`n_distinct_genomes_temporal_std` + `unique_top_genomes`, which saturates at the sample cap, see `Scans/2026-04-27_scan_analysis.md` obs. 8); (b) dyn_excess / A_new on eff_activity species (Activity-metrics, merged 2026-10-15); (c) lineage net-return (D2) or per-capita dissipation Phi (L1) as a more adaptive axis (`Docs/Oct2026/00-review-of-prompt1.md` §7). Recommendation: run RXD-N1 first with (a), then repeat with (b); defer (c). Blocks the final form of RXD-N1.
+- **RXD-D2**: Is the halfplane start the RD protocol, or should RD be scored from a uniform random start (`init='fraction'`) and/or after a burn-in? — The halfplane start makes the first ~N steps an invasion front, so every 04-27 spatial metric partly measures that transient (observed in this notebook's N=128 runs, not a campaign result). Recommendation: keep halfplane for continuity but add a burn-in variant (RXD-N2). Blocks any re-run of the scans.
+- **RXD-D3**: Keep the 85 recipes in `Runs/` as is, or dedupe? — About 55 distinct configs; `top_N`, `top_evo_N`, `auto_*` and three `best_corr_length` recipes repeat the same metaparameters under different ranking labels. Recommendation: keep (names record which ranking picked a config; disk cost trivial), add a note in the README only. Low urgency.
+
+## Open questions
+- **RXD-Q1**: Is the correlation-length plateau (~75-80, about N/3) a grid-size ceiling? — Recorded as a hypothesis in `Scans/2026-04-27_scan_analysis.md` (recommended step 2); never tested at N=384/512.
+- **RXD-Q2**: Does the #4 decay verdict hold for the higher-scoring push_edges winners? — The campaign's ten bases are all `initial`-scan recipes (`top_N_cfg*_score0.55-0.75`); the push_edges and evo_focus winners (corr_len 60-80, the actual "best" spatial configs) were not in `Scans/2026-05-18_rd_under_pure_evo/scan.py::load_bases`'s output. Cheap to extend with the existing harness.
+- **RXD-Q3**: Which of the visual regimes are attractors versus transients? — In this notebook's N=128 example runs the dot-lattice and salt-and-pepper states are end states, the invasion-front and sparse-colony regimes are transient; not established at N=256/long horizon. Needs a classification metric beyond correlation length (the labyrinth, cfg53, has corr_len ~1 yet clear texture).
+- **RXD-Q4**: Is there a persistent regime at `gdiff` far above the scanned range? — `fill_dead_region_with_evolving_patches` uses gdiff=20 (frozen domain mosaic); every scan grid stops at gdiff 0.20. Unscanned.
+- **RXD-Q5**: Does `waves_in_blank_half` ever give sustained waves? — Its saved *initial* metaparams go extinct by ~t=200 (N=128/256/512, seeds 0-1, example runs); with the saved *final* metaparams it is a one-shot invasion front, not a sustained wave. Two-parameter descriptor ambiguity in recipes (`metaparams_init` vs `metaparams_final`) is worth a note on any recipe promoted to a gallery.
+
+## Next directions
+- **RXD-N1**: Re-select the 04-27 winners with conepareto box and wedge and compare with the composite top-20 — analysis (no new dev; package exists at `~/Projects/conepareto`). Concrete first experiment: pool the candidates of `initial`/`refined`/`push_edges`; spatial score = mean of normalized `correlation_length_mean` and `largest_patch_temporal_std`, evolution score = mean of normalized `n_distinct_genomes_temporal_std` and `unique_top_genomes` (a preview with these choices is in the notebook, section "Two objectives"); form top-20 by (i) composite mean, (ii) box with 0.5/0.5 exclusion floors, (iii) wedge with `max_imbalance=0.15`; report overlap and Pareto layers; then run each distinct set (3 seeds, N=256, 12000 steps, the #4 harness) and score by persistence (`correlation_length_final/mean`, `largest_patch_final/mean`) plus final `dyn_excess_pc`: the selection method that keeps structure with turnover wins. Cross-ref: H1 (adaptive vs drift) for the evolution axis.
+- **RXD-N2**: Burn-in / persistence-based spatial metrics — analysis, needs a small harness change (`python/evoca_explore.py` is outside this workstream; request via dev). Report spatial metrics after a burn-in (e.g. last half of the run) and final/mean as first-class scan columns.
+- **RXD-N3**: Extend campaign #4 to the push_edges/evo_focus winners (RXD-Q2) and to N=384/512 (RXD-Q1) — campaign, existing harness, torque-scale compute (30 workers).
+- **RXD-N4**: Scan gdiff in [0.2, 20] together with m_scale (RXD-Q4) — campaign.
+- **RXD-N5**: Add a visual-regime classifier or texture metric (e.g., structure-factor peak, anisotropy) so regime names in the notebook gallery become measured labels — needs dev (analysis helper), cross-ref Criticality-bifurcation for order-parameter ideas.
+
+## Parked
+- Larger-N interactive visual validation of scan winners in the SDL viewer (recommended in the 04-27 analysis, step 1); superseded by the headless N=256 gallery in the notebook.
+- Spirals/rotating waves: none observed in the gallery runs; do not pursue unless a scan turns one up.
+- Fixing `evoca_set_seed` per task in pool workers is done (`build_sim` reseeds); the 04-27 note about shared RNG state predates it.
