@@ -33,6 +33,25 @@
  * slots' egene bits drift under mutation (pseudogenes). */
 #define NEGENOME_MAX 8
 
+/* ── Vector-valued resource ("chem") machinery — milestone 1 ────────────
+ * The `chem` branch generalises the single scalar private-food store into a
+ * per-cell SPARSE vector of compound amounts (an active-compound slot list,
+ * mirroring the egene slots — NOT a dense per-compound plane; see
+ * Docs/plan-chem.md for the tractability argument).
+ *
+ * CHEM_MAX is the per-cell slot capacity (how many distinct compounds one
+ * agent may carry at once), independent of the size of the compound universe
+ * `N_chem`. Memory is O(N*N*CHEM_MAX), never O(N*N*N_chem).
+ *
+ * The scalar private food `f` that gates reproduction is DEFINED as the
+ * vector->scalar reduction  f = Σ_slots chem_energy[compound_id] * amount.
+ * At N_chem == 1 there is one compound (id 0, "food") with energy 1.0, so the
+ * reduction is the identity and the dynamics are bit-for-bit the pre-change
+ * single-food model (the milestone-1 parity gate). Reactions / multi-compound
+ * intake (milestones 2-3) are NOT implemented here. */
+#define CHEM_MAX     8   /* per-cell active-compound slot capacity */
+#define CHEM_MAX_N   CHEM_MAX  /* max supported compound-universe size (m1: 1) */
+
 /* Display scale: screen pixels per simulation cell.  Change and recompile. */
 #define CELL_PX  2
 
@@ -52,6 +71,17 @@ void evoca_set_seed(uint32_t seed);
 
 void evoca_set_food_inc(float f);
 void evoca_set_m_scale(float m);
+
+/* Chem machinery (milestone 1). N_chem is the size of the compound universe.
+ * Only N_chem==1 (single-food parity) is implemented; evoca_set_n_chem returns
+ * 1 on success, 0 if the requested value is unsupported (value is clamped to
+ * the supported range and a one-line notice is emitted). */
+int  evoca_set_n_chem(int n);
+int  evoca_get_n_chem(void);
+/* Compound "energy" weight used by the vector->f reduction (default 1.0 for
+ * every compound). Reading exposes it for probes/tests. */
+void  evoca_set_chem_energy(int compound, float energy);
+float evoca_get_chem_energy(int compound);
 void evoca_set_gdiff(float d);
 void evoca_set_mu_lut(float m);
 void evoca_set_mu_egene(float m);
@@ -91,6 +121,8 @@ void evoca_set_egenome_random_all(uint8_t wt);
  * ternary pair. Use this to seed runs at any cognitive complexity. */
 void evoca_set_egenome_pair_all(uint8_t value, uint8_t mask);
 void evoca_set_f_all(float f);
+/* Resync the chem store after f_priv was written via evoca_get_f(). */
+void evoca_chem_sync_from_f(void);
 void evoca_set_F_all(float F);
 /* Per-cell agent mutation-rate gene (mutation-of-mutation Wave-1 storage
  * scaffold). Inherited on reproduction but read nowhere that affects

@@ -127,7 +127,7 @@ def _spatial_metrics(alive_2d, F_2d):
 _PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff',
                'mu_lut', 'mu_egene', 'mu_egenome', 'p_dup_egene',
                'tax', 'tax_per_egene', 'tax_lut', 'tax_ring',
-               'restricted_mu', 'food_per')
+               'restricted_mu', 'food_per', 'n_chem')
 
 
 def init_kwargs(params):
