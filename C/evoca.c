@@ -33,11 +33,11 @@ static inline uint32_t rng_next(void) { return xorshift32(&g_rng); }
  * evoca_set_seed. */
 static uint32_t g_shadow_rng = 0;
 
-/* splitmix64 finalizer of (seed XOR fixed tag): decorrelates the shadow
- * stream from the dynamics stream that starts at `seed` itself. */
-static uint32_t shadow_seed_from(uint32_t seed)
+/* splitmix64 finalizer of a 64-bit word (seed XOR a fixed tag), folded
+ * to a nonzero 32-bit xorshift32 state. Shared by every derived stream
+ * (Channon shadow, drift-shadow replicates, neutral marker). */
+static uint32_t seed_mix(uint64_t z)
 {
-    uint64_t z = (uint64_t)seed ^ 0x5348414457524E47ull;  /* "SHADWRNG" */
     z += 0x9E3779B97F4A7C15ull;
     z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
     z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
@@ -45,6 +45,35 @@ static uint32_t shadow_seed_from(uint32_t seed)
     uint32_t r = (uint32_t)(z >> 32);
     return r ? r : 0x9E3779B9u;  /* xorshift32 must not start at 0 */
 }
+
+/* Channon-shadow stream seed: decorrelated from the dynamics stream that
+ * starts at `seed` itself. */
+static uint32_t shadow_seed_from(uint32_t seed)
+{
+    return seed_mix((uint64_t)seed ^ 0x5348414457524E47ull);  /* "SHADWRNG" */
+}
+
+/* Neutral-marker PRNG — a THIRD stream, consumed only by the marker
+ * mutation (marker_mutate in Phase 4). The marker is read by nothing in
+ * the dynamics and draws nothing from g_rng, so it cannot change the
+ * real trajectory. Seeded from the dynamics seed like the shadow stream;
+ * 0 = not yet derived. */
+static uint32_t g_marker_rng = 0;
+
+static uint32_t marker_seed_from(uint32_t seed)
+{
+    return seed_mix((uint64_t)seed ^ 0x4D41524B45524E47ull);  /* "MARKERNG" */
+}
+
+static inline uint32_t marker_rng_next(void)
+{
+    if (!g_marker_rng) g_marker_rng = marker_seed_from(RNG_DEFAULT_SEED);
+    return xorshift32(&g_marker_rng);
+}
+
+/* Drift-shadow replicate streams are derived from the same seed (one
+ * state word per replicate; defined in the drift-shadow section). */
+static void drift_on_set_seed(uint32_t base);
 
 static inline uint32_t shadow_rng_next(void)
 {
@@ -63,6 +92,8 @@ void evoca_set_seed(uint32_t seed)
 {
     g_rng        = seed ? seed : RNG_DEFAULT_SEED;
     g_shadow_rng = shadow_seed_from(g_rng);
+    g_marker_rng = marker_seed_from(g_rng);
+    drift_on_set_seed(g_rng);
 }
 
 /*
@@ -438,6 +469,24 @@ static void nact_free_all(void);
  * evoca_step() / evoca_init() can drive and reset them. */
 static void fs_shadow_reset(void);
 static void fs_shadow_step(int alive_pop);
+
+/* ── Drift shadow + neutral marker (Docs/shadows.md §5) ──────────────
+ * Defined after the fixed-space section; declared here so evoca_step()
+ * can drive it and evoca_free() release it. */
+static void fs_drift_step(void);
+static void fs_drift_free_all(void);
+static uint16_t *marker = NULL;     /* [N*N] neutral marker: value bits 0-5,
+                                     * mask bits 8-13 (one ternary key) */
+static float     gmarker_mu = 0.0f; /* per-bit marker flip rate per birth */
+/* Per-step log of real births' realized mutation counts, replayed by
+ * the drift shadow. Filled in Phase 4 only while the drift shadow is on
+ * (no RNG; the log is the real path's only drift hook). */
+typedef struct { int nf, na, ne, nm; } drift_rec_t;
+static drift_rec_t *g_mutlog = NULL;
+static int          g_mutlog_n = 0, g_mutlog_cap = 0;
+/* Test-only constructed fixture (evoca_test_force_bit). -1 = off. */
+static int       g_test_force_bit = -1;
+static int       g_test_force_val = 0;
 
 /* Adaptive age colormap scale: tracks max observed age, decays slowly. */
 static double    g_age_scale = 50.0;
@@ -1237,6 +1286,7 @@ void evoca_init(int N, float food_inc, float m_scale)
     egenome_scratch = calloc(cells,      sizeof(uint8_t));
     f_priv = calloc(cells,               sizeof(float));
     mu_lut_gene = calloc(cells,          sizeof(float));
+    marker = calloc(cells,               sizeof(uint16_t));
     /* Seed the per-cell mutation-rate gene to the current global gmu_lut.
      * Consumes no RNG, so bitwise-identical to pre-gene runs. Read nowhere
      * that affects dynamics in this Wave-1 scope. */
@@ -1315,6 +1365,8 @@ void evoca_free(void)
     free(egenome_scratch); egenome_scratch = NULL;
     free(f_priv); f_priv = NULL;
     free(mu_lut_gene); mu_lut_gene = NULL;
+    free(marker); marker = NULL;
+    fs_drift_free_all();
     free(F_food); F_food = NULL;
     free(F_temp); F_temp = NULL;
     free(chem_ns);  chem_ns  = NULL;
@@ -1772,6 +1824,19 @@ static void genome_mutate(uint8_t *g_lut, uint8_t *g_eg, uint8_t *g_egm,
     c->nf = nf; c->na = na; c->ne = ne;
 }
 
+/* Neutral-marker mutation: nm flips at uniform positions among the 12
+ * marker bits (6 value, 6 mask). draw=1: nm ~ Poisson(marker_mu*12) from
+ * `next` (the marker stream in the real run); draw=0: replay *nm. */
+static void marker_mutate(uint16_t *m, int *nm, int draw, uint32_t (*next)(void))
+{
+    int n = draw ? poisson_sample_from(next, gmarker_mu * 12.0f) : *nm;
+    for (int f = 0; f < n; f++) {
+        int b = (int)(next() % 12);
+        *m ^= (uint16_t)(b < 6 ? (1u << b) : (1u << (b - 6 + 8)));
+    }
+    *nm = n;
+}
+
 void evoca_step(void)
 {
     int    N     = gN;
@@ -2087,9 +2152,29 @@ void evoca_step(void)
                           egenes_mask + (size_t)child * NEGENOME_MAX,
                           &active[child], &mc, 1, rng_next);
             int nf = mc.nf, na = mc.na, ne = mc.ne;
+            /* Neutral marker: inherited, mutated from its own stream. */
+            marker[child] = marker[idx];
+            int nm = 0;
+            marker_mutate(&marker[child], &nm, 1, marker_rng_next);
+            if (g_mutlog && g_mutlog_n < g_mutlog_cap) {
+                g_mutlog[g_mutlog_n].nf = nf;
+                g_mutlog[g_mutlog_n].na = na;
+                g_mutlog[g_mutlog_n].ne = ne;
+                g_mutlog[g_mutlog_n].nm = nm;
+                g_mutlog_n++;
+            }
+            int forced = 0;   /* test-only fixture; 0 in every real run */
+            if (g_test_force_bit >= 0) {
+                uint8_t *cl = lut + (size_t)child * LUT_BYTES;
+                int cur = lut_get(cl, g_test_force_bit);
+                if (cur != g_test_force_val) {
+                    lut_flip(cl, g_test_force_bit);
+                    forced = 1;
+                }
+            }
 
             /* births: 1 = normal, 2 = mutant */
-            int mutated = (nf > 0 || na > 0 || ne > 0);
+            int mutated = (nf > 0 || na > 0 || ne > 0 || forced);
             births[child] = mutated ? 2 : 1;
 
             /* Realised mutation flux for the fixed-space neutral
@@ -2157,6 +2242,10 @@ void evoca_step(void)
         fs_shadow_step(alive_pop);
         g_alive_last = alive_pop;
     }
+
+    /* Advance the drift shadow (no-op unless enabled). Pure observer on
+     * its own per-replicate streams. */
+    fs_drift_step();
 
     /* Advance cumulative dissipation totals (checkpoint §L). Purely a
      * running sum of the per-step sinks read above — no dynamics. */
@@ -3903,6 +3992,688 @@ void evoca_dyn_zscores(double *out)
 /* Bucket counts (so callers need not hard-code 729 / 500). */
 int evoca_eg_nbuckets(void)  { return EG_NB;  }
 int evoca_dyn_nbuckets(void) { return DYN_NB; }
+
+/* ══ Drift shadow (Docs/shadows.md §5) ══════════════════════════════
+ *
+ * R replicate shadow POPULATIONS of individuals, each carrying a full
+ * genome (LUT, 8 egene value/mask bytes, active byte, neutral marker).
+ * Every step each replicate receives exactly the real run's death and
+ * birth counts: D uniform-random victims (without replacement,
+ * swap-remove), then B births whose parents are drawn uniformly WITH
+ * replacement from the survivors of the death pass. Shadow birth b
+ * replays the realized mutation counts (nf, na, ne, nm) of the b-th real
+ * birth of this step through the SAME operators as the real run
+ * (genome_mutate / marker_mutate, replay mode), with positions drawn
+ * from the replicate's own xorshift32 stream. Nothing selects.
+ *
+ * Projections (accumulated every step from enable, both sides):
+ *   eg     real: active-egene ternary-key counts of alive cells;
+ *          shadow: its key counts rescaled to the real mass T_eg
+ *          (conditions on real Negene; §5.3).
+ *   dyn    real ("C"): n_i(t)·P_i(t) and n_i(t)·(1−P_i(t)), with P_i the
+ *          whole-population frequency of LUT bit i = 1 and n_i the real
+ *          Phase-1 query count of input i; shadow: n_i(t)·p_i(t) with
+ *          the replicate's allele frequency (§5.4 design C).
+ *          Also the real queried transitions dyn_pop ("B") for the
+ *          dyn_expression_bias diagnostic.
+ *   marker real: marker ternary-key counts of alive cells; shadow:
+ *          rescaled to the real alive count.
+ *   negene Σ_t mean Negene, real and per replicate.
+ * The statistics (§6) are computed in Python (python/drift_stats.py).
+ *
+ * Pure observer: draws only from its own per-replicate streams and
+ * reads the real state; the real path only appends to the mutation log
+ * (no RNG). Enabling it cannot change the real trajectory. */
+
+#define DRIFT_MAX_REPS  64
+#define DRIFT_PLANES    24          /* bit-sliced counter depth: 2^24 cells */
+#define MK_NB EGENE_KEY_COUNT       /* marker lives in the 729-key space */
+
+
+static int       g_drift_on  = 0;
+static int       g_drift_R   = 0;
+static int       g_drift_cap = 0;          /* individuals per replicate */
+static int       g_drift_synth = 0;        /* 1 = synthetic test mode */
+static uint32_t  g_drift_seed_base = RNG_DEFAULT_SEED;
+static uint32_t  dr_rng[DRIFT_MAX_REPS];
+static int       dr_n[DRIFT_MAX_REPS];
+static uint8_t  *dr_lut = NULL;   /* [R*cap*LUT_BYTES] */
+static uint8_t  *dr_eg  = NULL;   /* [R*cap*NEGENOME_MAX] */
+static uint8_t  *dr_egm = NULL;   /* [R*cap*NEGENOME_MAX] */
+static uint8_t  *dr_act = NULL;   /* [R*cap] */
+static uint16_t *dr_mk  = NULL;   /* [R*cap] */
+/* Incremental tallies per replicate. */
+static int32_t  *dr_c   = NULL;   /* [R*LUT_BITS] allele-1 counts */
+static int32_t  *dr_e   = NULL;   /* [R*EG_NB] active-egene key counts */
+static int32_t  *dr_m   = NULL;   /* [R*MK_NB] marker key counts */
+static int64_t   dr_T[DRIFT_MAX_REPS];   /* Σ active egenes (= Σ dr_e) */
+/* Cumulative activity accumulators (from enable / last reset). */
+static double   *dr_A_eg  = NULL;  /* [R*EG_NB] */
+static double   *dr_A_dyn = NULL;  /* [R*DYN_NB] */
+static double   *dr_A_mk  = NULL;  /* [R*MK_NB] */
+static double    dr_negene_sum[DRIFT_MAX_REPS];
+static double    g_A_eg_real[EG_NB];
+static double    g_A_dyn_real[DYN_NB];   /* design C: n_i * P_i */
+static double    g_A_dynq_real[DYN_NB];  /* design B: queried transitions */
+static double    g_A_mk_real[MK_NB];
+static double    g_negene_sum_real = 0.0;
+static long      g_drift_steps = 0;
+/* Last-step real-side observations (exposed for tests). */
+static int32_t   g_real_c[LUT_BITS];
+static int32_t   g_real_e[EG_NB];
+static int32_t   g_real_m[MK_NB];
+static int       g_real_np = 0;
+/* Per-replicate realized events of the last step (exposed for tests). */
+static int       dr_last_births[DRIFT_MAX_REPS], dr_last_deaths[DRIFT_MAX_REPS];
+static long      dr_last_nf[DRIFT_MAX_REPS], dr_last_na[DRIFT_MAX_REPS],
+                 dr_last_ne[DRIFT_MAX_REPS], dr_last_nm[DRIFT_MAX_REPS];
+/* Synthetic-mode selection on replicate 0 only (validation (b)). */
+static int       g_synth_sel_mode = 0;   /* 0 none, 1 dyn purifying, 2 eg
+                                          * family advantage, 3 neutral
+                                          * without-replacement parents */
+static double    g_synth_sel_s = 0.0;
+static int       g_synth_sel_loci[LUT_BITS];
+static int       g_synth_sel_k = 0;
+
+static uint32_t *g_dr_cur = NULL;
+static uint32_t drift_rng_next(void) { return xorshift32(g_dr_cur); }
+
+static uint32_t drift_seed_for(uint32_t base, int r)
+{
+    return seed_mix((uint64_t)base ^ 0x4452494654534844ull   /* "DRIFTSHD" */
+                    ^ ((uint64_t)(uint32_t)r * 0x9E3779B9ull));
+}
+
+static void drift_reseed_streams(void)
+{
+    for (int r = 0; r < g_drift_R; r++)
+        dr_rng[r] = drift_seed_for(g_drift_seed_base, r);
+}
+
+static void fs_drift_free_all(void)
+{
+    free(dr_lut); dr_lut = NULL;
+    free(dr_eg);  dr_eg  = NULL;
+    free(dr_egm); dr_egm = NULL;
+    free(dr_act); dr_act = NULL;
+    free(dr_mk);  dr_mk  = NULL;
+    free(dr_c);   dr_c   = NULL;
+    free(dr_e);   dr_e   = NULL;
+    free(dr_m);   dr_m   = NULL;
+    free(dr_A_eg);  dr_A_eg  = NULL;
+    free(dr_A_dyn); dr_A_dyn = NULL;
+    free(dr_A_mk);  dr_A_mk  = NULL;
+    free(g_mutlog); g_mutlog = NULL;
+    g_mutlog_cap = 0; g_mutlog_n = 0;
+    g_drift_on = 0; g_drift_R = 0; g_drift_cap = 0; g_drift_synth = 0;
+    g_synth_sel_mode = 0; g_synth_sel_k = 0; g_synth_sel_s = 0.0;
+}
+
+static int fs_drift_alloc(int R, int cap)
+{
+    fs_drift_free_all();
+    if (R < 1) R = 1;
+    if (R > DRIFT_MAX_REPS) R = DRIFT_MAX_REPS;
+    if (cap < 1) cap = 1;
+    size_t rc = (size_t)R * (size_t)cap;
+    dr_lut = calloc(rc * LUT_BYTES, 1);
+    dr_eg  = calloc(rc * NEGENOME_MAX, 1);
+    dr_egm = calloc(rc * NEGENOME_MAX, 1);
+    dr_act = calloc(rc, 1);
+    dr_mk  = calloc(rc, sizeof(uint16_t));
+    dr_c   = calloc((size_t)R * LUT_BITS, sizeof(int32_t));
+    dr_e   = calloc((size_t)R * EG_NB, sizeof(int32_t));
+    dr_m   = calloc((size_t)R * MK_NB, sizeof(int32_t));
+    dr_A_eg  = calloc((size_t)R * EG_NB,  sizeof(double));
+    dr_A_dyn = calloc((size_t)R * DYN_NB, sizeof(double));
+    dr_A_mk  = calloc((size_t)R * MK_NB,  sizeof(double));
+    g_mutlog = calloc((size_t)cap + 1, sizeof(drift_rec_t));
+    if (!dr_lut || !dr_eg || !dr_egm || !dr_act || !dr_mk || !dr_c || !dr_e
+        || !dr_m || !dr_A_eg || !dr_A_dyn || !dr_A_mk || !g_mutlog) {
+        fs_drift_free_all();
+        return -1;
+    }
+    g_mutlog_cap = cap + 1;
+    g_mutlog_n = 0;
+    g_drift_R = R;
+    g_drift_cap = cap;
+    return 0;
+}
+
+/* Zero every accumulator (both sides); populations are untouched. */
+static void fs_drift_reset_accumulators(void)
+{
+    int R = g_drift_R;
+    if (dr_A_eg)  memset(dr_A_eg,  0, (size_t)R * EG_NB  * sizeof(double));
+    if (dr_A_dyn) memset(dr_A_dyn, 0, (size_t)R * DYN_NB * sizeof(double));
+    if (dr_A_mk)  memset(dr_A_mk,  0, (size_t)R * MK_NB  * sizeof(double));
+    memset(dr_negene_sum, 0, sizeof(dr_negene_sum));
+    memset(g_A_eg_real,   0, sizeof(g_A_eg_real));
+    memset(g_A_dyn_real,  0, sizeof(g_A_dyn_real));
+    memset(g_A_dynq_real, 0, sizeof(g_A_dynq_real));
+    memset(g_A_mk_real,   0, sizeof(g_A_mk_real));
+    g_negene_sum_real = 0.0;
+    g_drift_steps = 0;
+}
+
+static inline int marker_key(uint16_t m)
+{
+    return egene_ternary_key((uint8_t)(m & 0x3F), (uint8_t)((m >> 8) & 0x3F));
+}
+
+/* Add (sign=+1) or remove (sign=-1) individual j of replicate r from
+ * the replicate's tallies. */
+static void drift_tally(int r, int j, int sign)
+{
+    size_t ij = (size_t)r * g_drift_cap + (size_t)j;
+    const uint8_t *L = dr_lut + ij * LUT_BYTES;
+    int32_t *c = dr_c + (size_t)r * LUT_BITS;
+    for (int b = 0; b < LUT_BYTES; b++) {
+        uint8_t x = L[b];
+        while (x) {
+            int k = __builtin_ctz(x); x &= (uint8_t)(x - 1);
+            int bit = b * 8 + k;
+            if (bit < LUT_BITS) c[bit] += sign;
+        }
+    }
+    int32_t *e = dr_e + (size_t)r * EG_NB;
+    uint8_t a = dr_act[ij];
+    int n = 0;
+    while (a) {
+        int s = __builtin_ctz(a); a &= (uint8_t)(a - 1);
+        int key = egene_ternary_key(dr_eg[ij * NEGENOME_MAX + s] & 0x3F,
+                                    dr_egm[ij * NEGENOME_MAX + s] & 0x3F);
+        e[key] += sign;
+        n++;
+    }
+    dr_T[r] += sign * n;
+    dr_m[(size_t)r * MK_NB + marker_key(dr_mk[ij])] += sign;
+}
+
+static void drift_copy_ind(int r, int dst, int src)
+{
+    size_t d = (size_t)r * g_drift_cap + (size_t)dst;
+    size_t s = (size_t)r * g_drift_cap + (size_t)src;
+    memcpy(dr_lut + d * LUT_BYTES, dr_lut + s * LUT_BYTES, LUT_BYTES);
+    memcpy(dr_eg  + d * NEGENOME_MAX, dr_eg  + s * NEGENOME_MAX, NEGENOME_MAX);
+    memcpy(dr_egm + d * NEGENOME_MAX, dr_egm + s * NEGENOME_MAX, NEGENOME_MAX);
+    dr_act[d] = dr_act[s];
+    dr_mk[d]  = dr_mk[s];
+}
+
+/* Recompute every replicate's tallies from its genomes. */
+static void drift_recount(void)
+{
+    memset(dr_c, 0, (size_t)g_drift_R * LUT_BITS * sizeof(int32_t));
+    memset(dr_e, 0, (size_t)g_drift_R * EG_NB * sizeof(int32_t));
+    memset(dr_m, 0, (size_t)g_drift_R * MK_NB * sizeof(int32_t));
+    for (int r = 0; r < g_drift_R; r++) {
+        dr_T[r] = 0;
+        for (int j = 0; j < dr_n[r]; j++) drift_tally(r, j, +1);
+    }
+}
+
+/* Selection weight of individual j of replicate 0 (synthetic mode). */
+static double synth_weight(int j)
+{
+    size_t ij = (size_t)j;   /* replicate 0 */
+    if (g_synth_sel_mode == 1) {
+        const uint8_t *L = dr_lut + ij * LUT_BYTES;
+        int bad = 0;
+        for (int q = 0; q < g_synth_sel_k; q++) {
+            int bit = g_synth_sel_loci[q];
+            bad += (L[bit >> 3] >> (bit & 7)) & 1;
+        }
+        return pow(1.0 - g_synth_sel_s, (double)bad);
+    }
+    if (g_synth_sel_mode == 2) {
+        /* Advantage (1+s) for carrying an active egene whose orbit-0
+         * digit is 2 (mask bit 0 = 1, value bit 0 = 1). */
+        uint8_t a = dr_act[ij];
+        while (a) {
+            int s = __builtin_ctz(a); a &= (uint8_t)(a - 1);
+            if ((dr_egm[ij * NEGENOME_MAX + s] & 1) &&
+                (dr_eg[ij * NEGENOME_MAX + s] & 1))
+                return 1.0 + g_synth_sel_s;
+        }
+        return 1.0;
+    }
+    return 1.0;
+}
+
+/* One demographic + mutation-replay step for replicate r. */
+static void drift_rep_step(int r, int D, int B, const drift_rec_t *log, int nlog)
+{
+    g_dr_cur = &dr_rng[r];
+    int n = dr_n[r];
+    if (D > n) D = n;
+    for (int d = 0; d < D; d++) {
+        int v = (int)(drift_rng_next() % (uint32_t)n);
+        drift_tally(r, v, -1);
+        if (v != n - 1) drift_copy_ind(r, v, n - 1);
+        n--;
+    }
+    dr_last_deaths[r] = D;
+    int n_surv = n;
+    long snf = 0, sna = 0, sne = 0, snm = 0;
+    int nb = 0;
+    if (n_surv > 0) {
+        if (B > nlog) B = nlog;
+        if (B > g_drift_cap - n) B = g_drift_cap - n;
+        int sel = (g_drift_synth && r == 0) ? g_synth_sel_mode : 0;
+        double wmax = (sel == 2) ? 1.0 + g_synth_sel_s : 1.0;
+        /* Without-replacement variant (sel==3): partial Fisher-Yates over
+         * a scratch index list of the survivors. */
+        int *perm = NULL;
+        if (sel == 3) {
+            perm = malloc((size_t)n_surv * sizeof(int));
+            for (int j = 0; j < n_surv; j++) perm[j] = j;
+        }
+        for (int b = 0; b < B; b++) {
+            int p;
+            if (sel == 1 || sel == 2) {
+                for (;;) {
+                    p = (int)(drift_rng_next() % (uint32_t)n_surv);
+                    double u = (double)drift_rng_next() / 4294967296.0;
+                    if (u * wmax < synth_weight(p)) break;
+                }
+            } else if (sel == 3 && b < n_surv) {
+                int k = b + (int)(drift_rng_next() % (uint32_t)(n_surv - b));
+                int t = perm[k]; perm[k] = perm[b]; perm[b] = t;
+                p = t;
+            } else {
+                p = (int)(drift_rng_next() % (uint32_t)n_surv);
+            }
+            drift_copy_ind(r, n, p);
+            size_t ij = (size_t)r * g_drift_cap + (size_t)n;
+            mut_counts_t mc = { log[b].nf, log[b].na, log[b].ne };
+            genome_mutate(dr_lut + ij * LUT_BYTES,
+                          dr_eg  + ij * NEGENOME_MAX,
+                          dr_egm + ij * NEGENOME_MAX,
+                          &dr_act[ij], &mc, 0, drift_rng_next);
+            int nm = log[b].nm;
+            marker_mutate(&dr_mk[ij], &nm, 0, drift_rng_next);
+            drift_tally(r, n, +1);
+            snf += mc.nf; sna += mc.na; sne += mc.ne; snm += nm;
+            n++; nb++;
+        }
+        free(perm);
+    }
+    dr_n[r] = n;
+    dr_last_births[r] = nb;
+    dr_last_nf[r] = snf; dr_last_na[r] = sna;
+    dr_last_ne[r] = sne; dr_last_nm[r] = snm;
+}
+
+/* Bit-sliced vertical counter: count allele-1 per LUT bit over all
+ * alive cells in O(Np) word ops (no hooks inside the real step). */
+static void drift_real_allele_counts(int32_t *out)
+{
+    uint64_t P[DRIFT_PLANES][4];
+    memset(P, 0, sizeof(P));
+    size_t cells = (size_t)gN * gN;
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) continue;
+        uint64_t x[4];
+        memcpy(x, lut + i * LUT_BYTES, LUT_BYTES);
+        for (int w = 0; w < 4; w++) {
+            uint64_t carry = x[w];
+            for (int j = 0; carry && j < DRIFT_PLANES; j++) {
+                uint64_t t = P[j][w] & carry;
+                P[j][w] ^= carry;
+                carry = t;
+            }
+        }
+    }
+    for (int bit = 0; bit < LUT_BITS; bit++) {
+        int w = bit >> 6, k = bit & 63;
+        int32_t c = 0;
+        for (int j = 0; j < DRIFT_PLANES; j++)
+            c |= (int32_t)((P[j][w] >> k) & 1u) << j;
+        out[bit] = c;
+    }
+}
+
+/* Real-side observation at the end of the step: allele counts, egene
+ * keys, marker keys, alive count. */
+static void drift_observe_real(void)
+{
+    size_t cells = (size_t)gN * gN;
+    memset(g_real_e, 0, sizeof(g_real_e));
+    memset(g_real_m, 0, sizeof(g_real_m));
+    int np = 0;
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) continue;
+        np++;
+        uint8_t a = active[i];
+        while (a) {
+            int s = __builtin_ctz(a); a &= (uint8_t)(a - 1);
+            g_real_e[egene_ternary_key(egenes[i * NEGENOME_MAX + s] & 0x3F,
+                                       egenes_mask[i * NEGENOME_MAX + s] & 0x3F)]++;
+        }
+        g_real_m[marker_key(marker[i])]++;
+    }
+    g_real_np = np;
+    drift_real_allele_counts(g_real_c);
+}
+
+/* Accumulate one step of activity on both sides.
+ *   n_q[i]   : query mass of input i this step (real Phase 1, or given)
+ *   q_pop    : per-(i,o) queried counts (real dyn_pop) or NULL
+ *   real_*   : real-side observations, or NULL in synthetic mode where
+ *              replicate 0 plays the real run and all R replicates are
+ *              scored the same way (rescaled to replicate 0's masses). */
+static void drift_accumulate(const double *n_q, const uint32_t *q_pop,
+                             int have_real)
+{
+    double T_ref, Np_ref;
+    if (have_real) {
+        int64_t T = 0;
+        for (int k = 0; k < EG_NB; k++) T += g_real_e[k];
+        T_ref = (double)T; Np_ref = (double)g_real_np;
+        if (Np_ref <= 0) return;
+        for (int k = 0; k < EG_NB; k++) g_A_eg_real[k] += (double)g_real_e[k];
+        for (int k = 0; k < MK_NB; k++) g_A_mk_real[k] += (double)g_real_m[k];
+        for (int i = 0; i < LUT_BITS; i++) {
+            double P = (double)g_real_c[i] / Np_ref;
+            g_A_dyn_real[2 * i + 1] += n_q[i] * P;
+            g_A_dyn_real[2 * i]     += n_q[i] * (1.0 - P);
+        }
+        if (q_pop)
+            for (int k = 0; k < DYN_NB; k++) g_A_dynq_real[k] += (double)q_pop[k];
+        g_negene_sum_real += T_ref / Np_ref;
+    } else {
+        T_ref = (double)dr_T[0]; Np_ref = (double)dr_n[0];
+        if (Np_ref <= 0) return;
+    }
+    for (int r = 0; r < g_drift_R; r++) {
+        double n = (double)dr_n[r];
+        if (n <= 0) continue;
+        double T = (double)dr_T[r];
+        const int32_t *e = dr_e + (size_t)r * EG_NB;
+        const int32_t *m = dr_m + (size_t)r * MK_NB;
+        const int32_t *c = dr_c + (size_t)r * LUT_BITS;
+        double *Ae = dr_A_eg  + (size_t)r * EG_NB;
+        double *Am = dr_A_mk  + (size_t)r * MK_NB;
+        double *Ad = dr_A_dyn + (size_t)r * DYN_NB;
+        if (T > 0) {
+            double sc = T_ref / T;
+            for (int k = 0; k < EG_NB; k++)
+                if (e[k]) Ae[k] += sc * (double)e[k];
+        }
+        double scm = Np_ref / n;
+        for (int k = 0; k < MK_NB; k++)
+            if (m[k]) Am[k] += scm * (double)m[k];
+        for (int i = 0; i < LUT_BITS; i++) {
+            double p = (double)c[i] / n;
+            Ad[2 * i + 1] += n_q[i] * p;
+            Ad[2 * i]     += n_q[i] * (1.0 - p);
+        }
+        dr_negene_sum[r] += T / n;
+    }
+    g_drift_steps++;
+}
+
+/* Per-step driver, called at the end of evoca_step(). */
+static void fs_drift_step(void)
+{
+    if (!g_drift_on || g_drift_synth) { g_mutlog_n = 0; return; }
+    int B = g_births_last, D = g_deaths_last;
+    for (int r = 0; r < g_drift_R; r++)
+        drift_rep_step(r, D, B, g_mutlog, g_mutlog_n);
+    drift_observe_real();
+    double n_q[LUT_BITS];
+    for (int i = 0; i < LUT_BITS; i++)
+        n_q[i] = (double)dyn_pop[2 * i] + (double)dyn_pop[2 * i + 1];
+    drift_accumulate(n_q, dyn_pop, 1);
+    g_mutlog_n = 0;
+}
+
+/* Copy the alive real genomes into every replicate. */
+static void drift_seed_from_real(void)
+{
+    size_t cells = (size_t)gN * gN;
+    for (int r = 0; r < g_drift_R; r++) {
+        int k = 0;
+        for (size_t i = 0; i < cells; i++) {
+            if (!alive[i]) continue;
+            size_t ij = (size_t)r * g_drift_cap + (size_t)k;
+            memcpy(dr_lut + ij * LUT_BYTES, lut + i * LUT_BYTES, LUT_BYTES);
+            memcpy(dr_eg  + ij * NEGENOME_MAX, egenes + i * NEGENOME_MAX, NEGENOME_MAX);
+            memcpy(dr_egm + ij * NEGENOME_MAX, egenes_mask + i * NEGENOME_MAX,
+                   NEGENOME_MAX);
+            dr_act[ij] = active[i];
+            dr_mk[ij]  = marker[i];
+            k++;
+        }
+        dr_n[r] = k;
+    }
+    drift_recount();
+}
+
+/* ── Public API: drift shadow ─────────────────────────────────────── */
+
+int evoca_fs_drift_enable(int R)
+{
+    if (!alive || !lut || gN == 0) return -1;
+    if (fs_drift_alloc(R, gN * gN) != 0) return -1;
+    drift_reseed_streams();
+    drift_seed_from_real();
+    fs_drift_reset_accumulators();
+    g_drift_on = 1;
+    return 0;
+}
+
+void evoca_fs_drift_disable(void) { fs_drift_free_all(); }
+int  evoca_fs_drift_is_enabled(void) { return g_drift_on; }
+int  evoca_fs_drift_reps(void) { return g_drift_on ? g_drift_R : 0; }
+long evoca_fs_drift_steps(void) { return g_drift_steps; }
+
+/* Reseed every replicate population from the current real population
+ * (accumulators are kept; streams continue). Opt-in resync (§5.5). */
+void evoca_fs_drift_reseed(void)
+{
+    if (!g_drift_on || g_drift_synth) return;
+    drift_seed_from_real();
+}
+
+void evoca_fs_drift_reset_accumulators(void) { fs_drift_reset_accumulators(); }
+
+/* Copy out the cumulative activities. Any pointer may be NULL.
+ *   eg_real[729] eg_sh[R*729] dyn_real[500] dynq_real[500] dyn_sh[R*500]
+ *   mk_real[729] mk_sh[R*729] negene[R+1] (index 0 = real sum) */
+void evoca_fs_drift_get(double *eg_real, double *eg_sh, double *dyn_real,
+                        double *dynq_real, double *dyn_sh, double *mk_real,
+                        double *mk_sh, double *negene)
+{
+    int R = g_drift_on ? g_drift_R : 0;
+    if (eg_real)   memcpy(eg_real,   g_A_eg_real,   sizeof(g_A_eg_real));
+    if (dyn_real)  memcpy(dyn_real,  g_A_dyn_real,  sizeof(g_A_dyn_real));
+    if (dynq_real) memcpy(dynq_real, g_A_dynq_real, sizeof(g_A_dynq_real));
+    if (mk_real)   memcpy(mk_real,   g_A_mk_real,   sizeof(g_A_mk_real));
+    if (R == 0) return;
+    if (eg_sh)  memcpy(eg_sh,  dr_A_eg,  (size_t)R * EG_NB  * sizeof(double));
+    if (dyn_sh) memcpy(dyn_sh, dr_A_dyn, (size_t)R * DYN_NB * sizeof(double));
+    if (mk_sh)  memcpy(mk_sh,  dr_A_mk,  (size_t)R * MK_NB  * sizeof(double));
+    if (negene) {
+        negene[0] = g_negene_sum_real;
+        for (int r = 0; r < R; r++) negene[r + 1] = dr_negene_sum[r];
+    }
+}
+
+/* Current tallies (tests): c[R*250], e[R*729], m[R*729], n[R], T[R]. */
+void evoca_fs_drift_tallies(int32_t *c, int32_t *e, int32_t *m, int32_t *n,
+                            int64_t *T)
+{
+    int R = g_drift_on ? g_drift_R : 0;
+    if (R == 0) return;
+    if (c) memcpy(c, dr_c, (size_t)R * LUT_BITS * sizeof(int32_t));
+    if (e) memcpy(e, dr_e, (size_t)R * EG_NB * sizeof(int32_t));
+    if (m) memcpy(m, dr_m, (size_t)R * MK_NB * sizeof(int32_t));
+    for (int r = 0; r < R; r++) {
+        if (n) n[r] = dr_n[r];
+        if (T) T[r] = dr_T[r];
+    }
+}
+
+/* Recount tallies from the stored genomes and compare with the
+ * incremental ones. Returns the number of mismatching counters. */
+int evoca_fs_drift_check_tallies(void)
+{
+    if (!g_drift_on) return 0;
+    int R = g_drift_R;
+    size_t nc = (size_t)R * LUT_BITS, ne = (size_t)R * EG_NB, nm = (size_t)R * MK_NB;
+    int32_t *c0 = malloc(nc * 4), *e0 = malloc(ne * 4), *m0 = malloc(nm * 4);
+    int64_t T0[DRIFT_MAX_REPS];
+    memcpy(c0, dr_c, nc * 4); memcpy(e0, dr_e, ne * 4); memcpy(m0, dr_m, nm * 4);
+    memcpy(T0, dr_T, sizeof(T0));
+    drift_recount();
+    int bad = 0;
+    for (size_t k = 0; k < nc; k++) bad += c0[k] != dr_c[k];
+    for (size_t k = 0; k < ne; k++) bad += e0[k] != dr_e[k];
+    for (size_t k = 0; k < nm; k++) bad += m0[k] != dr_m[k];
+    for (int r = 0; r < R; r++) bad += T0[r] != dr_T[r];
+    free(c0); free(e0); free(m0);
+    return bad;
+}
+
+/* Last step's real-side observations: c[250], e[729], m[729]; returns Np. */
+int evoca_fs_drift_real_obs(int32_t *c, int32_t *e, int32_t *m)
+{
+    if (c) memcpy(c, g_real_c, sizeof(g_real_c));
+    if (e) memcpy(e, g_real_e, sizeof(g_real_e));
+    if (m) memcpy(m, g_real_m, sizeof(g_real_m));
+    return g_real_np;
+}
+
+/* Last step's per-replicate events: out[R*6] =
+ * (births, deaths, nf, na, ne, nm) per replicate. */
+void evoca_fs_drift_last_events(long *out)
+{
+    for (int r = 0; r < (g_drift_on ? g_drift_R : 0); r++) {
+        out[6 * r + 0] = dr_last_births[r];
+        out[6 * r + 1] = dr_last_deaths[r];
+        out[6 * r + 2] = dr_last_nf[r];
+        out[6 * r + 3] = dr_last_na[r];
+        out[6 * r + 4] = dr_last_ne[r];
+        out[6 * r + 5] = dr_last_nm[r];
+    }
+}
+
+/* Copy replicate r's genomes out (tests / Python reference parity).
+ * lut[n*32] eg[n*8] egm[n*8] act[n] mk[n]; returns n. */
+int evoca_fs_drift_get_population(int r, uint8_t *lut_out, uint8_t *eg_out,
+                                  uint8_t *egm_out, uint8_t *act_out,
+                                  uint16_t *mk_out)
+{
+    if (!g_drift_on || r < 0 || r >= g_drift_R) return 0;
+    int n = dr_n[r];
+    size_t o = (size_t)r * g_drift_cap;
+    if (lut_out) memcpy(lut_out, dr_lut + o * LUT_BYTES, (size_t)n * LUT_BYTES);
+    if (eg_out)  memcpy(eg_out,  dr_eg  + o * NEGENOME_MAX, (size_t)n * NEGENOME_MAX);
+    if (egm_out) memcpy(egm_out, dr_egm + o * NEGENOME_MAX, (size_t)n * NEGENOME_MAX);
+    if (act_out) memcpy(act_out, dr_act + o, (size_t)n);
+    if (mk_out)  memcpy(mk_out,  dr_mk  + o, (size_t)n * sizeof(uint16_t));
+    return n;
+}
+
+/* ── Synthetic test hook (validation (a)/(b), Python-reference parity) ──
+ * A standalone drift context driven by an explicit event stream, with no
+ * lattice. All R replicates start from the same n genomes; per-replicate
+ * stream r is seeded drift_seed_for(seed, r). In synthetic mode
+ * replicate 0 plays the "real" run: it is scored like the others but
+ * the eg/marker rescaling uses its own masses (so it is unscaled), and
+ * the optional selection / without-replacement variant applies to it
+ * only. Uses the global p_dup_egene; restricted_mu must be off. */
+int evoca_fs_drift_synth_init(int R, int cap, int n, const uint8_t *lut_in,
+                              const uint8_t *eg_in, const uint8_t *egm_in,
+                              const uint8_t *act_in, const uint16_t *mk_in,
+                              uint32_t seed)
+{
+    if (n > cap) return -1;
+    if (fs_drift_alloc(R, cap) != 0) return -1;
+    g_drift_synth = 1;
+    g_drift_on = 1;
+    for (int r = 0; r < g_drift_R; r++) {
+        dr_rng[r] = drift_seed_for(seed ? seed : RNG_DEFAULT_SEED, r);
+        size_t o = (size_t)r * cap;
+        memcpy(dr_lut + o * LUT_BYTES, lut_in, (size_t)n * LUT_BYTES);
+        memcpy(dr_eg  + o * NEGENOME_MAX, eg_in,  (size_t)n * NEGENOME_MAX);
+        memcpy(dr_egm + o * NEGENOME_MAX, egm_in, (size_t)n * NEGENOME_MAX);
+        memcpy(dr_act + o, act_in, (size_t)n);
+        memcpy(dr_mk + o, mk_in, (size_t)n * sizeof(uint16_t));
+        dr_n[r] = n;
+    }
+    drift_recount();
+    fs_drift_reset_accumulators();
+    return g_drift_R;
+}
+
+/* Selection on replicate 0 (synthetic mode only). mode: 0 none,
+ * 1 dyn purifying weight (1-s)^(# allele-1 at loci[0..k)), 2 eg family
+ * advantage (1+s), 3 neutral without-replacement parents. */
+void evoca_fs_drift_synth_set_selection(int mode, double s, const int *loci, int k)
+{
+    g_synth_sel_mode = mode;
+    g_synth_sel_s = s;
+    if (k > LUT_BITS) k = LUT_BITS;
+    g_synth_sel_k = (loci && k > 0) ? k : 0;
+    for (int q = 0; q < g_synth_sel_k; q++) g_synth_sel_loci[q] = loci[q];
+}
+
+/* Advance `nsteps` synthetic steps. Per step t: deaths D[t], births
+ * B[t], mutation records recs[4*(offset_t + b)] = (nf, na, ne, nm) for
+ * b < B[t] (records for all steps are concatenated), and query weights
+ * nq[t*250 + i]. accumulate=0 skips the activity accumulation. */
+int evoca_fs_drift_synth_run(int nsteps, const int *D, const int *B,
+                             const int *recs, const double *nq, int accumulate)
+{
+    if (!g_drift_on || !g_drift_synth) return -1;
+    long off = 0;
+    for (int t = 0; t < nsteps; t++) {
+        int b = B[t];
+        if (b > g_mutlog_cap) return -2;
+        for (int k = 0; k < b; k++) {
+            g_mutlog[k].nf = recs[4 * (off + k) + 0];
+            g_mutlog[k].na = recs[4 * (off + k) + 1];
+            g_mutlog[k].ne = recs[4 * (off + k) + 2];
+            g_mutlog[k].nm = recs[4 * (off + k) + 3];
+        }
+        off += b;
+        for (int r = 0; r < g_drift_R; r++)
+            drift_rep_step(r, D[t], b, g_mutlog, b);
+        if (accumulate) drift_accumulate(nq + (size_t)t * LUT_BITS, NULL, 0);
+    }
+    return 0;
+}
+
+/* ── Public API: neutral marker ─────────────────────────────────────── */
+
+void  evoca_set_marker_mu(float m) { gmarker_mu = m < 0.0f ? 0.0f : m; }
+float evoca_get_marker_mu(void)    { return gmarker_mu; }
+uint16_t *evoca_get_marker(void)   { return marker; }
+/* Set every cell's marker to (value | mask << 8). */
+void evoca_set_marker_all(uint16_t m)
+{
+    size_t cells = (size_t)gN * gN;
+    if (!marker) return;
+    for (size_t i = 0; i < cells; i++) marker[i] = (uint16_t)(m & 0x3F3F);
+}
+
+/* Test-only constructed fixture (validation (b)): when bit >= 0, every
+ * real birth sets child LUT bit `bit` to `val` after mutation. Changes
+ * the real dynamics; default off (-1). */
+void evoca_test_force_bit(int bit, int val)
+{
+    g_test_force_bit = (bit >= 0 && bit < LUT_BITS) ? bit : -1;
+    g_test_force_val = val ? 1 : 0;
+}
+
+static void drift_on_set_seed(uint32_t base)
+{
+    g_drift_seed_base = base;
+    if (g_drift_on && !g_drift_synth) drift_reseed_streams();
+}
 
 /* ── Egenome scalar stats probe ─────────────────────────────────────
  *

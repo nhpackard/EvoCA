@@ -178,6 +178,7 @@ class EvoCA:
         self.N_log_interval = 1
         # Origin recipe basename if loaded via import_run; tags log files.
         self._origin_recipe = None
+        self._measurement = {}   # recipe measurement block (import_run)
         self._state_params = {}
         self._setup_signatures()
 
@@ -411,6 +412,60 @@ class EvoCA:
         L.evoca_eg_nbuckets.restype        = ctypes.c_int
         L.evoca_dyn_nbuckets.argtypes      = []
         L.evoca_dyn_nbuckets.restype       = ctypes.c_int
+        # Drift shadow (Docs/shadows.md §5) + neutral marker
+        _dp = ctypes.POINTER(ctypes.c_double)
+        _i32 = ctypes.POINTER(ctypes.c_int32)
+        _i64 = ctypes.POINTER(ctypes.c_int64)
+        _u8 = ctypes.POINTER(ctypes.c_uint8)
+        _u16 = ctypes.POINTER(ctypes.c_uint16)
+        _ci = ctypes.POINTER(ctypes.c_int)
+        L.evoca_fs_drift_enable.argtypes = [ctypes.c_int]
+        L.evoca_fs_drift_enable.restype = ctypes.c_int
+        L.evoca_fs_drift_disable.argtypes = []
+        L.evoca_fs_drift_disable.restype = None
+        L.evoca_fs_drift_is_enabled.argtypes = []
+        L.evoca_fs_drift_is_enabled.restype = ctypes.c_int
+        L.evoca_fs_drift_reps.argtypes = []
+        L.evoca_fs_drift_reps.restype = ctypes.c_int
+        L.evoca_fs_drift_steps.argtypes = []
+        L.evoca_fs_drift_steps.restype = ctypes.c_long
+        L.evoca_fs_drift_reseed.argtypes = []
+        L.evoca_fs_drift_reseed.restype = None
+        L.evoca_fs_drift_reset_accumulators.argtypes = []
+        L.evoca_fs_drift_reset_accumulators.restype = None
+        L.evoca_fs_drift_get.argtypes = [_dp] * 8
+        L.evoca_fs_drift_get.restype = None
+        L.evoca_fs_drift_tallies.argtypes = [_i32, _i32, _i32, _i32, _i64]
+        L.evoca_fs_drift_tallies.restype = None
+        L.evoca_fs_drift_check_tallies.argtypes = []
+        L.evoca_fs_drift_check_tallies.restype = ctypes.c_int
+        L.evoca_fs_drift_real_obs.argtypes = [_i32, _i32, _i32]
+        L.evoca_fs_drift_real_obs.restype = ctypes.c_int
+        L.evoca_fs_drift_last_events.argtypes = [ctypes.POINTER(ctypes.c_long)]
+        L.evoca_fs_drift_last_events.restype = None
+        L.evoca_fs_drift_get_population.argtypes = [ctypes.c_int, _u8, _u8, _u8,
+                                                    _u8, _u16]
+        L.evoca_fs_drift_get_population.restype = ctypes.c_int
+        L.evoca_fs_drift_synth_init.argtypes = [ctypes.c_int, ctypes.c_int,
+                                                ctypes.c_int, _u8, _u8, _u8,
+                                                _u8, _u16, ctypes.c_uint32]
+        L.evoca_fs_drift_synth_init.restype = ctypes.c_int
+        L.evoca_fs_drift_synth_set_selection.argtypes = [
+            ctypes.c_int, ctypes.c_double, _ci, ctypes.c_int]
+        L.evoca_fs_drift_synth_set_selection.restype = None
+        L.evoca_fs_drift_synth_run.argtypes = [ctypes.c_int, _ci, _ci, _ci,
+                                               _dp, ctypes.c_int]
+        L.evoca_fs_drift_synth_run.restype = ctypes.c_int
+        L.evoca_set_marker_mu.argtypes = [ctypes.c_float]
+        L.evoca_set_marker_mu.restype = None
+        L.evoca_get_marker_mu.argtypes = []
+        L.evoca_get_marker_mu.restype = ctypes.c_float
+        L.evoca_get_marker.argtypes = []
+        L.evoca_get_marker.restype = _u16
+        L.evoca_set_marker_all.argtypes = [ctypes.c_uint16]
+        L.evoca_set_marker_all.restype = None
+        L.evoca_test_force_bit.argtypes = [ctypes.c_int, ctypes.c_int]
+        L.evoca_test_force_bit.restype = None
         # Neutral shadow population (Channon-style activity calibration)
         L.evoca_neutral_enable.argtypes        = []
         L.evoca_neutral_enable.restype         = None
@@ -1838,6 +1893,138 @@ class EvoCA:
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
         return out
 
+    # ── Drift shadow (Docs/shadows.md §5) + neutral marker ───────────
+
+    def fs_drift_enable(self, reps=8):
+        """Enable the drift shadow with `reps` replicate populations,
+        each seeded by copying every alive cell's full genome (LUT,
+        egenes, active mask, marker). Zeroes all drift accumulators (both
+        sides), so the drift statistics cover [enable, now]. Pure
+        observer: own per-replicate RNG streams, derived from set_seed().
+        Off by default."""
+        if self._lib.evoca_fs_drift_enable(int(reps)) != 0:
+            raise RuntimeError("evoca_fs_drift_enable failed (init first)")
+
+    def fs_drift_disable(self):
+        self._lib.evoca_fs_drift_disable()
+
+    def fs_drift_is_enabled(self):
+        return bool(self._lib.evoca_fs_drift_is_enabled())
+
+    def fs_drift_reps(self):
+        """Number of replicates (0 when disabled)."""
+        return int(self._lib.evoca_fs_drift_reps())
+
+    def fs_drift_reseed(self):
+        """Opt-in resync: reseed every replicate from the current real
+        population (accumulators kept)."""
+        self._lib.evoca_fs_drift_reseed()
+
+    def fs_drift_reset_accumulators(self):
+        self._lib.evoca_fs_drift_reset_accumulators()
+
+    def fs_drift_get(self):
+        """Cumulative drift-shadow activities (copies) as a dict:
+        eg_real[729], eg_shadow[R,729], dyn_real[500] (whole-population
+        allele frequencies x real query counts), dyn_queried[500] (real
+        queried transitions), dyn_shadow[R,500], marker_real[729],
+        marker_shadow[R,729], negene_real (Σ_t mean Negene),
+        negene_shadow[R], steps, R."""
+        R = self.fs_drift_reps()
+        P = ctypes.POINTER(ctypes.c_double)
+        a = {'eg_real': np.zeros(729), 'eg_shadow': np.zeros((R, 729)),
+             'dyn_real': np.zeros(500), 'dyn_queried': np.zeros(500),
+             'dyn_shadow': np.zeros((R, 500)), 'marker_real': np.zeros(729),
+             'marker_shadow': np.zeros((R, 729)), '_neg': np.zeros(R + 1)}
+        self._lib.evoca_fs_drift_get(
+            *[a[k].ctypes.data_as(P) for k in (
+                'eg_real', 'eg_shadow', 'dyn_real', 'dyn_queried',
+                'dyn_shadow', 'marker_real', 'marker_shadow', '_neg')])
+        neg = a.pop('_neg')
+        a['negene_real'] = float(neg[0])
+        a['negene_shadow'] = neg[1:].copy()
+        a['steps'] = int(self._lib.evoca_fs_drift_steps())
+        a['R'] = R
+        return a
+
+    def fs_drift_tallies(self):
+        """Current replicate tallies: c[R,250] allele-1 counts, e[R,729]
+        active-egene key counts, m[R,729] marker key counts, n[R]
+        population sizes, T[R] active-egene totals."""
+        R = self.fs_drift_reps()
+        c = np.zeros((R, 250), np.int32); e = np.zeros((R, 729), np.int32)
+        m = np.zeros((R, 729), np.int32); n = np.zeros(R, np.int32)
+        T = np.zeros(R, np.int64)
+        if R:
+            I = ctypes.POINTER(ctypes.c_int32)
+            self._lib.evoca_fs_drift_tallies(
+                c.ctypes.data_as(I), e.ctypes.data_as(I), m.ctypes.data_as(I),
+                n.ctypes.data_as(I), T.ctypes.data_as(ctypes.POINTER(ctypes.c_int64)))
+        return {'c': c, 'e': e, 'm': m, 'n': n, 'T': T}
+
+    def fs_drift_check_tallies(self):
+        """Recount tallies from the stored genomes; returns the number of
+        counters that disagree with the incremental ones (0 = consistent)."""
+        return int(self._lib.evoca_fs_drift_check_tallies())
+
+    def fs_drift_real_obs(self):
+        """Last step's real-side observation: allele counts c[250], egene
+        key counts e[729], marker key counts m[729], alive count Np."""
+        c = np.zeros(250, np.int32); e = np.zeros(729, np.int32)
+        m = np.zeros(729, np.int32)
+        I = ctypes.POINTER(ctypes.c_int32)
+        np_ = self._lib.evoca_fs_drift_real_obs(
+            c.ctypes.data_as(I), e.ctypes.data_as(I), m.ctypes.data_as(I))
+        return {'c': c, 'e': e, 'm': m, 'Np': int(np_)}
+
+    def fs_drift_last_events(self):
+        """Last step's per-replicate events, int array [R, 6]: births,
+        deaths, replayed nf, na, ne, nm totals."""
+        R = self.fs_drift_reps()
+        out = np.zeros((R, 6), dtype=np.int64)
+        arr = (ctypes.c_long * (6 * R))()
+        if R:
+            self._lib.evoca_fs_drift_last_events(arr)
+            out[:] = np.array(arr[:], dtype=np.int64).reshape(R, 6)
+        return out
+
+    def fs_drift_population(self, r):
+        """Replicate r's genomes (copies): lut[n,32], egenes[n,8],
+        egenes_mask[n,8], active[n], marker[n]."""
+        cap = self._N * self._N
+        lut = np.zeros((cap, LUT_BYTES), np.uint8)
+        eg = np.zeros((cap, 8), np.uint8); egm = np.zeros((cap, 8), np.uint8)
+        act = np.zeros(cap, np.uint8); mk = np.zeros(cap, np.uint16)
+        U8 = ctypes.POINTER(ctypes.c_uint8)
+        n = self._lib.evoca_fs_drift_get_population(
+            int(r), lut.ctypes.data_as(U8), eg.ctypes.data_as(U8),
+            egm.ctypes.data_as(U8), act.ctypes.data_as(U8),
+            mk.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16)))
+        return {'lut': lut[:n], 'egenes': eg[:n], 'egenes_mask': egm[:n],
+                'active': act[:n], 'marker': mk[:n]}
+
+    def set_marker_mu(self, mu):
+        """Per-bit flip rate of the neutral marker per birth (12 bits).
+        Observer setting: the marker draws from its own RNG stream and is
+        read by nothing in the dynamics."""
+        self._lib.evoca_set_marker_mu(float(mu))
+
+    def get_marker_mu(self):
+        return float(self._lib.evoca_get_marker_mu())
+
+    def get_marker(self):
+        """Live [N*N] uint16 marker array (value bits 0-5, mask 8-13)."""
+        N = self._N
+        return np.ctypeslib.as_array(self._lib.evoca_get_marker(), shape=(N * N,))
+
+    def set_marker_all(self, m):
+        self._lib.evoca_set_marker_all(int(m))
+
+    def test_force_bit(self, bit, val):
+        """TEST-ONLY constructed fixture: every birth sets child LUT bit
+        `bit` to `val` (changes the dynamics). bit=-1 turns it off."""
+        self._lib.evoca_test_force_bit(int(bit), int(val))
+
     # ── N-activity probe (Channon-style neutral shadow) ──────────────
 
     def neutral_enable(self):
@@ -1957,8 +2144,9 @@ class EvoCA:
         filename = f"{datetime.now().strftime('%Y-%m-%d')}_{safe_desc}.evoca"
         filepath = os.path.join(runs_dir, filename)
 
+        R = self.fs_drift_reps()
         recipe = {
-            'version': 3,
+            'version': 4,
             'created': datetime.now().isoformat(timespec='seconds'),
             'descriptor': descriptor,
             'N': self._N,
@@ -1984,6 +2172,14 @@ class EvoCA:
             'display': {
                 'colormode': colormode,
                 'probes': probes or {},
+            },
+            # Observer settings (Docs/shadows.md §8 Q11): which
+            # fixed-space shadows were measured, and the marker rate.
+            'measurement': {
+                'fs_shadow': 'both' if R else 'tracking',
+                'fs_reps': R,
+                'fs_resync': None,
+                'marker_mu': self.get_marker_mu(),
             },
         }
 
@@ -2253,6 +2449,15 @@ def import_run(filepath=None, recipe='init', lib_path=None, N=None):
     state_kw = {_v2_keys.get(k, k): v for k, v in init_raw.items()}
     state_kw.pop('v_method', None)   # removed in v3
     sim.state(**state_kw)
+
+    # Measurement block (version 4): restore the marker rate (an observer
+    # setting) and keep the block on the sim. The drift shadow is NOT
+    # auto-enabled (it costs step time in interactive runs); call
+    # sim.fs_drift_enable(sim._measurement['fs_reps']) to measure.
+    meas = data.get('measurement') or {}
+    sim._measurement = dict(meas)
+    if meas.get('marker_mu'):
+        sim.set_marker_mu(float(meas['marker_mu']))
 
     # Build display kwargs
     disp = data.get('display', {})

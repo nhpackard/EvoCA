@@ -16,10 +16,15 @@ Metrics are organised on three axes:
     excess_activity_final        : ΣG − ΣN at end of run (Channon)
     excess_activity_slope        : linear slope of ΣG − ΣN over time
     excess_pc_final/_slope       : per-component-normalised LUT-hash excess
-    eg_excess_pc_final/_slope    : fixed-space (729 ternary egene keys)
-                                   neutral-drift excess + its slope (§2)
-    dyn_excess_pc_final/_slope   : fixed-space (500 LUT input/output
-                                   buckets) neutral-drift excess + slope
+    eg_excess_pc_final/_slope    : TRACKING shadow (729 ternary egene
+                                   keys); a concentration index, not a
+                                   selection test (Docs/shadows.md §4).
+                                   Alias eg_concentration_final/_slope.
+    dyn_excess_pc_final/_slope   : TRACKING shadow (500 LUT input/output
+                                   buckets); alias dyn_concentration_*
+    <ch>_drift_*                 : DRIFT shadow (Docs/shadows.md §5-6;
+                                   python/drift_stats.py), ch in eg, dyn,
+                                   marker; `_last` = last window
 
   Spatial structure
     F_std_mean                   : mean over time of spatial std of F_food
@@ -53,6 +58,14 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 from evoca_py import EvoCA   # noqa: E402
 import evoca_paths            # noqa: E402
+from drift_stats import drift_statistics, window as drift_window  # noqa: E402
+
+# Shadow / measurement settings (observer settings, NOT dynamics
+# metaparameters: they are run_sim keywords, never in _PARAM_KEYS, which
+# is forwarded to EvoCA.init()). Docs/shadows.md §8 Q3, Q4, Q8, Q11.
+FS_SHADOW_MODES = ('tracking', 'drift', 'both')
+MEASUREMENT_DEFAULTS = {'fs_shadow': 'both', 'fs_reps': 8,
+                        'fs_resync': None, 'marker_mu': 0.0}
 
 
 # ── Fixed initialisation used by run_sim ─────────────────────────────
@@ -177,7 +190,8 @@ def build_sim(params, N=256, seed=0, init='halfplane'):
 
 
 def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
-            shadow=True, init='halfplane'):
+            shadow=True, init='halfplane', fs_shadow='both', fs_reps=8,
+            fs_resync=None, marker_mu=0.0):
     """
     Run one EvoCA configuration headless.
 
@@ -188,13 +202,45 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
     seed: numpy seed for v_curr initialisation.
     shadow: whether to enable Channon-style neutral shadow + N-activity.
     init: 'halfplane' (left half alive) or 'fraction' (random 50%).
+    fs_shadow: fixed-space shadow(s) to emit: 'tracking' (memoryless
+        eg_/dyn_excess_pc_*, a concentration index), 'drift' (stateful
+        replicate drift shadow, <ch>_drift_* keys) or 'both' (default).
+        The drift shadow is a pure observer on its own RNG streams: the
+        real trajectory and every tracking/Channon key are bit-identical
+        across modes.
+    fs_reps: drift-shadow replicates R (default 8; rank p-values have a
+        floor of 1/(R+1), use 19+ for single-run binary claims).
+    fs_resync: None (cumulative from t=0) or W: reseed the replicates
+        from the real population every W steps (windowed estimand).
+    marker_mu: per-bit flip rate of the neutral marker trait (12 bits,
+        own RNG stream, read by nothing). 0 = clonal marker.
+    The `_last` drift keys cover the last window: the last fs_resync
+    window, else the second half of the run.
 
     Returns a dict of summary metrics + parameter echo.
     """
+    if fs_shadow not in FS_SHADOW_MODES:
+        raise ValueError(f"fs_shadow must be one of {FS_SHADOW_MODES}, "
+                         f"got {fs_shadow!r}")
+    do_tracking = fs_shadow in ('tracking', 'both')
+    do_drift = fs_shadow in ('drift', 'both')
+    if fs_resync is not None:
+        fs_resync = int(fs_resync)
+        if fs_resync < 1:
+            raise ValueError("fs_resync must be None or >= 1")
     sim = build_sim(params, N=N, seed=seed, init=init)
 
     if shadow:
         sim.neutral_enable()
+    sim.set_marker_mu(marker_mu)
+    if do_drift:
+        sim.fs_drift_enable(int(fs_reps))
+    # Start of the last window (snapshot taken before step t_last).
+    if fs_resync:
+        t_last = (n_steps - 1) // fs_resync * fs_resync if n_steps > 0 else 0
+    else:
+        t_last = n_steps // 2
+    drift_snap = None
 
     samples = defaultdict(list)
     dominator_history = set()
@@ -290,9 +336,10 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
             # while the Channon shadow models LUT bytes only). eg_pop
             # must be refreshed each sample; dyn_pop is maintained by
             # Phase 1 every step.
-            sim._lib.evoca_eg_activity_update()
-            samples['eg_excess_pc'].append(sim.eg_excess_pc())
-            samples['dyn_excess_pc'].append(sim.dyn_excess_pc())
+            if do_tracking:
+                sim._lib.evoca_eg_activity_update()
+                samples['eg_excess_pc'].append(sim.eg_excess_pc())
+                samples['dyn_excess_pc'].append(sim.dyn_excess_pc())
 
             # Energy-flux / dissipation readout (checkpoint §L, action L1).
             # Per-capita throughput Φ is the principled x-axis material for
@@ -312,6 +359,12 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
 
             samples['t'].append(t)
 
+        if do_drift:
+            if fs_resync and 0 < t < n_steps and t % fs_resync == 0:
+                sim.fs_drift_reseed()
+            if t == t_last:
+                drift_snap = sim.fs_drift_get()
+
         if t < n_steps:
             sim.step()
 
@@ -329,6 +382,10 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
     out['seed'] = seed
     out['init'] = init
     out['shadow'] = shadow
+    out['fs_shadow'] = fs_shadow
+    out['fs_reps'] = int(fs_reps) if do_drift else 0
+    out['fs_resync'] = fs_resync
+    out['marker_mu'] = float(marker_mu)
 
     def _agg(name, key):
         if samples[key]:
@@ -450,6 +507,25 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
         else:
             out['dyn_excess_pc_slope'] = 0.0
 
+    # Tracking-shadow aliases (guide 07 Option E): the excess is a
+    # concentration index (Docs/shadows.md §4), named as such.
+    for ch in ('eg', 'dyn'):
+        for suf in ('final', 'slope'):
+            k = f'{ch}_excess_pc_{suf}'
+            if k in out:
+                out[f'{ch}_concentration_{suf}'] = out[k]
+
+    # DRIFT shadow (Docs/shadows.md §5-6): cumulative from enable (t=0),
+    # plus the last window.
+    if do_drift:
+        acc = sim.fs_drift_get()
+        out.update(drift_statistics(acc))
+        if drift_snap is not None:
+            last = drift_statistics(drift_window(acc, drift_snap))
+            for k, v in last.items():
+                if k != 'drift_R':
+                    out[f'{k}_last'] = v
+
     pop_arr = np.asarray(samples['alive_density'], dtype=float) * (N * N)
     if pop_arr.size:
         out['final_pop'] = int(pop_arr[-1])
@@ -467,10 +543,15 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
 # ── Scan dir helpers: scan_config.json + .evoca recipe export ────────
 
 def save_scan_config(scan_dir, *, N, n_steps, sample_every, seed, shadow,
-                     init_overrides=None):
+                     init_overrides=None, fs_shadow=None, fs_reps=None,
+                     fs_resync=None, marker_mu=None):
     """Write scan_config.json into `scan_dir` documenting the fixed
     initialisation used by all configs in this scan. Any keys in
-    init_overrides override SCAN_INIT_DEFAULTS for this scan."""
+    init_overrides override SCAN_INIT_DEFAULTS for this scan.
+
+    The shadow settings (fs_shadow, fs_reps, fs_resync, marker_mu) are
+    recorded in a 'measurement' block; pass the values the scan gave
+    run_sim (None = run_sim's default, MEASUREMENT_DEFAULTS)."""
     init = dict(SCAN_INIT_DEFAULTS)
     if init_overrides:
         init.update(init_overrides)
@@ -482,11 +563,22 @@ def save_scan_config(scan_dir, *, N, n_steps, sample_every, seed, shadow,
         'seed': int(seed),
         'shadow': bool(shadow),
         'initialization': init,
+        'measurement': _measurement_block(fs_shadow=fs_shadow,
+                                          fs_reps=fs_reps,
+                                          fs_resync=fs_resync,
+                                          marker_mu=marker_mu),
     }
     out_path = os.path.join(scan_dir, 'scan_config.json')
     with open(out_path, 'w') as f:
         json.dump(cfg, f, indent=2)
     return out_path
+
+
+def _measurement_block(**kw):
+    """Measurement (observer) settings with run_sim's defaults filled in."""
+    m = dict(MEASUREMENT_DEFAULTS)
+    m.update({k: v for k, v in kw.items() if v is not None})
+    return m
 
 
 def _default_scan_dir(workstream=None):
@@ -593,8 +685,12 @@ def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
     filename = f"{datetime.now().strftime('%Y-%m-%d')}_{safe}.evoca"
     filepath = os.path.join(runs_dir, filename)
 
+    # Scans recorded before the drift shadow have no measurement block:
+    # they emitted the tracking shadow only.
+    measurement = cfg.get('measurement') or _measurement_block(
+        fs_shadow='tracking', fs_reps=0)
     recipe = {
-        'version': 3,
+        'version': 4,
         'created': datetime.now().isoformat(timespec='seconds'),
         'descriptor': descriptor,
         'source_scan': os.path.relpath(os.path.abspath(scan_dir), evoca_paths.REPO_ROOT),
@@ -607,6 +703,7 @@ def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
             'colormode': int(colormode),
             'probes': probes or {},
         },
+        'measurement': measurement,
     }
     with open(filepath, 'w') as f:
         json.dump(recipe, f, indent=2)
