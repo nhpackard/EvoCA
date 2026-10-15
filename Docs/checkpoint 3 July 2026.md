@@ -1605,7 +1605,7 @@ manifest so agents can be spawned in waves.
 So **every code change runs in its own `git worktree`+branch** (the proven
 S2a–e batch pattern from the 2026-05 integration), and only analysis /
 notebook / doc work runs directly on `main`. Merge stays a human gate; an
-orchestrator digest to `Docs/research_board.md` collects each agent's
+orchestrator digest to `Research/research_board.md` collects each agent's
 result + any decision it needs, so review is one digest, not N
 transcripts. Standing preference (N): **spawn parallel agents whenever the
 work is independent** — the default is concurrency, serial is the

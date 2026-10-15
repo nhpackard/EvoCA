@@ -3,7 +3,7 @@
 Durable record of **how and why the model is evolving** — the reasoning
 layer that commit messages and the research board don't capture.
 
-- `research_board.md` = status / decisions / timeline (what state things are in).
+- `research_board.md` (moved to `../../Research/research_board.md`, 2026-07-22) = status / decisions / timeline (what state things are in).
 - commit messages = what changed in a diff.
 - **`commit-log.md`** = running ledger of every commit/merge that
   lands on `main` (newest first) + push ranges — the at-a-glance

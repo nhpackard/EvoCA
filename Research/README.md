@@ -6,6 +6,16 @@ campaign planning live in [`../Docs/`](../Docs), and raw run/scan data
 lives in [`../Runs/`](../Runs), [`../Scans/`](../Scans), and
 [`../ProbeLogs/`](../ProbeLogs).
 
+**Two layers, two files.** This README is the *results* index — the
+curated reading order of finished findings. The companion
+[`research_board.md`](research_board.md) is the *coordination* surface —
+the living process layer: decisions-needed, in-flight workstream/branch
+status, the reconciliation with the checkpoint roadmap, and the running
+log. The board tracks what is *active*; it carries campaign **status**
+(headline + link back into this index) rather than the authoritative
+result, so a finding never lives in two places that can drift. Read the
+board for "what's happening now," this index for "what we've found."
+
 ## Structure
 
 One **subdirectory per campaign**, `Research/<campaign>/`, each
@@ -69,3 +79,4 @@ most-publication-defensible first.
 | coevolution-substrate (#3/#3c) | Does egene co-evolution amplify rule selection; is a freezing penalty real? | Egene-freeze reduces dyn-excess; #3c mostly GoL-substrate death confound + `dyn_excess_pc` frozen-rich artifact | ⏳ |
 | RD-robustness (#4) | Is reaction-diffusion spatial structure robust under pure-evo optimization? | No — corrL washes out; static-colony cases are lowest-`dyn_excess` | ⏳ |
 | viability-brackets (R1) | Where are the productive optima in (`m_scale`, `food_inc`)? | `m_scale` interior ≈2.5–3.5; `food_inc` high 0.013–0.018; U-shaped viability | ⏳ |
+| reaction-diffusion-gallery | What do EvoCA's photogenic reaction-diffusion regimes look like, and which recipes produce them? | _gallery topic — curating example `.evoca` recipes; the most photogenic sims to date (distinct from #4's robustness result)_ | ⏳ |

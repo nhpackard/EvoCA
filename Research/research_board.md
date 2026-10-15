@@ -1,17 +1,147 @@
 # EvoCA research board
 
-Single coordination surface for parallel workstreams. Each agent
-**appends** its result and any decision it needs; it does **not** block
-waiting for a human. A human reads the "Decisions needed" section
+**Living coordination surface for the EvoCA research program** — in-flight
+status, decisions-needed, and the running log. This is the *process*
+layer; it is distinct from and points to the *results* layer
+(`Research/README.md` = curated results index / reading order;
+`Research/<campaign>/` digests = authoritative findings). The board
+carries campaign **status** (headline + link), not the full result, so
+nothing lives in two places that can drift. Big-picture design + roadmap:
+[`../Docs/checkpoint 3 July 2026.md`](../Docs/checkpoint%203%20July%202026.md) (§K′/§K″).
+
+Conventions: branches never auto-merge (human merge gate; dynamics-
+altering branches especially). Each code branch runs in its own `git
+worktree`; analysis-only work runs on `main`. Read "Decisions needed"
 first; everything else is status.
 
-Branches never auto-merge. Agents propose; merge is a human gate
-(dynamics-altering branches `ring-tax`/`mu-genome` especially — a
-half-tuned tax or rate-gene scheme contaminates every run's results).
+Moved here from `Docs/` and reconciled with the 3 July checkpoint on
+2026-07-22 (see Reconciliation). Pre-checkpoint state is preserved under
+"Archive" at the bottom — retained for history, not authoritative.
 
-Isolation: each code branch runs in its own `git worktree` (separate
-on-disk dir + its own `C/libevoca.dylib`). Analysis-only work runs on
-`main`.
+---
+
+## Decisions needed (2026-07-22) — read this first
+
+| # | Workstream | Decision |
+|---|---|---|
+| W1-a | Wave-1 metrics | Add A_new / Φ / z-scores to `EVO_METRICS` ranking (keep legacy excess for comparability)? metric-anew recommends yes. |
+| W1-b | Wave-1 metrics | A_new neutral threshold: keep p90, or stricter (p99 / neutral-max)? The statistic's one free parameter. |
+| W1-c | eff_activity | Keep the per-cell used-mask diagnostic (+8.4 MB @N=512) or drop to the 32-byte union-only key? |
+| W1-d | integration | Approve Tier-1 integration-prep (rebase the 7 additive branches onto `main` in a `/tmp` worktree, resolve conflicts, run combined suite)? Final merge stays your gate. |
+
+Thread triage resolved 2026-07-22 — see Reconciliation.
+
+---
+
+## Wave 1 (2026-07-22) — status
+
+11 agents spawned from checkpoint §K″, each in its own worktree on a
+named branch off `main@f6ccdab`. **All complete, all suites green,
+nothing merged/pushed** (human gate).
+
+**Tier 1 — main-merge candidates (additive / no-op):**
+
+| Branch | Commit | Action | Tests |
+|---|---|---|---|
+| `env-agent-split` | a333434 | A1 env/agent split + A3 tax_ring doc | 42 |
+| `dyn-promote` | 73ba66e | D1 dyn_activity → primary signal (extracts `build_sim`) | 42 |
+| `metric-anew` | 92b3987 | G1 Bedau–Packard A_new | 42 |
+| `metric-flux` | 1beaaf0 | L1 dissipation Φ accountant | 42 |
+| `metric-zscore` | 90056c1 | G2 per-bucket eg/dyn z-scores | 45 |
+| `eff-activity` | fd57b0b | F1 effective-rule species (union-mask key) | 47 |
+| `lineage-return` | 4cff481 | D2 per-lineage net-return | 47 |
+
+**Tier 2 — feature branches (own merge gates; review in worktree; keep):**
+
+| Branch | Commit | Action | Tests |
+|---|---|---|---|
+| `resource-driving` | 72adb59 | C1 food_per (temporal regen) | 50 |
+| `mu-genome` | 6c0a360 | A2 per-cell rate-gene storage (mutation off) | 42 |
+| `chem` | 74cb1e5 | E1/E3 N_chem=1 parity + sparse store | 45 |
+
+**Drafts:** `research-drafts` (84fc29b) → 6 candidate digests in
+`Research/_drafts/` (5 real-figure, 1 skeleton).
+
+**Integration hotspots (hand-resolution, not auto-merge):**
+`python/evoca_explore.py` (dyn-promote `build_sim` refactor + metric-anew
++ metric-flux → merge dyn-promote first, rebase the metric branches on
+it); `C/evoca.c` phase loops (metric-flux 2c/4, lineage-return 2c/3,
+eff-activity 1, resource-driving 2, mu-genome 4, chem 2c/3/4 — additive
+but overlapping).
+
+---
+
+## Active workstreams (post-checkpoint)
+
+The checkpoint §K′/§K″ roadmap is the current program.
+
+- **Wave 1** (above): delivered; awaiting integration gate (W1-d).
+- **Wave 2** (gated on Wave-1 merges): H1 adaptive-vs-drift (needs
+  D2+G1); §B `food_inc/tax` figure (needs L1+G1); D3 punctuation
+  detector (needs D2); resource-driving campaign C3; chem milestone 2
+  (food/waste).
+- **Criticality & bifurcation program** (carried 2026-07-22):
+  parameter-sweep bifurcation diagrams over global time series
+  (pop, activity); harness `python/bifurcation.py` already merged.
+  "bifurcation" generally — Feigenbaum period-doubling has **not** been
+  observed in EvoCA, so we don't presume that route. Subsumes the
+  control-parameter / finite-size exponent questions from
+  `../Docs/EvoCA_research_directions.md` §5.
+- **Ring program** (carried 2026-07-22): genelife ring-ladder A/B (old
+  #5) + ring-complexity tax + the ring-stability two-track plan
+  (`../Docs/EvoCA_research_stability.md`: Track-1 ring-class dominance
+  analysis-on-main, Track-2 bounded ring-mutation own-worktree). See
+  memory `ring-stability-two-track-plan`.
+- **Lineage co-evolution** (old #8, folded 2026-07-22): the on-hold
+  binary-indicator metric is superseded by the new `lineage-return` (D2)
+  + §H adaptive-vs-drift program (net-return + magnitude, not a binary
+  2×2). Tracked under Wave 2 / §H.
+- **Reaction-diffusion gallery** (NEW topic 2026-07-22): curate and
+  showcase EvoCA's photogenic RD regimes with example `.evoca` recipes
+  in a digest notebook. **Distinct from** campaign #4 (RD-robustness,
+  which found RD structure is *not* robust under pure-evo optimization):
+  this documents the RD dynamics' existence and visual character as a
+  first-class result (the most photogenic EvoCA sims to date). Source
+  recipes in `../Runs/*R-D*` and `../Runs/2026-04-27_*`.
+
+---
+
+## Campaign results → Research/
+
+Authoritative results live in `Research/<campaign>/` digests, indexed by
+`Research/README.md`. Current drafts under `Research/_drafts/` awaiting
+approval (Notebook link gated on approval per the README drafting
+workflow): `neutral-model-methodology` (flagship), `pure-evo-regime`
+(#1/#2), `coevolution-substrate` (#3/#3c), `RD-robustness` (#4),
+`viability-brackets` (R1) — real figures from `Scans/*/results.csv`;
+`resource-driving-inverted-U` — skeleton (sweep gated on
+metric-flux/metric-anew); `reaction-diffusion-gallery` — NEW, digest to
+be drafted. Pre-checkpoint campaign results (#1–#4, 3c, R1,
+causal-control) are in the Archive table below, mirrored by these drafts.
+
+---
+
+## Reconciliation with checkpoint 3 July 2026 (2026-07-22)
+
+The checkpoint reframing (metaparam split, resource-driving, chem,
+energy-gradient, activity metrics) is largely orthogonal to the earlier
+program and had silently dropped several tracked threads. Triage (N):
+
+| Pre-checkpoint thread | Disposition |
+|---|---|
+| Bifurcation / criticality (old #6 + FSS / control-param exponents) | **CARRIED** active — drop the "Feigenbaum" label (period-doubling unobserved) |
+| Ring program (old #5 + ring-stability two-track) | **CARRIED** active |
+| Lineage co-evolution metric (old #8) | **FOLDED** into lineage-return (D2) + §H |
+| Patch-transfer 2×2 (old #7) | **ARCHIVED / superseded** by ring-stability (per `EvoCA_research_stability.md`) |
+| Reaction-diffusion patterns | **NEW Research topic** (gallery) |
+
+---
+
+## Archive: pre-checkpoint board (2026-05) — preserved, not authoritative
+
+The sections below are the board's state before the 2026-07-22
+reconciliation. Retained for history; superseded by the current-state
+sections above.
 
 ---
 
