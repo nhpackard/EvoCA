@@ -1,0 +1,44 @@
+{
+  "version": 3,
+  "created": "2026-04-27T23:06:00",
+  "descriptor": "top_evo_10_cfg246_score0.56",
+  "source_scan": "Research/Reaction-diffusion/Scans/2026-04-27_push_edges",
+  "source_config_idx": 246,
+  "N": 256,
+  "metaparams_init": {
+    "food_inc": 0.018,
+    "m_scale": 1.2,
+    "gdiff": 0.06,
+    "mu_lut": 0.003,
+    "mu_egene": 0.01,
+    "tax": 0.04,
+    "restricted_mu": false
+  },
+  "metaparams_final": {
+    "food_inc": 0.018,
+    "m_scale": 1.2,
+    "gdiff": 0.06,
+    "mu_lut": 0.003,
+    "mu_egene": 0.01,
+    "tax": 0.04,
+    "restricted_mu": false
+  },
+  "initialization": {
+    "lut": "gol",
+    "egenome": "uniform",
+    "egenome_value": 3,
+    "v_density": 0.5,
+    "f_init": 0.5,
+    "F": "uniform",
+    "F_init": 1.0,
+    "alive": "halfplane",
+    "alive_axis": 0
+  },
+  "display": {
+    "colormode": 1,
+    "probes": {
+      "n_activity": true,
+      "ts": true
+    }
+  }
+}

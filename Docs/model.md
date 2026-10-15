@@ -746,7 +746,7 @@ sim.params_str()  -> str          # copy-pasteable sim.init(...) call
 **Export** (from a running session):
 ```python
 sim.export_recipe('my_run', probes={'activity': True}, colormode=0)
-# -> Runs/2026-03-16_my_run.evoca
+# -> Research/<EVOCA_WORKSTREAM or _unsorted>/Runs/2026-03-16_my_run.evoca
     # Records both initial metaparams (from init()) and final metaparams
     # (current values at export time, after any slider adjustments).
 ```
@@ -757,10 +757,10 @@ from python.evoca_py import import_run
 
 from python.controls import run_with_controls
 
-import_run()                    # list available recipes in Runs/
-sim, kw = import_run('Runs/2026-03-16_my_run.evoca')
+import_run()                    # list available recipes in Research/*/Runs/
+sim, kw = import_run('2026-03-16_my_run.evoca')   # bare name: found in Research/*/Runs/
 
-sim, kw = import_run('Runs/2026-03-15_my_run.evoca', recipe='init')
+sim, kw = import_run('2026-03-15_my_run.evoca', recipe='init')
     # recipe='init' (default): use the metaparams from sim.init()
     # recipe='final': use the metaparams at export time (after slider tweaks)
     # Returns (sim, display_kwargs).

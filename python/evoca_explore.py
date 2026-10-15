@@ -5,7 +5,7 @@ run_sim(params, n_steps, ...) → dict of summary metrics.
 
 No SDL, no widgets — just sim.step() in a tight loop with periodic
 metric sampling. Designed for use from multiprocessing.Pool drivers
-(see Scans/<date>_<name>/scan.py for examples).
+(see Research/<Workstream>/Scans/<date>_<name>/scan.py for examples).
 
 Metrics are organised on three axes:
 
@@ -51,6 +51,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 from evoca_py import EvoCA   # noqa: E402
+import evoca_paths            # noqa: E402
 
 
 # ── Fixed initialisation used by run_sim ─────────────────────────────
@@ -471,22 +472,31 @@ def save_scan_config(scan_dir, *, N, n_steps, sample_every, seed, shadow,
     return out_path
 
 
-def _default_scan_dir():
-    """Most-recently-modified subdirectory of EvoCA/Scans/. Used as the
-    default `scan_dir` for the higher-level helpers when caller doesn't
-    pass one explicitly."""
-    base = os.path.normpath(os.path.join(_HERE, '..', 'Scans'))
-    if not os.path.isdir(base):
-        raise FileNotFoundError(f"no Scans/ directory at {base}")
-    subs = [os.path.join(base, d) for d in os.listdir(base)
-            if os.path.isdir(os.path.join(base, d))]
+def _default_scan_dir(workstream=None):
+    """Most-recently-modified scan dir under Research/<workstream>/Scans/
+    (all workstreams if None). Used as the default `scan_dir` for the
+    higher-level helpers when the caller doesn't pass one explicitly."""
+    subs = evoca_paths.all_scan_dirs(workstream)
     if not subs:
-        raise FileNotFoundError(f"no scan subdirectories in {base}")
+        raise FileNotFoundError(
+            f"no scan dirs under Research/{workstream or '*'}/Scans/")
     return max(subs, key=os.path.getmtime)
 
 
-def _resolve_scan_dir(scan_dir):
-    return _default_scan_dir() if scan_dir is None else scan_dir
+def _resolve_scan_dir(scan_dir, workstream=None):
+    """None -> newest scan (optionally within `workstream`); an existing
+    path -> itself; a bare scan name (e.g. '2026-04-27_initial') -> the
+    unique Research/*/Scans/<name> with that name."""
+    if scan_dir is None:
+        return _default_scan_dir(workstream)
+    if os.path.isdir(scan_dir) or os.sep in str(scan_dir):
+        return scan_dir
+    hits = [d for d in evoca_paths.all_scan_dirs(workstream)
+            if os.path.basename(d) == scan_dir]
+    if len(hits) != 1:
+        raise FileNotFoundError(
+            f"scan {scan_dir!r}: {len(hits)} matches under Research/*/Scans/")
+    return hits[0]
 
 
 def _load_scan(scan_dir):
@@ -519,12 +529,13 @@ def _row_param_value(row, key):
 def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
                     runs_dir=None, probes=None, colormode=0):
     """Read scan_config.json + the row with given config_idx from
-    results.csv; write a .evoca recipe to Runs/ (or runs_dir) that
-    can be loaded with import_run(). Returns the recipe filepath.
+    results.csv; write a .evoca recipe to the scan's workstream Runs/
+    (Research/<ws>/Runs, or runs_dir) that can be loaded with
+    import_run(). Returns the recipe filepath.
 
     config_idx matches the 'config_idx' column in results.csv.
-    If scan_dir is None, defaults to the most-recently-modified
-    subdir under EvoCA/Scans/.
+    scan_dir: path, bare scan name, or None (newest scan; see
+    _resolve_scan_dir).
     """
     if config_idx is None:
         raise TypeError("evoca_from_scan() requires config_idx")
@@ -550,8 +561,7 @@ def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
             metaparams[k] = v
 
     if runs_dir is None:
-        runs_dir = os.path.normpath(
-            os.path.join(_HERE, '..', 'Runs'))
+        runs_dir = evoca_paths.runs_dir_for_scan(scan_dir)
     os.makedirs(runs_dir, exist_ok=True)
 
     if descriptor is None:
@@ -565,7 +575,7 @@ def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
         'version': 3,
         'created': datetime.now().isoformat(timespec='seconds'),
         'descriptor': descriptor,
-        'source_scan': os.path.basename(os.path.normpath(scan_dir)),
+        'source_scan': os.path.relpath(os.path.abspath(scan_dir), evoca_paths.REPO_ROOT),
         'source_config_idx': int(config_idx),
         'N': int(cfg['N']),
         'metaparams_init': metaparams,
@@ -584,10 +594,10 @@ def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
 # ── Nearest-neighbour helpers (relative to a target row) ──────────────
 
 # Nearest-neighbour helpers write recipe files to a tmp directory by
-# default rather than Runs/, so casual exploration doesn't litter the
-# tracked Runs/. With runs_dir=None (the default), each call creates
+# default rather than a workstream Runs/, so casual exploration doesn't litter the
+# tracked Research/<ws>/Runs/. With runs_dir=None (the default), each call creates
 # its own unique subdirectory under NEAREST_TMP_PARENT — files don't
-# accumulate across calls. Copy from there to Runs/ to permanently save.
+# accumulate across calls. Copy from there to Research/<ws>/Runs/ to permanently save.
 
 NEAREST_TMP_PARENT = '/tmp/evoca_scan_neighbors'
 
@@ -693,7 +703,7 @@ def nearest_params(target_config_idx, n=5, scan_dir=None,
     same shape as evoca_from_scan_top, so results[i][1] feeds straight
     into import_run(). The target row is excluded. Prints distances to
     stdout when verbose=True. If scan_dir is None, defaults to the
-    most-recently-modified subdir under EvoCA/Scans/."""
+    most-recently-modified scan dir under Research/*/Scans/."""
     scan_dir = _resolve_scan_dir(scan_dir)
     _, rows = _load_scan(scan_dir)
     target = _find_target(rows, target_config_idx)
@@ -825,7 +835,7 @@ def evoca_from_scan_top(scan_dir=None, top_k=5, score_keys=None,
     configurations first.
 
     If scan_dir is None, defaults to the most-recently-modified subdir
-    under EvoCA/Scans/.
+    under Research/*/Scans/.
 
     Returns list of (config_idx, filepath) tuples in score order."""
     scan_dir = _resolve_scan_dir(scan_dir)
