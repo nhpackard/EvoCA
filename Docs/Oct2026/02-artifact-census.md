@@ -220,3 +220,34 @@ Cross-workstream sibling paths (break differently, depend on the final owner spl
    reference. Leave `ProbeLogs/` in place (sink) and archive the manual logs last.
 8. Last: the 13 `source_scan` fields in recipes need no rewrite (provenance only); keep old
    names in `artifacts.csv` as the resolver.
+
+---
+
+## Decision pending (2026-10-15): keep `artifacts.csv` as a lasting map?
+
+N asked whether to keep the map, or just `git mv` the files and change code
+as needed. Claude's recommendation is to **not keep it as a lasting map**:
+
+- **A lasting map would be a second copy of where the files live.** Once the
+  files have moved, the filesystem says where they are and `git log --follow`
+  records where they were. Keeping a map would mean two records that can
+  drift apart.
+- **Nothing needs to resolve old names.** The census found that nothing in the
+  repo reads `source_scan` back, so the resolver proposed in review §3c is
+  unnecessary.
+- **Its remaining use is one-time.** It is the move plan N reviews, and the
+  input the `git mv` script reads. It is deleted in the same commit as the
+  last move.
+- **Provenance stays live.** The move script rewrites each moved `.evoca`'s
+  `source_scan` to the new repo-relative path.
+- **Code changes, minimal and with no map:**
+  - Scan drivers find the repo root by walking up to `C/evoca.h` instead of
+    using a fixed `../../` depth, so they keep working at any depth.
+  - `_default_scan_dir` takes an explicit `workstream=` argument, meaning the
+    newest scan within that workstream. It no longer looks at the top-level
+    `Scans/`.
+  - `export_recipe`/`import_run` take a `runs_dir` argument with a
+    workstream default.
+  - The hardcoded paths in notebooks and drafts are edited in place.
+- 2026-10-15: `top_evo_*` (45 Runs: 25 from 04-27 and 20 from 04-29) were
+  reassigned to Reaction-diffusion per N.

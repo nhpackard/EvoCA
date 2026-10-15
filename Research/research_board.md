@@ -56,9 +56,7 @@ see [`research_board_archival.md`](research_board_archival.md).
 | W1-b | Activity-metrics | **Proceeding on default:** keep the p90 neutral threshold for A_new and record p99 alongside. Override any time. |
 | W1-c | Activity-metrics (eff_activity) | **Proceeding on default:** keep the per-cell used-mask diagnostic (+8.4 MB @N=512) as **opt-in**. Override any time. |
 
-Open items still awaiting N: branch deletions on origin (`softmouth`) and
-`pre6todo` (see "Dev branches by workstream"). Tier-1 integration is
-**in progress** (see Log 2026-10-15).
+Branch deletions and Tier-1 integration: **done 2026-10-15** (see Log).
 
 ---
 
@@ -66,7 +64,8 @@ Open items still awaiting N: branch deletions on origin (`softmouth`) and
 
 11 agents spawned from checkpoint §K″, each in its own worktree on a
 named branch off `main@f6ccdab`. **All complete, all suites green,
-nothing merged/pushed** (human gate).
+nothing merged/pushed** (human gate). **Update 2026-10-15:** all 7 Tier-1
+branches merged (`5de867d`, `6548106`); Tier 2 still at N's gate.
 
 **Tier 1 — main-merge candidates (additive / no-op):**
 
@@ -120,9 +119,9 @@ a scan/run program using already-built tools; *infra* = no workstream.
 
 | Code | Plain meaning | Kind | Status / blocker |
 |---|---|---|---|
-| G1 | Bedau-Packard A_new: new-activity, per component, shared threshold | built | branch `metric-anew`; lands with Tier-1 merge |
-| G2 | per-bucket z-scores in the fixed eg(729)/dyn(500) spaces | built | branch `metric-zscore`; Tier-1 |
-| F1 | `eff_activity`: species keyed by the effective (actually-used) rule | built | branch `eff-activity`; Tier-1 |
+| G1 | Bedau-Packard A_new: new-activity, per component, shared threshold | built | **merged** 2026-10-15 (`5de867d`) |
+| G2 | per-bucket z-scores in the fixed eg(729)/dyn(500) spaces | built | **merged** 2026-10-15 (`5de867d`) |
+| F1 | `eff_activity`: species keyed by the effective (actually-used) rule | built | **merged** 2026-10-15 (`5de867d`) |
 | D1 | promote `dyn_activity`/`dyn_excess` to the primary phenotypic signal | built | branch `dyn-promote` (extracts `build_sim`); merges first, metric branches rebase on it |
 | H1 | adaptive-vs-drift program: lineage + A_new + shadow-beating test on the §B sweep | needs dev (analysis) | blocked on D2 + G1 merging |
 
@@ -132,7 +131,7 @@ a scan/run program using already-built tools; *infra* = no workstream.
 |---|---|---|---|
 | C1 | `food_per`: temporal regeneration period for food | built | branch `resource-driving`; Tier-2, N's gate |
 | C2/L2 | float `env_mask` + relaxation toward mask; spatial gradient niches | needs dev | follows C1, same branch |
-| L1 | dissipation accountant: sum of tax + death + overflow; per-capita throughput Φ (the §B x-axis) | built | branch `metric-flux`; Tier-1 |
+| L1 | dissipation accountant: sum of tax + death + overflow; per-capita throughput Φ (the §B x-axis) | built | **merged** 2026-10-15 (`5de867d`) |
 | §B figure | scan summary of outcome vs `food_inc` and `food_inc/tax` (the inverted-U test); needs B1/B2 notebook | campaign | blocked on L1 + G1 merging |
 | C3 | "temporal lumpiness gives evolutionary opportunity?" as a falsifiable campaign | campaign | blocked on C1 merging |
 
@@ -140,7 +139,7 @@ a scan/run program using already-built tools; *infra* = no workstream.
 
 | Code | Plain meaning | Kind | Status / blocker |
 |---|---|---|---|
-| D2 | per-lineage net metabolic return reducer on the lineage field | built | branch `lineage-return`; Tier-1 |
+| D2 | per-lineage net metabolic return reducer on the lineage field | built | **merged** 2026-10-15 (`6548106`) |
 | D3 | single-run punctuation detector: lineage net-return dip-then-staircase at `Negene` increments | needs dev | blocked on D2 merging |
 | H1 | (see Activity-metrics) adaptive-vs-drift test | needs dev | blocked on D2 + G1 |
 
@@ -150,8 +149,8 @@ Old #8 (binary-indicator lineage metric, on hold) is superseded by D2 + H1.
 
 | Code | Plain meaning | Kind | Status / blocker |
 |---|---|---|---|
-| A1 | env/agent two-dict metaparam split (derived from one recipe) | built | branch `env-agent-split`; Tier-1 |
-| A3 | `model.md` Phase 2c: add the `tax_ring` term (doc fix) | built | same branch; Tier-1 |
+| A1 | env/agent two-dict metaparam split (derived from one recipe) | built | **merged** 2026-10-15 (`5de867d`) |
+| A3 | `model.md` Phase 2c: add the `tax_ring` term (doc fix) | built | **merged** 2026-10-15 (`5de867d`) |
 | A2 | `mu-genome`: per-cell rate-gene storage (mutation off), later evolvable rates | built (storage only); rest needs dev | branch `mu-genome`; Tier-2, N's gate |
 | E1/E3 | chem branch: N_chem machinery (sparse store, N_chem=1 parity) | built (milestone 1) | branch `chem`; Tier-2 |
 | E2 | chem milestone 2: food + waste (N_chem=2), needs a reaction-execution engine | needs dev | blocked on milestone-1 merge; high risk |
@@ -186,38 +185,34 @@ first-class result. Source recipes in `../Runs/*R-D*` and
 
 ## Dev branches by workstream
 
-Tier-1 integration is **in progress** (N approved 2026-10-15: merge after a
-green combined suite + bit-for-bit default-param parity, one combined review
-notebook). Tier-2 (`resource-driving`, `mu-genome`, `chem`) stays at N's
-gate. Once merges land, this section shrinks to Tier-2 plus future branches.
+**Tier-1 merged 2026-10-15** (N-approved: green combined suite + bit-for-bit
+default-param parity). Six branches in `5de867d`; `lineage-return` in
+`6548106` after fixing a pre-existing `enable_lineage()` call-order
+segfault (`fadb242`). Branch refs deleted. Record:
+[`../Docs/Oct2026/01-branch-review.md`](../Docs/Oct2026/01-branch-review.md).
+Tier-2 (`resource-driving`, `mu-genome`, `chem`) stays at N's gate.
 Sketches below are plans, not commitments.
 
 ### Activity-metrics
 
-- `dyn-promote` (73ba66e, D1): Tier-1. Merge first (it extracts `build_sim`
-  in `python/evoca_explore.py`); the metric branches then rebase on it.
-- `metric-anew` (92b3987, G1): Tier-1. Rebase on `dyn-promote`, parity check,
-  merge. Records p99 beside the p90 threshold (W1-b default).
-- `metric-zscore` (90056c1, G2): Tier-1. Rebase, merge; exposes z-scores as
-  ranking options without changing `EVO_METRICS` defaults (W1-a default).
-- `eff-activity` (fd57b0b, F1): Tier-1. Rebase, merge; per-cell used-mask kept
-  opt-in (W1-c default). Overlaps `C/evoca.c` phase 1 with others.
+- `dyn-promote` (D1): **merged** `5de867d` 2026-10-15.
+- `metric-anew` (G1): **merged** `5de867d` 2026-10-15.
+- `metric-zscore` (G2): **merged** `5de867d` 2026-10-15.
+- `eff-activity` (F1): **merged** `5de867d` 2026-10-15.
 - `research-drafts` (84fc29b): merge, then the restructure moves the drafts
   from `Research/_drafts/` into `Research/<Workstream>/digests/` (still
   unapproved drafts, flagged as such), then delete the branch.
 
 ### Resource-driving
 
-- `metric-flux` (1beaaf0, L1): Tier-1. Rebase on `dyn-promote`, parity check,
-  merge; supplies Φ for the §B figure.
+- `metric-flux` (L1): **merged** `5de867d` 2026-10-15.
 - `resource-driving` (72adb59, C1): Tier-2. Claims `food_per` off = no-op:
   verify bit-for-bit parity, add a pre-merge test notebook, N reviews in a
   `/tmp` worktree and decides. C2/L2 continue on the branch after C1 merges.
 
 ### Lineage-co-evolution
 
-- `lineage-return` (4cff481, D2): Tier-1. Rebase, parity check, merge; then
-  D3 and H1 can start on `main`.
+- `lineage-return` (D2): **merged** `6548106` 2026-10-15; D3 and H1 can now start on `main`.
 
 ### Reaction-diffusion, Criticality-bifurcation, Ring-complexity
 
@@ -226,7 +221,7 @@ Sketches below are plans, not commitments.
 
 ### Infrastructure
 
-- `env-agent-split` (a333434, A1/A3): Tier-1. Rebase, parity check, merge.
+- `env-agent-split` (A1/A3): **merged** `5de867d` 2026-10-15.
 - `mu-genome` (6c0a360, A2 storage): Tier-2. Storage-first with mutation off;
   parity check + test notebook; N's gate. Distribution-seeding assay and
   evolvable rates are follow-on branches/commits.
@@ -240,15 +235,11 @@ Sketches below are plans, not commitments.
 ### Other branches
 
 - `bigLUT`: archival 5-ring (1407 B/cell) version. Keep, do not merge.
-- `softmouth`: merged. Local deletion pending; origin deletion waits for N's
-  explicit OK.
-- `lut-hashes-accessor`: merged 2026-05-19 (`f8d6d66`). Delete pending
-  (release worktree `/private/tmp/evoca_lut_hashes` first).
-- `pre6todo`: unmerged status unknown; to inspect, then decide. Origin copy
-  waits for N's OK.
+- Deleted 2026-10-15 (N-approved): `softmouth` (merged PR #1/#2; local +
+  origin), `pre6todo` (one Mar-16 test-cell commit `d413c18`; local +
+  origin), `lut-hashes-accessor` (merged `f8d6d66`), all 11
+  `worktree-agent-*` stubs, and the 7 Tier-1 branches after merge.
 - `research-drafts`: see Activity-metrics above.
-- `worktree-agent-*`: stale auto-created branches; delete after their
-  worktrees are released (default approved by N, review §11).
 
 ---
 
@@ -288,6 +279,16 @@ program and had silently dropped several tracked threads. Triage (N):
 
 ## Log (newest first)
 
+- **2026-10-15** — **Tier-1 merged + branch cleanup.** Six additive branches
+  merged in `5de867d` (dyn-promote, metric-anew, metric-flux, metric-zscore,
+  eff-activity, env-agent-split): 50/50 tests, clean `-Wall`, bit-for-bit
+  default-param parity with pre-merge main. `lineage-return` held back for a
+  segfault, root-caused to a pre-existing `enable_lineage()` call-order trap
+  from `lineage-field` (no existing results affected: every caller used
+  `init(lineage=True)`), fixed in `fadb242` with regression tests shown to
+  fail without the fix, then merged in `6548106` (57/57, parity identical).
+  Pushed. Stale/merged branches deleted (see "Other branches"). Record:
+  `Docs/Oct2026/01-branch-review.md`.
 - **2026-10-15** — **Board restructure.** Per N's Oct-2026 prompt and review
   `../Docs/Oct2026/00-review-of-prompt1.md` §4: moved the pre-checkpoint
   archive (old board, verbatim) to `research_board_archival.md`; added the
@@ -296,6 +297,6 @@ program and had silently dropped several tracked threads. Triage (N):
   campaign) and blocker; adopted the six approved workstream names (Wave 1
   stays the name of the July branch batch); added "Dev branches by workstream";
   updated "Decisions needed" (W1-d resolved by N; W1-a/b/c proceeding on
-  review §3e defaults). Tier-1 integration is in progress under N's approval
+  review §3e defaults). Tier-1 integration since completed (see the next entry)
   (green combined suite + bit-for-bit default-param parity); Tier-2 stays at
   N's gate.
