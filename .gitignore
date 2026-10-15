@@ -3,7 +3,7 @@ C/libevoca.so
 __pycache__/
 *.pyc
 .pytest_cache/
-Scans/**/run.log
+Research/*/Scans/**/run.log
 .venv/
 .ipynb_checkpoints/
 jupyter.out
