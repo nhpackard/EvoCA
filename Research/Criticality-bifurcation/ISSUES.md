@@ -1,0 +1,25 @@
+# Criticality-bifurcation: issues and directions
+_Updated 2026-10-15_
+
+## Decisions needed (N)
+- **CRIT-D1**: First control parameter, range and N for the torque campaign — options: (a) `food_inc` 0.010-0.06 fine grid (the free-energy source; Phi is its natural partner; the first example diagram already shows extinction, oscillation, amplitude collapse and saturation inside this range), (b) `m_scale` 1.5-6 (R1: interior productive optimum ~2.5-3.5, U-shaped viability), (c) both as a 2-D map. Recommend (a) first at fixed R1-informed values (m_scale 3.5, tax 0.035, mu_lut 0.06, gdiff 0.06), then (b) at food_inc 0.018. Blocks CRIT-N1.
+- **CRIT-D2**: What counts as a transition (a pre-registered criterion, so a "flat diagram" is a valid outcome) — recommend all of: extinction boundary (fraction of replicate seeds extinct crosses 0.5), onset of sustained oscillation (spectral peak above a noise floor, not the raw extrema count), amplitude collapse (tail std/mean falling through a threshold), and, for any candidate, an N-scaling test. Blocks CRIT-N1/N4.
+
+## Open questions
+- **CRIT-Q1**: Is the observed boom-bust oscillation a finite-size synchronized-lattice cycle (relative amplitude decays with N) or intrinsic? The single-seed example check (notebook) suggests the large-amplitude cycle at food_inc 0.016 persists with N (std/N^2 0.335, 0.318, 0.297 at N=32/64/128) while the small-amplitude regime at 0.022 shrinks (relative amplitude 0.033 -> 0.009 from N=64 to 128); neither is replicated. Decides whether diagram columns mean anything in the thermodynamic limit; couples to the Docs/EvoCA_research_directions.md §5 H_critical / H_ceiling question (xi ~ N/3 plateau).
+- **CRIT-Q2**: Is `recurrent_extrema` the right reducer for noisy, irregular-amplitude series? In the example runs the extrema count is a filled band (tens to hundreds of points), so it cannot distinguish limit cycle from irregular dynamics. Candidates: autocorrelation/spectral peak, return map of successive maxima, Poincare-section sampling, largest-Lyapunov-style divergence of nearby seeds. See `python/bifurcation.py` `recurrent_extrema`.
+- **CRIT-Q3**: Which side of any boundary is a bifurcation in the dynamical sense versus a stochastic extinction (absorbing-state) transition? EvoCA has an absorbing state (pop=0), so the extinction edge may belong to the directed-percolation-like class rather than a deterministic bifurcation; the R1 extinction table (m_scale x food_inc) is endpoint data only.
+- **CRIT-Q4**: Hysteresis: does ramping `food_inc` up versus down give different columns (the directions doc, R3 (c), suggests a slow ramp as an alternative to a fixed grid)? Untested; needs a ramp driver (CRIT-N3).
+- **CRIT-Q5**: Does evolution matter? Runs with `mu_lut=0` freeze the substrate (see memory notes on frozen rich substrates); compare mu_lut=0 against mu_lut>0 columns to separate ecological (food-limited) oscillation from evolutionary change.
+
+## Next directions
+- **CRIT-N1**: Real `food_inc` bifurcation campaign — campaign (torque), N in {64, 128, 256}, 8000+ ticks, 41+ values x >=5 seeds, observable `pop` first; blocked on CRIT-D1/D2. Uses `python/bifurcation.py` `sweep` unchanged.
+- **CRIT-N2**: Multi-observable harness — needs dev (small, Python only): extend `scalar_series` to record Phi (`get_dissipation`), births/deaths, `dyn_activity` total, `A_new` (needs neutral shadow, computed as in `evoca_explore.run_sim`), `lut_div`, lineage return; the example notebook has a working per-tick `record()` prototype. Cross-ref checkpoint actions G1 (A_new), L1 (Phi), D2/D3 (lineage return).
+- **CRIT-N3**: Slow-ramp / hysteresis driver — needs dev (Python): change `food_inc` (or `m_scale`) during a run through the live sim attribute instead of re-initializing, up and down.
+- **CRIT-N4**: Control-parameter and finite-size follow-up on whichever transition passes CRIT-D2 — analysis/campaign: order parameter = alive density or oscillation amplitude, susceptibility, Binder cumulant across N; fixes the Q1 H_critical / H_ceiling question (directions doc §5, R3 (a)/(b)).
+- **CRIT-N5**: Second axes — campaign: `m_scale` (R1 optimum), `tax`, `mu_lut`, then a 2-D map (m_scale x food_inc) where the R1 non-monotone viability suggests structure; start from R1 `results.csv` to pre-select regions.
+- **CRIT-N6**: Replace the reducer's raw extrema count by a classifier (fixed point / periodic / irregular / extinct / saturated) for sweep summaries — needs dev; feeds CRIT-Q2. Keep `feigenbaum_delta` but do not report it unless a clean cascade appears.
+
+## Parked
+- Feigenbaum delta extraction: period-doubling has not been observed in EvoCA (N's position); helper retained, not used.
+- Motility-related parameters: motility branch on hold (memory, 2026-07-19).
