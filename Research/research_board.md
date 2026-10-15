@@ -496,6 +496,15 @@ program and had silently dropped several tracked threads. Triage (N):
 
 ## Log (newest first)
 
+- **2026-10-15** — **Research restructure + workstream seeding.** Top-level
+  Runs/Scans eliminated -> `Research/<WS>/{Runs,Scans,digests}` (names kept;
+  `python/evoca_paths.py`; drivers find root by marker; drafts in digests/).
+  Six lab notebooks + ISSUES.md seeded (Sonnet agents; all execute clean);
+  this board's issues section is generated from them (`tools/build_board.py`).
+  Seeding surfaced merged-code problems: `tax_ring` silently dropped by
+  run_sim (fixed `d15d0ad`); neutral shadow shares the dynamics RNG
+  (observer effect, open); eff_activity union mask saturates (open); A_new
+  blind in egene-only runs (open). See `Docs/Oct2026/06-seeding-findings.md`.
 - **2026-10-15** — **Tier-1 merged + branch cleanup.** Six additive branches
   merged in `5de867d` (dyn-promote, metric-anew, metric-flux, metric-zscore,
   eff-activity, env-agent-split): 50/50 tests, clean `-Wall`, bit-for-bit
