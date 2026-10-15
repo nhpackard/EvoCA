@@ -52,7 +52,7 @@ from evoca_py import EvoCA  # noqa: E402
 
 # Reuse the canonical parameter-key set so callers can sweep any
 # metaparameter run_sim understands.
-from evoca_explore import _PARAM_KEYS  # noqa: E402
+from evoca_explore import _PARAM_KEYS, init_kwargs  # noqa: E402
 
 # Default sweep candidates, per research-directions R3 (c).
 DEFAULT_SWEEP_PARAMS = ('food_inc', 'mu_lut', 'tax')
@@ -94,7 +94,7 @@ def scalar_series(params, *, observable='pop', n_steps=2000, N=64,
 
     sim = EvoCA()
     try:
-        sim.init(N, **{k: params[k] for k in _PARAM_KEYS if k in params})
+        sim.init(N, **init_kwargs(params))
         sim.set_seed(seed)
         sim.state(lut='gol', egenome='uniform', egenome_value=0b000011)
         sim.set_v(rng.integers(0, 2, (N, N), dtype=np.uint8))

@@ -41,6 +41,7 @@ import json
 import os
 import sys
 import tempfile
+import warnings
 from collections import defaultdict
 from datetime import datetime
 
@@ -125,8 +126,20 @@ def _spatial_metrics(alive_2d, F_2d):
 
 _PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff',
                'mu_lut', 'mu_egene', 'mu_egenome', 'p_dup_egene',
-               'tax', 'tax_per_egene', 'tax_lut',
+               'tax', 'tax_per_egene', 'tax_lut', 'tax_ring',
                'restricted_mu')
+
+
+def init_kwargs(params):
+    """The EvoCA.init() keyword arguments for a metaparam dict. Keys not
+    in _PARAM_KEYS are not passed to the sim; warn rather than drop them
+    silently (tax_ring was once ignored this way). Single place all
+    headless drivers (build_sim, bifurcation) translate params."""
+    unknown = sorted(set(params) - set(_PARAM_KEYS))
+    if unknown:
+        warnings.warn(f"ignoring params not in _PARAM_KEYS: {unknown}",
+                      stacklevel=3)
+    return {k: params[k] for k in _PARAM_KEYS if k in params}
 
 
 def build_sim(params, N=256, seed=0, init='halfplane'):
@@ -146,7 +159,7 @@ def build_sim(params, N=256, seed=0, init='halfplane'):
     rng = np.random.default_rng(seed)
 
     sim = EvoCA()
-    sim.init(N, **{k: params[k] for k in _PARAM_KEYS if k in params})
+    sim.init(N, **init_kwargs(params))
     # Reseed the C PRNG: pool workers are reused, so the C RNG state
     # would otherwise carry across configs and break reproducibility.
     sim.set_seed(seed)

@@ -150,3 +150,27 @@ def test_tax_ring_zero_is_bitwise_noop(make_sim):
     assert np.array_equal(v0, v1), "v grid changed with tax_ring=0"
     assert np.array_equal(f0, f1), "private food changed with tax_ring=0"
     assert np.array_equal(l0, l1), "LUT changed with tax_ring=0"
+
+
+def test_run_sim_honors_tax_ring():
+    """Regression (2026-10-15): run_sim/build_sim silently dropped tax_ring
+    (missing from _PARAM_KEYS). Enter through run_sim, the scan door:
+    a lethal ring tax must change the outcome and be echoed in results."""
+    import warnings
+    from evoca_explore import run_sim
+    base = dict(food_inc=0.01, m_scale=1.5, gdiff=0.08, mu_lut=0.01,
+                tax=0.03)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')       # no param may be dropped
+        off = run_sim(base, n_steps=300, sample_every=100, N=32, seed=1, shadow=False)
+        on = run_sim({**base, 'tax_ring': 0.2}, n_steps=300, sample_every=100,
+                     N=32, seed=1, shadow=False)
+    assert on['param_tax_ring'] == 0.2
+    assert not off['extinct'] and on['extinct']
+
+
+def test_unknown_param_warns():
+    import pytest
+    from evoca_explore import init_kwargs
+    with pytest.warns(UserWarning, match='tax_rng'):
+        init_kwargs({'tax_rng': 0.1})
