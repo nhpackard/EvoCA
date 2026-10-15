@@ -324,6 +324,31 @@ class EvoCA:
             ctypes.POINTER(ctypes.c_int32),
             ctypes.c_int]
         L.evoca_activity_get.restype    = ctypes.c_int
+        # Effective-rule activity (eff_activity)
+        L.evoca_eff_activity_update.argtypes = []
+        L.evoca_eff_activity_update.restype  = None
+        L.evoca_eff_activity_render_col.argtypes = [
+            ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
+        L.evoca_eff_activity_render_col.restype  = None
+        L.evoca_eff_activity_get.argtypes = [
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint32),
+            ctypes.POINTER(ctypes.c_int32),
+            ctypes.c_int]
+        L.evoca_eff_activity_get.restype  = ctypes.c_int
+        L.evoca_eff_count_distinct.argtypes = []
+        L.evoca_eff_count_distinct.restype  = ctypes.c_int
+        L.evoca_get_eff_hashes.argtypes = [ctypes.POINTER(ctypes.c_uint32)]
+        L.evoca_get_eff_hashes.restype  = None
+        L.evoca_get_eff_used_mask.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
+        L.evoca_get_eff_used_mask.restype  = None
+        L.evoca_get_eff_union_mask.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
+        L.evoca_get_eff_union_mask.restype  = None
+        L.evoca_set_eff_act_ymax.argtypes = [ctypes.c_int]
+        L.evoca_set_eff_act_ymax.restype  = None
+        L.evoca_get_eff_act_ymax.argtypes = []
+        L.evoca_get_eff_act_ymax.restype  = ctypes.c_int
         # Activity quantile probe
         L.evoca_q_activity_deciles.argtypes = [ctypes.POINTER(ctypes.c_float)]
         L.evoca_q_activity_deciles.restype  = None
@@ -348,6 +373,14 @@ class EvoCA:
         L.evoca_eg_shadow_total.restype    = ctypes.c_double
         L.evoca_dyn_shadow_total.argtypes  = []
         L.evoca_dyn_shadow_total.restype   = ctypes.c_double
+        L.evoca_eg_zscores.argtypes        = [ctypes.POINTER(ctypes.c_double)]
+        L.evoca_eg_zscores.restype         = None
+        L.evoca_dyn_zscores.argtypes       = [ctypes.POINTER(ctypes.c_double)]
+        L.evoca_dyn_zscores.restype        = None
+        L.evoca_eg_nbuckets.argtypes       = []
+        L.evoca_eg_nbuckets.restype        = ctypes.c_int
+        L.evoca_dyn_nbuckets.argtypes      = []
+        L.evoca_dyn_nbuckets.restype       = ctypes.c_int
         # Neutral shadow population (Channon-style activity calibration)
         L.evoca_neutral_enable.argtypes        = []
         L.evoca_neutral_enable.restype         = None
@@ -450,6 +483,9 @@ class EvoCA:
         #    mean intake per alive eater this step]
         L.evoca_egene_stats.argtypes  = [ctypes.POINTER(ctypes.c_float)]
         L.evoca_egene_stats.restype   = None
+        # Dissipation / energy-flux accounting (checkpoint §L): out[0..15]
+        L.evoca_get_dissipation.argtypes = [ctypes.POINTER(ctypes.c_double)]
+        L.evoca_get_dissipation.restype  = None
         # Dyn-activity probe (LUT-entry-level): 500 buckets
         L.evoca_dyn_activity_render_col.argtypes = [
             ctypes.POINTER(ctypes.c_int32), ctypes.c_int]
@@ -680,6 +716,66 @@ class EvoCA:
                 lines.append(f"    {k}={val},")
         lines.append(")")
         return "\n".join(lines)
+
+    # ── Env / agent metaparam grouping ────────────────────────────────
+    #
+    # Two *views* over the flat metaparameter namespace (checkpoint §A /
+    # §I' A1). They are DERIVED from params() — the single source of
+    # truth (the per-attribute storage) — so there is exactly one owner
+    # of the metaparameters; do NOT fork storage into separate grouped
+    # dicts. `params()`, `params_str()`, and the .evoca recipe remain
+    # the flat, canonical API and are untouched.
+    #
+    # The niche metaphor (arctic ↔ jungle as points in env-metaparam
+    # space) assigns most knobs cleanly. The one place the boundary is
+    # non-obvious is the TAX FAMILY, which splits by *causal owner* — who
+    # imposes the cost — not by whether the word "tax" appears:
+    #   - baseline `tax` is an ENVIRONMENTAL cost-of-living: the niche
+    #     imposes it (a harsh/arctic niche = high tax) -> env group.
+    #   - `tax_per_egene` / `tax_lut` / `tax_ring` are AGENT-caused
+    #     metabolic costs: the organism pays for the complexity of the
+    #     genome it carries -> agent group. (These are the ones that
+    #     would become per-cell evolvable genes; baseline tax stays an
+    #     environmental control.)
+    _ENV_KEYS = ('N', 'food_inc', 'gdiff', 'tax')
+    _AGENT_KEYS = ('m_scale', 'mu_lut', 'mu_egene', 'mu_egenome',
+                   'p_dup_egene', 'tax_per_egene', 'tax_lut', 'tax_ring',
+                   'restricted_mu')
+
+    def env_params(self):
+        """Return the environment-metaparam view as a dict.
+
+        Derived from params(); {N, food_inc, gdiff, tax}. Baseline `tax`
+        is the niche's cost-of-living (see class comment). These are the
+        knobs one varies to move between niches (arctic ↔ jungle)."""
+        p = self.params()
+        return {k: p[k] for k in self._ENV_KEYS}
+
+    def agent_params(self):
+        """Return the agent-metaparam view as a dict.
+
+        Derived from params(); {m_scale, mu_lut, mu_egene, mu_egenome,
+        p_dup_egene, tax_per_egene, tax_lut, tax_ring, restricted_mu}.
+        These are the candidates for being carried per-cell and mutated
+        as part of the evolutionary process."""
+        p = self.params()
+        return {k: p[k] for k in self._AGENT_KEYS}
+
+    def grouped_params(self):
+        """Return {'env': env_params(), 'agent': agent_params()}.
+
+        The two views together partition params() exactly (verified by
+        the union check below) — no metaparam is dropped or duplicated."""
+        env, agent = self.env_params(), self.agent_params()
+        # Self-consistency guard: the grouping must partition params()
+        # exactly. Catches a future metaparam that gets added to
+        # params() but not to _ENV_KEYS/_AGENT_KEYS.
+        flat = set(self.params())
+        grouped = set(env) | set(agent)
+        assert grouped == flat and len(env) + len(agent) == len(flat), (
+            "env/agent grouping does not partition params(): "
+            f"missing={flat - grouped}, extra={grouped - flat}")
+        return {'env': env, 'agent': agent}
 
     # ── State initialization ─────────────────────────────────────────
 
@@ -1146,6 +1242,61 @@ class EvoCA:
             'mean_intake':      float(out[2]),
         }
 
+    def get_dissipation(self):
+        """Energy-flux / dissipation readout (checkpoint §L, action L1).
+
+        EvoCA is a dissipative structure: food (free energy) is injected
+        each step (source = food_inc over regen cells) and destroyed
+        through three sinks — (a) tax removed from private food, (b) the
+        remaining food of a cell killed by eviction, (c) food_inc lost to
+        the F=1 regeneration cap. Eating (mouthful) is an internal
+        F_food→f_priv transfer, not a sink.
+
+        Returns a dict (all values in food units):
+          Per-step (last sim.step()):
+            'source_step', 'diss_step', 'tax_step', 'death_step',
+            'overflow_step', 'mouthful_step' (agent intake this step)
+          Cumulative (since init):
+            'source_cum', 'diss_cum', 'tax_cum', 'death_cum',
+            'overflow_cum'
+          Instantaneous:
+            'alive'         alive count (Φ denominator)
+            'phi'           per-capita energy throughput
+                            = diss_step / alive (Chaisson energy-rate-
+                            density; 0 when alive==0)
+            'storage_env'   current Σ F_food
+            'storage_priv'  current Σ f_priv
+            'storage'       storage_env + storage_priv
+            'step'          current step counter
+
+        Whole-system energy identity across one step:
+            source_step == d(storage) + diss_step
+        (checked in metric-flux-test.ipynb)."""
+        out = np.zeros(16, dtype=np.float64)
+        self._lib.evoca_get_dissipation(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        storage_env  = float(out[13])
+        storage_priv = float(out[14])
+        return {
+            'source_step':   float(out[0]),
+            'diss_step':     float(out[1]),
+            'tax_step':      float(out[2]),
+            'death_step':    float(out[3]),
+            'overflow_step': float(out[4]),
+            'source_cum':    float(out[5]),
+            'diss_cum':      float(out[6]),
+            'tax_cum':       float(out[7]),
+            'death_cum':     float(out[8]),
+            'overflow_cum':  float(out[9]),
+            'alive':         int(out[10]),
+            'mouthful_step': float(out[11]),
+            'phi':           float(out[12]),
+            'storage_env':   storage_env,
+            'storage_priv':  storage_priv,
+            'storage':       storage_env + storage_priv,
+            'step':          int(out[15]),
+        }
+
     def get_egenes_mask(self):
         """Return (N, N, NEGENOME_MAX) uint8 array of egene wildcard masks.
         Bit i of mask byte = 1 means orbit i is non-wildcard."""
@@ -1279,6 +1430,86 @@ class EvoCA:
         return {'hash': keys[:n], 'activity': acts[:n],
                 'pop_count': pops[:n], 'color': cols[:n]}
 
+    # ── Effective-rule activity (eff_activity) ───────────────────────
+
+    def eff_activity_update(self):
+        """Accumulate the effective-rule activity table for this tick.
+
+        Keys each alive cell on its LUT MASKED to the entries the
+        population has exercised (the union of the per-cell used-masks
+        accumulated during Phase 1), folded with the same egene stream as
+        the full-genome activity key. Two genomes differing only in
+        entries never exercised by any cell collapse to one effective-
+        rule species, so silent LUT churn does not mint a new species
+        (unlike full-genome activity). Scans alive cells. The alive
+        eff-species count is <= the alive full-genome species count each
+        step (the map is a coarsening of genome space)."""
+        self._lib.evoca_eff_activity_update()
+
+    def get_eff_activity(self, max_n=4096):
+        """Return the effective-rule activity table as a dict of arrays
+        with keys 'hash', 'activity', 'pop_count', 'color'. Parallel to
+        get_activity() but over the effective-rule species key. Call
+        eff_activity_update() first to populate pop_count/activity."""
+        keys = np.zeros(max_n, dtype=np.uint32)
+        acts = np.zeros(max_n, dtype=np.uint64)
+        pops = np.zeros(max_n, dtype=np.uint32)
+        cols = np.zeros(max_n, dtype=np.int32)
+        n = self._lib.evoca_eff_activity_get(
+            keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+            pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
+            max_n)
+        return {'hash': keys[:n], 'activity': acts[:n],
+                'pop_count': pops[:n], 'color': cols[:n]}
+
+    def eff_count_distinct(self):
+        """Count of distinct effective-rule species currently alive
+        (after eff_activity_update this tick). Always <= n_distinct
+        full-genome species."""
+        return int(self._lib.evoca_eff_count_distinct())
+
+    def get_eff_hashes(self):
+        """Return (N, N) uint32 of each cell's effective-rule hash: the
+        LUT masked by the population-union used-mask, folded with the
+        cell's egenes. Flipping a LUT bit never exercised by any cell
+        leaves this unchanged (while get_lut_hashes / the full-genome key
+        would change). Dead cells hash their zeroed LUT; gate on
+        get_alive()."""
+        out = np.zeros(self._N * self._N, dtype=np.uint32)
+        self._lib.evoca_get_eff_hashes(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)))
+        return out.reshape(self._N, self._N)
+
+    def get_eff_used_mask(self):
+        """Return (N, N, LUT_BYTES) uint8 of each cell's accumulated
+        per-cell used-mask: bit-packed like the LUT, a set bit = that LUT
+        entry was exercised by the cell during Phase 1 over its lifetime.
+        This is the diagnostic substrate; the eff_activity species key
+        uses the population UNION of these (see get_eff_union_mask)."""
+        out = np.zeros(self._N * self._N * LUT_BYTES, dtype=np.uint8)
+        self._lib.evoca_get_eff_used_mask(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+        return out.reshape(self._N, self._N, LUT_BYTES)
+
+    def get_eff_union_mask(self):
+        """Return (LUT_BYTES,) uint8 population-union used-mask: the OR of
+        every cell's exercised entries since init, bit-packed like the
+        LUT. A 0 bit = a LUT entry never exercised by any cell; flipping
+        it is behaviourally silent and mints no eff-species. This is the
+        mask the eff_activity species key applies."""
+        out = np.zeros(LUT_BYTES, dtype=np.uint8)
+        self._lib.evoca_get_eff_union_mask(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+        return out
+
+    def set_eff_act_ymax(self, y):
+        self._lib.evoca_set_eff_act_ymax(int(y))
+
+    def get_eff_act_ymax(self):
+        return int(self._lib.evoca_get_eff_act_ymax())
+
     # ── Per-step demography counters ─────────────────────────────────
 
     def get_births_last(self):
@@ -1327,6 +1558,50 @@ class EvoCA:
     def dyn_shadow_total(self):
         """Σ cumulative activity of the dyn_activity drift shadow."""
         return float(self._lib.evoca_dyn_shadow_total())
+
+    def get_eg_zscores(self):
+        """Per-bucket z-scores for the eg_activity fixed space (729
+        ternary-egene keys) — the well-posed per-component ("per-gene")
+        neutral shadow.  For each key k:
+
+            z[k] = (observed cumulative activity[k] − shadow drift
+                    mean[k]) / closed-form WF drift SD[k]
+
+        The drift mean is the shadow's cumulative activity and the drift
+        SD is sqrt of the accumulated Wright-Fisher drift variance
+        T²·qn(1−qn)/Np.  z ≈ 0 for every key under a null/frozen (zero
+        realised-flux) arm; z ≫ 0 on keys the real run concentrates
+        activity on faster than fitness-blind drift (selection), z < 0
+        where drift stays warmer than selection.  Keys with no
+        accumulated drift variance return 0.
+
+        Returns a float64 array of length EGENE_KEY_COUNT (729)."""
+        out = np.zeros(EGENE_KEY_COUNT, dtype=np.float64)
+        self._lib.evoca_eg_zscores(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        return out
+
+    def get_dyn_zscores(self):
+        """Per-bucket z-scores for the dyn_activity fixed space (500
+        LUT (input,output) transition buckets) — the well-posed per-
+        component neutral shadow.  Same definition as get_eg_zscores:
+
+            z[k] = (observed cumulative activity[k] − shadow drift
+                    mean[k]) / closed-form WF drift SD[k]
+
+        z ≈ 0 under a null/frozen arm, z ≫ 0 on transitions the real run
+        concentrates on faster than drift.  NOTE: dyn z-scores are
+        interpretable only where mu_lut>0 — under a frozen rich LUT
+        substrate (mu_lut=0) the shadow freezes onto the realised
+        composition, giving z ≈ 0 with no selection signal (this does
+        avoid the dyn_excess frozen-rich-substrate artefact, but the
+        arm carries no dyn signal either).
+
+        Returns a float64 array of length DYN_ACT_COUNT (500)."""
+        out = np.zeros(DYN_ACT_COUNT, dtype=np.float64)
+        self._lib.evoca_dyn_zscores(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        return out
 
     # ── N-activity probe (Channon-style neutral shadow) ──────────────
 

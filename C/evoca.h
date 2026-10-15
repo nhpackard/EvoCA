@@ -104,6 +104,34 @@ void evoca_activity_render_col(int32_t *col, int height);
 int  evoca_activity_get(uint32_t *keys, uint64_t *activities,
                         uint32_t *pop_counts, int32_t *colors, int max_n);
 
+/* ── Effective-rule activity (eff_activity) ─────────────────────────
+ * Genome-species activity whose species key is the cell's LUT MASKED to
+ * the entries the POPULATION has exercised (eff_union_mask = OR of the
+ * per-cell used-masks accumulated during Phase 1), folded with the same
+ * egene stream as the full-genome key. Two genomes differing only in
+ * entries never exercised by any cell collapse to one effective-rule
+ * species, so silent LUT churn does not mint a new species (unlike
+ * full-genome `activity`). Additive no-op to dynamics. The alive
+ * eff-species count is <= the alive full-genome `activity` count each
+ * step (the effective-rule map is a coarsening of genome space).
+ *
+ * NOTE: the key uses the population-union mask, not each cell's own
+ * per-cell mask. A per-cell key would SPLIT one genome across cells with
+ * divergent neighbourhood histories, making eff-species larger than
+ * full-species and defeating the collapse goal. The per-cell masks are
+ * still accumulated and exposed (get_eff_used_mask) as the diagnostic
+ * substrate the union is built from. */
+void evoca_eff_activity_update(void);
+void evoca_eff_activity_render_col(int32_t *col, int height);
+int  evoca_eff_activity_get(uint32_t *keys, uint64_t *activities,
+                            uint32_t *pop_counts, int32_t *colors, int max_n);
+int  evoca_eff_count_distinct(void);              /* alive eff-species count */
+void evoca_get_eff_hashes(uint32_t *out);         /* out[N*N] per-cell eff hash */
+void evoca_get_eff_used_mask(uint8_t *out);       /* out[N*N*LUT_BYTES] per-cell */
+void evoca_get_eff_union_mask(uint8_t *out);      /* out[LUT_BYTES] population union */
+void evoca_set_eff_act_ymax(int y);
+int  evoca_get_eff_act_ymax(void);
+
 /* ── Activity quantile probe ──────────────────────────────────────── */
 
 void evoca_q_activity_deciles(float *deciles_out);  /* 9 floats: p10..p90 */
@@ -140,6 +168,23 @@ double evoca_eg_excess_pc(void);
 double evoca_dyn_excess_pc(void);
 double evoca_eg_shadow_total(void);
 double evoca_dyn_shadow_total(void);
+
+/* Per-bucket z-scores — the per-component ("per-gene") neutral shadow,
+ * well-posed in these FIXED spaces (ill-posed in the open LUT-hash
+ * space, do not attempt there). For each bucket k:
+ *     z[k] = (observed cumulative activity[k] − shadow drift mean[k])
+ *            / sqrt(closed-form WF drift variance[k])
+ * z ≈ 0 for every bucket under a null/frozen (zero-flux) arm; z ≫ 0 on
+ * buckets the real run concentrates on faster than drift (selection),
+ * z < 0 where drift stays warmer than selection. Buckets with no
+ * accumulated drift variance yield z=0. Fill caller buffers of length
+ * evoca_eg_nbuckets() (729) / evoca_dyn_nbuckets() (500). Advanced
+ * automatically inside evoca_step() alongside the excess accessors.
+ * NOTE: dyn z-scores are interpretable only where mu_lut>0. */
+void evoca_eg_zscores(double *out);
+void evoca_dyn_zscores(double *out);
+int  evoca_eg_nbuckets(void);
+int  evoca_dyn_nbuckets(void);
 
 /* ── Neutral shadow population (Channon-style activity calibration) ────
  *
@@ -235,6 +280,16 @@ void evoca_egenome_stats(float *out);
  * egenes, range 0..200), mean food intake per alive eater this step
  * (range 0..1)]. */
 void evoca_egene_stats(float *out);
+
+/* Dissipation / energy-flux accounting (checkpoint §L, action L1).
+ * Fills out[0..15] with the source→sink free-energy through-flux:
+ *   [0] source_step [1] diss_step [2] tax_step [3] death_step
+ *   [4] overflow_step [5] source_cum [6] diss_cum [7] tax_cum
+ *   [8] death_cum [9] overflow_cum [10] alive [11] mouthful_step
+ *   [12] phi (=diss_step/alive) [13] storage_env [14] storage_priv
+ *   [15] step. All values in food units. See evoca.c for full doc. */
+#define EVOCA_DISS_N 16
+void evoca_get_dissipation(double *out);
 
 /* Dyn-activity probe: 500 buckets indexed by (input * 2 + output),
  * where input is the 250-value LUT bit index from

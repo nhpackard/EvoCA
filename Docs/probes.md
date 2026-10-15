@@ -224,6 +224,55 @@ analysis instead.
 
 ---
 
+## Effective-rule Activity (eff_activity)
+
+A genome-species activity that answers the same worry as `dyn_activity`
+but at the **species** level rather than the transition level (checkpoint
+§F / §I' action F1). Full-genome `activity` keys on an FNV-1a hash of the
+whole 32-byte LUT, so flipping a LUT bit for an input the cell never
+encounters mints a "new species" with no behavioural change (silent
+churn). `eff_activity` keys instead on the LUT **masked to the entries the
+population has actually exercised**, folded with the same egene stream, so
+two genomes differing only in never-exercised entries collapse to one
+effective-rule species.
+
+**Mask semantics (population union, not per-cell).** During Phase 1 each
+alive cell OR-accumulates the LUT entries it exercises into a per-cell
+used-mask (`get_eff_used_mask()`, `[N,N,LUT_BYTES]`); the species key
+applies the **union** of these over the whole population
+(`get_eff_union_mask()`, `[LUT_BYTES]`). The union is used, not the
+per-cell mask, because a per-cell key is neighbourhood-history dependent
+and would *split* one genome across cells with different realised
+neighbourhoods — making eff-species *larger* than full-genome species and
+defeating the collapse goal. The union makes the effective-rule map a pure
+coarsening of genome space, so:
+
+- silent churn (flipping an entry no cell ever exercises) mints **no** new
+  effective-rule species, though it does mint a full-genome one; and
+- the alive eff-species count is **<=** the alive full-genome count each
+  step.
+
+**Python API** (mirrors the `activity` accessors):
+
+- `sim.eff_activity_update()` — accumulate the table this tick (alive cells)
+- `sim.get_eff_activity()` — `{'hash','activity','pop_count','color'}`
+- `sim.eff_count_distinct()` — alive eff-species count
+- `sim.get_eff_hashes()` — `[N,N]` per-cell effective-rule hash
+- `sim.get_eff_used_mask()` / `sim.get_eff_union_mask()` — the masks
+- `sim.set_eff_act_ymax()` / `sim.get_eff_act_ymax()`
+
+Read `activity` and `eff_activity` together: `activity` churning while
+`eff_activity` stays flat means evolution is shuffling LUT bits at inputs
+the population never visits — the effective rule is unchanged. Both
+climbing together means genuinely new effective rules are appearing.
+
+An `evoca_eff_activity_render_col()` (same hyperbolic Y-saturation as
+`activity`, tuned by `eff_act_ymax`) is exported so a scrolling-strip
+probe window can be wired up like `activity`; only the C/Python API and
+render column are provided so far.
+
+---
+
 ## Egene Cognitive Probe (egene)
 
 Three stacked sub-strips (each 64 px, 192 px total) charting how
