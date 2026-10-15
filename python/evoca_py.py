@@ -291,6 +291,12 @@ class EvoCA:
         L.evoca_get_F.restype           = ctypes.POINTER(ctypes.c_float)
         L.evoca_get_f.argtypes          = []
         L.evoca_get_f.restype           = ctypes.POINTER(ctypes.c_float)
+        L.evoca_get_mu_lut_gene.argtypes = []
+        L.evoca_get_mu_lut_gene.restype  = ctypes.POINTER(ctypes.c_float)
+        L.evoca_set_mu_lut_gene_all.argtypes = [ctypes.c_float]
+        L.evoca_set_mu_lut_gene_all.restype  = None
+        L.evoca_set_mu_lut_gene.argtypes = [ctypes.POINTER(ctypes.c_float)]
+        L.evoca_set_mu_lut_gene.restype  = None
         L.evoca_get_egenome.argtypes     = []
         L.evoca_get_egenome.restype      = ctypes.POINTER(ctypes.c_uint8)
         L.evoca_get_lut.argtypes        = []
@@ -607,6 +613,13 @@ class EvoCA:
         self._lib.evoca_set_tax_ring(self.tax_ring)
         self._lib.evoca_set_restricted_mu(self.restricted_mu)
         self._lib.evoca_set_food_per(self.food_per)
+        # Seed the per-cell mutation-rate gene (mutation-of-mutation Wave-1
+        # storage scaffold) to this run's mu_lut. The C library also seeds
+        # it at evoca_init, but from the *previous* global gmu_lut (set_mu_lut
+        # runs after evoca_init), so re-seed here for a clean default. The
+        # gene is inherited on reproduction but read nowhere that affects
+        # dynamics, so this is a pure no-op.
+        self._lib.evoca_set_mu_lut_gene_all(ctypes.c_float(self.mu_lut))
         self._lib.evoca_set_n_ent(self._n_ent)
         self._state_params = {}
         self._init_metaparams = {
@@ -1096,6 +1109,35 @@ class EvoCA:
         ptr = self._lib.evoca_get_f()
         return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)) \
                  .copy().reshape(self._N, self._N)
+
+    def get_mu_lut_gene(self):
+        """Return (N, N) float32 array of the per-cell LUT mutation-rate gene.
+
+        Mutation-of-mutation Wave-1 storage scaffold. The gene is inherited
+        on reproduction but READ NOWHERE that affects dynamics (the mutation
+        draw still uses the global mu_lut), and is not itself mutated — so a
+        run with genes present is bit-for-bit identical to one without. Seed
+        a distribution via set_mu_lut_gene()/set_mu_lut_gene_all() for the
+        zero-mutation distribution-seeding assay."""
+        ptr = self._lib.evoca_get_mu_lut_gene()
+        return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)) \
+                 .copy().reshape(self._N, self._N)
+
+    def set_mu_lut_gene_all(self, g):
+        """Seed every cell's LUT mutation-rate gene to the scalar `g`."""
+        self._lib.evoca_set_mu_lut_gene_all(ctypes.c_float(g))
+
+    def set_mu_lut_gene(self, arr):
+        """Seed the per-cell LUT mutation-rate gene from an (N, N) array.
+
+        Accepts any shape broadcastable to (N, N); it is cast to float32,
+        made C-contiguous, and copied into the C array. Use this to install
+        a spatial or random distribution of rate-gene values for the
+        distribution-seeding selection assay."""
+        buf = np.ascontiguousarray(
+            np.broadcast_to(arr, (self._N, self._N)), dtype=np.float32)
+        self._lib.evoca_set_mu_lut_gene(
+            buf.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
 
     def get_egenome(self):
         """Return (N, N) uint8 array of fiducial genomes (6-bit values).
