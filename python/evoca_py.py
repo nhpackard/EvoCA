@@ -1348,10 +1348,16 @@ class EvoCA:
 
     # ── Opt-in lineage record (research-directions §1) ───────────────
     def enable_lineage(self, on=True):
-        """Toggle the opt-in per-cell lineage record. Must be called
-        BEFORE init() to take effect (the C arrays are allocated in
-        evoca_init only when the flag is set). Default OFF -> zero
-        added cost in the CA hot path."""
+        """Toggle the opt-in per-cell lineage record on an initialized
+        lattice (cells alive now become founders). To record from step 0,
+        pass init(..., lineage=True) instead. Calling this before init()
+        raises: init() sets the flag from its own `lineage` kwarg, so a
+        pre-call would be silently undone. Default OFF -> zero added cost
+        in the CA hot path."""
+        if not getattr(self, '_N', 0):
+            raise RuntimeError(
+                "enable_lineage() before init() would be overridden by "
+                "init(lineage=False); use init(..., lineage=True)")
         self._lib.evoca_enable_lineage(1 if on else 0)
 
     def lineage_enabled(self):

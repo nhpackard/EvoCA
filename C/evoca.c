@@ -2020,12 +2020,25 @@ int evoca_get_population(void)
 }
 
 /* ── Opt-in lineage record API (research-directions §1) ──────────────
- * Call evoca_enable_lineage(1) BEFORE evoca_init for the arrays to be
- * allocated and Phase-4 writes to happen. Default OFF: zero added work
- * in the hot path and no memory used. */
+ * Set before evoca_init, the arrays are allocated there. Set on an
+ * already-initialized lattice, they are allocated here (current cells
+ * become founders: no recorded parent, empty life accumulators) — the
+ * hot path gates on g_lineage_on alone, so the flag must never be on
+ * while the arrays are NULL. Default OFF: zero added work in the hot
+ * path and no memory used. */
 void evoca_enable_lineage(int on)
 {
     g_lineage_on = on ? 1 : 0;
+    if (g_lineage_on && alive && !lin_parent_hash) {
+        size_t cells = (size_t)gN * gN;
+        lin_parent_hash = calloc(cells, sizeof(uint32_t));
+        lin_birth_id    = calloc(cells, sizeof(uint64_t));
+        lin_parent_id   = calloc(cells, sizeof(uint64_t));
+        lin_intake_cell = calloc(cells, sizeof(double));
+        lin_tax_cell    = calloc(cells, sizeof(double));
+        lret_reset();
+        g_birth_counter = 0;
+    }
 }
 
 int evoca_lineage_enabled(void)

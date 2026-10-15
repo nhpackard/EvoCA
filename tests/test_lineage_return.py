@@ -171,3 +171,50 @@ def test_birth_registers_and_resets_child(make_sim):
 
     red = s.get_lineage_return(update=False)
     assert red['births'].sum() >= 1, "reducer did not register the birth"
+
+
+# ── enable_lineage() call-order regression (2026-10-15) ──────────────
+# Before the fix: enable_lineage() AFTER init() turned on hot-path writes
+# into unallocated arrays (segfault); BEFORE init() it was silently undone
+# by init(lineage=False). The crash case runs in a subprocess so a
+# regression reports as a failure instead of killing the test run.
+_AFTER_INIT_SCRIPT = r"""
+import sys, numpy as np
+sys.path.insert(0, sys.argv[1])
+from evoca_py import EvoCA, make_gol_lut
+N = 24
+s = EvoCA()
+s.init(N, food_inc=0.1, m_scale=0.5, tax=0.02, mu_lut=0.002)
+s.enable_lineage(True)
+s.set_lut_all(make_gol_lut()); s.set_egenome_all(0); s.set_alive_all()
+s.set_seed(7)
+s.set_v(np.random.default_rng(7).integers(0, 2, (N, N), dtype=np.uint8))
+s.set_F_all(1.0); s.set_f_all(0.5)
+for _ in range(60):
+    s.step()
+red = s.get_lineage_return()
+alive = int(s.get_alive().sum())
+ti, tt = s.lineage_return_totals()
+assert red.size > 0, "no lineages recorded"
+assert int(red['pop'].sum()) == alive, (int(red['pop'].sum()), alive)
+assert np.isclose(red['intake'].sum(), ti) and np.isclose(red['tax'].sum(), tt)
+assert ti > 0 and tt > 0
+print("OK")
+"""
+
+
+def test_enable_lineage_after_init_records_without_crash():
+    import os, subprocess, sys
+    py = os.path.join(os.path.dirname(__file__), '..', 'python')
+    r = subprocess.run([sys.executable, '-c', _AFTER_INIT_SCRIPT, py],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0 and 'OK' in r.stdout, (
+        f"rc={r.returncode}\n{r.stdout}\n{r.stderr}")
+
+
+def test_enable_lineage_before_init_raises():
+    import pytest
+    from evoca_py import EvoCA
+    s = EvoCA()
+    with pytest.raises(RuntimeError):
+        s.enable_lineage(True)
