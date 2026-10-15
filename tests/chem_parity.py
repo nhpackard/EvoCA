@@ -46,9 +46,15 @@ SEED_STEP  = 4242       # C PRNG seed for the step loop
 N_STEPS    = 200
 CHECKPOINTS = (50, 100, 150, 200)
 
+# food_cap=0 pins the legacy (pre-A9-fix) uncapped mouthful rule: the golden
+# was captured before the 2026-10-15 food_cap fix and m_scale=3 > 1, so the
+# default capped rule would (correctly) diverge. This gate tests the chem
+# storage path, not the eating rule, so it stays on the rule it was recorded
+# with. See tests/test_food_cap.py for the cap itself.
 CFG = dict(
     food_inc=0.02, m_scale=3.0, gdiff=0.05, tax=0.02,
     mu_lut=0.01, mu_egene=0.005, mu_egenome=0.01, p_dup_egene=1.0,
+    food_cap=0,
 )
 
 

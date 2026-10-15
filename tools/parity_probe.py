@@ -1,7 +1,7 @@
 """Bit-for-bit parity probe for merge gates.
 
 Usage:
-  python3 tools/parity_probe.py run  <repo_root> <out.json>   # build root first (make)
+  python3 tools/parity_probe.py run  <repo_root> <out.json> [food_cap]  # build root first (make)
   python3 tools/parity_probe.py cmp  <base.json> <new.json>
 
 `run` records, for a viable pure-evo config (N=128, mutation + egene on):
@@ -11,11 +11,16 @@ every differing common scalar, added/lost keys, and trajectory identity.
 An additive branch must give BAD 0 and IDENTICAL; new keys are allowed.
 Check the fixture is not extinct before trusting a pass (an extinct
 fixture passes trivially).
+
+food_cap (optional, branch `food-cap` onward): pass 0 to run the legacy
+uncapped mouthful rule, which must be IDENTICAL to a pre-fix baseline.
+The fixture has m_scale=1.5 > 1, so the default (capped, food_cap=1) path
+is NOT expected to match a pre-fix baseline. Omit it on pre-fix trees.
 """
 import sys, os, json, hashlib
 
 
-def run(root, out):
+def run(root, out, food_cap=None):
     root, out = os.path.abspath(root), os.path.abspath(out)
     sys.path.insert(0, os.path.join(root, 'python'))
     os.chdir(root)
@@ -26,6 +31,8 @@ def run(root, out):
     P = dict(food_inc=0.01, m_scale=1.5, gdiff=0.08, mu_lut=0.01,
              mu_egene=0.003, mu_egenome=0.03, p_dup_egene=1.0,
              tax=0.03, tax_per_egene=0.0, restricted_mu=False)
+    if food_cap is not None:
+        P['food_cap'] = int(food_cap)
     res = {}
     for seed in (1, 2):
         m = run_sim(P, n_steps=2000, sample_every=100, N=128, seed=seed, shadow=True)
@@ -38,7 +45,8 @@ def run(root, out):
 
     N = 128
     sim = EvoCA()
-    sim.init(N, **{k: P[k] for k in ('food_inc', 'm_scale', 'gdiff', 'mu_lut', 'mu_egenome', 'tax')})
+    sim.init(N, **{k: P[k] for k in ('food_inc', 'm_scale', 'gdiff', 'mu_lut', 'mu_egenome', 'tax',
+                                     'food_cap') if k in P})
     sim.set_seed(7)
     sim.state(lut='gol', egenome='uniform', egenome_value=0b000011)
     sim.set_v(np.random.default_rng(7).integers(0, 2, (N, N), dtype=np.uint8))
@@ -73,6 +81,6 @@ def cmp(a_path, b_path):
 
 if __name__ == '__main__':
     if sys.argv[1] == 'run':
-        run(sys.argv[2], sys.argv[3])
+        run(sys.argv[2], sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else None)
     else:
         sys.exit(0 if cmp(sys.argv[2], sys.argv[3]) else 1)

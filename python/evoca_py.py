@@ -169,6 +169,7 @@ class EvoCA:
         self.restricted_mu = 0
         self.food_per      = 1      # env food-regen period (>=1); 1 = no-op
         self.n_chem        = 1      # chem compound-universe size (m1: only 1)
+        self.food_cap      = 1      # 1 = mouthful capped at available F (A9 fix); 0 = legacy
         self._n_ent      = 2
         self.egenome      = 0
         # Diagnostic logger sample interval (Python-side; not a C
@@ -246,6 +247,10 @@ class EvoCA:
         L.evoca_set_food_per.restype       = None
         L.evoca_get_food_per.argtypes      = []
         L.evoca_get_food_per.restype       = ctypes.c_int
+        L.evoca_set_food_cap.argtypes      = [ctypes.c_int]
+        L.evoca_set_food_cap.restype       = None
+        L.evoca_get_food_cap.argtypes      = []
+        L.evoca_get_food_cap.restype       = ctypes.c_int
         L.evoca_set_diag.argtypes          = [ctypes.c_int]
         L.evoca_set_diag.restype           = None
         L.evoca_get_diag.argtypes          = []
@@ -588,7 +593,7 @@ class EvoCA:
              p_dup_egene=1.0,
              tax=0.0, tax_per_egene=0.0, tax_lut=0.0, tax_ring=0.0,
              restricted_mu=0, food_per=1, n_ent=2,
-             N_log_interval=1, lineage=False, n_chem=1):
+             N_log_interval=1, lineage=False, n_chem=1, food_cap=1):
         # Opt-in lineage record (research-directions §1). The C flag must
         # be set before evoca_init so the arrays get allocated. Default
         # OFF -> zero added work in the Phase-1/Phase-4 hot path.
@@ -611,6 +616,7 @@ class EvoCA:
         self.tax_ring      = float(tax_ring)
         self.restricted_mu = int(restricted_mu)
         self.food_per   = max(1, int(food_per))
+        self.food_cap   = 1 if int(food_cap) else 0
         self._n_ent     = int(n_ent)
         self.N_log_interval = max(1, int(N_log_interval))
         self._lib.evoca_init(N, self.food_inc, self.m_scale)
@@ -630,6 +636,9 @@ class EvoCA:
         self._lib.evoca_set_tax_ring(self.tax_ring)
         self._lib.evoca_set_restricted_mu(self.restricted_mu)
         self._lib.evoca_set_food_per(self.food_per)
+        # Mouthful cap (A9 fix). 1 = capped at available food (default,
+        # corrected); 0 = legacy uncapped rule, for reproducing pre-fix runs.
+        self._lib.evoca_set_food_cap(self.food_cap)
         # Seed the per-cell mutation-rate gene (mutation-of-mutation Wave-1
         # storage scaffold) to this run's mu_lut. The C library also seeds
         # it at evoca_init, but from the *previous* global gmu_lut (set_mu_lut
@@ -654,6 +663,7 @@ class EvoCA:
             'restricted_mu': self.restricted_mu,
             'food_per': self.food_per,
             'n_chem': self.n_chem,
+            'food_cap': self.food_cap,
         }
 
     def free(self):
@@ -744,6 +754,16 @@ class EvoCA:
         self.food_per = max(1, int(p))
         self._lib.evoca_set_food_per(self.food_per)
 
+    def update_food_cap(self, c):
+        """Toggle the Phase-3 mouthful cap (A9 fix).
+
+        c=1 (default) caps each mouthful at the food present, max(F,0),
+        so F_food never goes negative; c=0 restores the legacy uncapped
+        rule (overdraws F when m_scale*score > 25) to reproduce pre-fix
+        runs. At m_scale <= 1 the two are identical."""
+        self.food_cap = 1 if int(c) else 0
+        self._lib.evoca_set_food_cap(self.food_cap)
+
     def update_act_ymax(self, y):
         self._lib.evoca_set_act_ymax(int(y))
 
@@ -765,7 +785,7 @@ class EvoCA:
                       gdiff=0, mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
                       p_dup_egene=1.0, tax=0.0, tax_per_egene=0.0,
                       tax_lut=0.0, tax_ring=0.0,
-                      restricted_mu=0, food_per=1, n_chem=1)
+                      restricted_mu=0, food_per=1, n_chem=1, food_cap=1)
 
     def params(self):
         """Return current metaparameters as a dict suitable for init(**d)."""
@@ -776,7 +796,7 @@ class EvoCA:
                     tax_per_egene=self.tax_per_egene,
                     tax_lut=self.tax_lut, tax_ring=self.tax_ring,
                     restricted_mu=self.restricted_mu, food_per=self.food_per,
-                    n_chem=self.n_chem)
+                    n_chem=self.n_chem, food_cap=self.food_cap)
 
     def params_str(self):
         """Return a copy-pasteable sim.init(...) call with defaults annotated."""
@@ -1031,6 +1051,10 @@ class EvoCA:
         self._lib.evoca_set_n_chem(int(n))
         self.n_chem = int(self._lib.evoca_get_n_chem())
         return self.n_chem
+
+    def get_food_cap(self):
+        """Effective Phase-3 mouthful-cap flag from the C library."""
+        return int(self._lib.evoca_get_food_cap())
 
     def get_n_chem(self):
         return int(self._lib.evoca_get_n_chem())
@@ -1952,6 +1976,7 @@ class EvoCA:
                 'restricted_mu': self.restricted_mu,
                 'food_per': self.food_per,
                 'n_chem': self.n_chem,
+                'food_cap': self.food_cap,
             },
             'initialization': dict(self._state_params),
             'display': {
@@ -2211,6 +2236,8 @@ def import_run(filepath=None, recipe='init', lib_path=None, N=None):
     else:
         mp = data['metaparams']  # v1 fallback
 
+    _food_cap_legacy_notice(mp, filepath)
+
     sim = EvoCA(lib_path=lib_path)
     grid_N = int(N) if N is not None else int(data['N'])
     sim.init(grid_N, **mp)
@@ -2234,6 +2261,25 @@ def import_run(filepath=None, recipe='init', lib_path=None, N=None):
         display_kwargs['probes'] = disp['probes']
 
     return sim, display_kwargs
+
+
+def _food_cap_legacy_notice(mp, filepath):
+    """Recipes written before the A9 fix (2026-10-15) carry no `food_cap`
+    key. They are imported with the default (capped) rule; when m_scale > 1
+    the dynamics can differ from the run that produced the recipe, so say
+    how to get the legacy behavior back. Returns True if it printed."""
+    if 'food_cap' in mp:
+        return False
+    try:
+        m = float(mp.get('m_scale', 1.0))
+    except (TypeError, ValueError):
+        return False
+    if m > 1.0:
+        print(f"[food_cap] {os.path.basename(str(filepath))}: no food_cap key "
+              f"and m_scale={m:g} > 1; running capped (default). The legacy "
+              f"uncapped behavior (pre-A9 fix) is food_cap=0.")
+        return True
+    return False
 
 
 # ── LUT construction helpers ───────────────────────────────────────────
