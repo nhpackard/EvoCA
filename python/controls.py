@@ -42,6 +42,13 @@ from multiprocessing.shared_memory import SharedMemory
 
 import ctypes
 
+# Works whether this module is imported as `controls` (python/ on sys.path,
+# as the Research notebooks do) or as `python.controls` (repo root on sys.path).
+try:
+    from .evoca_py import EGENE_KEY_COUNT, DYN_ACT_COUNT
+except ImportError:
+    from evoca_py import EGENE_KEY_COUNT, DYN_ACT_COUNT
+
 COLOR_MODES      = ["state", "env-food", "priv-food", "births", "age"]
 _SLIDER_RESUME_S = 0.20   # seconds after last slider touch before auto-resume
 _WORKER          = os.path.join(os.path.dirname(__file__), "sdl_worker.py")
@@ -180,7 +187,6 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     eg_activity_col     = None
 
     if eg_activity_enabled:
-        from python.evoca_py import EGENE_KEY_COUNT
         K = EGENE_KEY_COUNT
         ega_meta_off = 4 + PROBE_W * ACT_H * 4
         ega_shm_size = ega_meta_off + K*8 + K*4 + K*4 + 4  # +acts,pops,cols,ymax
@@ -215,7 +221,6 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     dyn_m_acts = dyn_m_pops = dyn_m_cols = dyn_m_ymax = None
     dyn_distinct_buf = None
     if dyn_activity_enabled:
-        from python.evoca_py import DYN_ACT_COUNT
         D = DYN_ACT_COUNT
         dyn_meta_off = 4 + PROBE_W * ACT_H * 4
         dyn_dist_off = dyn_meta_off + D*8 + D*4 + D*4 + 4
