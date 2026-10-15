@@ -261,6 +261,18 @@ stopped but because the baseline became wrong. The Bedau–Snyder–Packard
 inheritance**; this implementation preserves the same *mutation
 operator*, which at high μ is a different thing.
 
+> **Note (2026-10-15, branch `shadow-rng`).** Independently of the
+> construction issue above, the shadow used to draw its random numbers
+> (kills, parent choice, mutation) from the *dynamics* RNG stream, so
+> enabling it changed the real trajectory (`Docs/Oct2026/06-seeding-findings.md`
+> A2). It now has its own stream, seeded from the sim seed in
+> `evoca_set_seed`, and is a pure observer: same seed ⇒ shadow-on and
+> shadow-off trajectories are bit-identical. Consequence: shadow-on
+> trajectories recorded before this change are **not bit-reproducible**
+> with current code (they now equal the corresponding shadow-off runs);
+> shadow-derived statistics are draws from the same process and are
+> unaffected in distribution.
+
 **Fixes, in order of preference:**
 
 1. **Switch the optimisation target to a turnover-invariant

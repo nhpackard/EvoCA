@@ -58,6 +58,16 @@ actually asserts; the workstream tag links it to `Docs/devlog/`.
 - `test_neutral_drift_excess_is_zero` — zero mutation (no realised flux) ⇒ excess ≈ 0 (neutral-null invariant).
 - `test_selection_excess_clearly_positive_and_above_neutral` — strong selection ⇒ excess clearly > 0 and ≫ neutral.
 
+## Shadow RNG isolation — `test_shadow_rng.py` (A2, branch `shadow-rng`)
+
+The Channon neutral shadow draws from its own RNG stream (derived from the seed in `evoca_set_seed`), so it is a pure observer.
+
+- `test_shadow_does_not_perturb_trajectory` — same seed, shadow on vs off ⇒ bit-identical v/alive/f/F/egenome/LUT-hash trajectory (fails on 530c334).
+- `test_run_sim_scalars_independent_of_shadow` — every `run_sim` scalar present with `shadow=False` is identical with `shadow=True` (fails on 530c334).
+- `test_shadow_outputs_reproducible_same_seed` — two shadow-on `run_sim` calls with one seed agree on all outputs; pins that `set_seed` reseeds the shadow stream (mutation-tested).
+- `test_shadow_tables_reproducible_object_api` — same, on the full N-activity table via the object API.
+- `test_frozen_shadow_is_clonal` — null sanity: `mu_lut=0`, uniform GoL ⇒ one shadow bucket whose population equals the alive count.
+
 ## Patch transfer — `test_patch_transfer.py` (S2c, §11)
 
 - `test_extract_stamp_roundtrip_genomes_exact` — extract→stamp reproduces alive-cell genomes byte-exactly.
