@@ -31,7 +31,6 @@ Research/
   README.md                     <- this index / reading order
   SCANS.md                      <- how scans work (drivers, harness, promotion)
   research_board.md             <- coordination surface
-  artifacts.csv                 <- provenance map: old path -> new location
   <Workstream>/
     <Workstream>.ipynb          <- lab notebook, chronological, newest section at bottom
     ISSUES.md                   <- single source of open questions / next directions
