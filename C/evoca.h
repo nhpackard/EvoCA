@@ -63,6 +63,8 @@ void evoca_set_tax_lut(float t);
 void evoca_set_tax_ring(float t);
 void evoca_set_restricted_mu(int r);
 int  evoca_get_restricted_mu(void);
+void evoca_set_food_per(int p);    /* env food-regen period (>=1); default 1 */
+int  evoca_get_food_per(void);
 void evoca_set_diag(int d);
 int  evoca_get_diag(void);
 
