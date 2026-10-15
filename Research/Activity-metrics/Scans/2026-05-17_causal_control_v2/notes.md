@@ -7,4 +7,4 @@ Bug-corrected reciprocal control. 3 arms × 4 seeds, N=256, 15k ticks.
 mutually amplifies selection (corroborates #1/#2).
 
 Full analysis → `../2026-05-17_pure_evo_analysis.md`
-Reasoning trail → `../../Docs/devlog/2026-05-17_research-campaigns.md`
+Reasoning trail → `../../../../Docs/devlog/2026-05-17_research-campaigns.md`

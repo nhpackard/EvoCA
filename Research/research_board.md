@@ -178,8 +178,8 @@ Curate and showcase EvoCA's photogenic RD regimes with example `.evoca`
 recipes in a digest notebook. **Distinct from** campaign #4 (RD-robustness,
 which found RD structure is *not* robust under pure-evo optimization):
 this documents the RD dynamics' existence and visual character as a
-first-class result. Source recipes in `../Runs/*R-D*` and
-`../Runs/2026-04-27_*`. Kind: campaign. Status: digest to be drafted.
+first-class result. Source recipes in `Reaction-diffusion/Runs/*R-D*` and
+`Reaction-diffusion/Runs/2026-04-27_*`. Kind: campaign. Status: digest to be drafted.
 
 ---
 
@@ -250,7 +250,7 @@ Authoritative results live in `Research/<campaign>/` digests, indexed by
 approval (Notebook link gated on approval per the README drafting
 workflow): `neutral-model-methodology` (flagship), `pure-evo-regime`
 (#1/#2), `coevolution-substrate` (#3/#3c), `RD-robustness` (#4),
-`viability-brackets` (R1) — real figures from `Scans/*/results.csv`;
+`viability-brackets` (R1) — real figures from `Research/*/Scans/*/results.csv`;
 `resource-driving-inverted-U` — skeleton (sweep gated on
 metric-flux/metric-anew); `reaction-diffusion-gallery` — NEW, digest to
 be drafted. Pre-checkpoint campaign results (#1–#4, 3c, R1,

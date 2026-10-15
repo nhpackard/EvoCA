@@ -466,14 +466,16 @@ from evoca_explore import (run_sim, save_scan_config,
                            EVO_METRICS, SPATIAL_METRICS)
 
 # Re-run any scan:
-#   cd Scans/2026-04-27_<name> && python3 scan.py
+#   (initial/refined/push_edges live in Research/Reaction-diffusion/Scans/;
+#    evo_focus in Research/Activity-metrics/Scans/)
+#   cd Research/Reaction-diffusion/Scans/2026-04-27_<name> && python3 scan.py
 
 # Inspect a results.csv:
-with open('Scans/2026-04-27_evo_focus/results.csv') as f:
+with open('Research/Activity-metrics/Scans/2026-04-27_evo_focus/results.csv') as f:
     rows = list(csv.DictReader(f))
 
 # Top configs (default balanced composite score):
-top = evoca_from_scan_top(top_k=5)   # uses most-recent scan dir
+top = evoca_from_scan_top('2026-04-27_evo_focus', top_k=5)   # bare scan name is resolved under Research/*/Scans/
 
 # Top configs by EVO-only or SPATIAL-only:
 top_evo     = evoca_from_scan_top(top_k=5, score_keys=EVO_METRICS,

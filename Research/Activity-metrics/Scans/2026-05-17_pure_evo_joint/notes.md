@@ -8,4 +8,4 @@ excess strongly +ve; optimum = low `mu_lut` + high `m_scale`
 (contradicts the broken-metric 2026-04-27 optimum).
 
 Full analysis → `../2026-05-17_pure_evo_analysis.md`
-Reasoning trail → `../../Docs/devlog/2026-05-17_research-campaigns.md`
+Reasoning trail → `../../../../Docs/devlog/2026-05-17_research-campaigns.md`

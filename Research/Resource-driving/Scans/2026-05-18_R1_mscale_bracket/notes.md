@@ -19,5 +19,5 @@ mu_lut optimum shifts high (top-20 mode 0.15). New mu_lut×m_scale
 interaction; non-monotone U-shaped viability (worst extinction at
 *intermediate* m_scale under food scarcity, lowest at m_scale 5.0).
 
-Full analysis → `../../Docs/devlog/2026-05-17_research-campaigns.md`
+Full analysis → `../../../../Docs/devlog/2026-05-17_research-campaigns.md`
 Reasoning trail / caveats → same devlog section

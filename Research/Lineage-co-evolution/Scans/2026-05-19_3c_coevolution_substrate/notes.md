@@ -28,4 +28,4 @@ only because it froze *GoL* (sparse). **`dyn_excess_pc` is
 uninterpretable for frozen-evolved-substrate arms.** New instance of
 the [[shadow-models-lut-only-mismatch]] family.
 
-Full analysis + adversarial caveats → `../../Docs/devlog/2026-05-17_research-campaigns.md` (#3c section).
+Full analysis + adversarial caveats → `../../../../Docs/devlog/2026-05-17_research-campaigns.md` (#3c section).

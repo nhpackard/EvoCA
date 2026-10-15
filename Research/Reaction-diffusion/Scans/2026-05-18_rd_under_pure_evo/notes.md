@@ -16,5 +16,5 @@ collapse to a **static colony-filling blob** (largest_patch f/m≈1.00,
 ~70 % of grid frozen) and have the **lowest** `dyn_excess` (~5.8) —
 exactly the "suspect the metrics" degenerate cases NP predicted.
 
-Full analysis → `../2026-05-17_pure_evo_analysis.md`
-Reasoning trail → `../../Docs/devlog/2026-05-17_research-campaigns.md`
+Full analysis → `../../../Activity-metrics/Scans/2026-05-17_pure_evo_analysis.md`
+Reasoning trail → `../../../../Docs/devlog/2026-05-17_research-campaigns.md`

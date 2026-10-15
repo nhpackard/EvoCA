@@ -8,4 +8,4 @@ co-evo amplifies rule selection); `mu_lut` optimum is conditional on
 egene (high when frozen, low when co-evolving).
 
 Full analysis → `../2026-05-17_pure_evo_analysis.md`
-Reasoning trail → `../../Docs/devlog/2026-05-17_research-campaigns.md`
+Reasoning trail → `../../../../Docs/devlog/2026-05-17_research-campaigns.md`

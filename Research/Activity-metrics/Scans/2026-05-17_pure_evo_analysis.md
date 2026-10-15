@@ -1,10 +1,10 @@
 # EvoCA Pure-Evolution Campaign Analysis: corrected excess metrics, LUT↔egene co-evolution
 
 **Date**: 2026-05-17 (living document — extended as #3/#4–#8 land)
-**Scans**: `Scans/2026-05-17_pure_evo_joint/`,
-`Scans/2026-05-17_pure_evo_lut_only/`,
-`Scans/2026-05-17_pure_evo_egene_on_winners/` (in flight),
-`Scans/2026-05-17_causal_control_v2/`
+**Scans**: `2026-05-17_pure_evo_joint/`,
+`2026-05-17_pure_evo_lut_only/`,
+`2026-05-17_pure_evo_egene_on_winners/` (in flight; now under `Research/Lineage-co-evolution/Scans/`),
+`2026-05-17_causal_control_v2/`
 **Reasoning trail / per-campaign narrative**:
 `Docs/devlog/2026-05-17_research-campaigns.md`
 **Compute**: torque.protolife.com (32 cores) for scans; local for the
@@ -193,8 +193,11 @@ concrete metaparameter↔metaparameter interaction.
 ## Reproducing
 
 ```bash
-# scans live in Scans/2026-05-17_*/ ; each has scan.py + scan_config.json + results.csv
-cd Scans/2026-05-17_pure_evo_joint && python3 scan.py     # (on a many-core box)
+# scans live in Research/<Workstream>/Scans/2026-05-17_*/ (this file's siblings in
+# Activity-metrics, plus egene_on_winners in Lineage-co-evolution); each has
+# scan.py + scan_config.json + results.csv. Drivers locate the repo root by
+# walking up to C/evoca.h, so they run from any cwd.
+cd Research/Activity-metrics/Scans/2026-05-17_pure_evo_joint && python3 scan.py     # (on a many-core box)
 # ranking: see the analysis snippets in
 #   Docs/devlog/2026-05-17_research-campaigns.md
 ```

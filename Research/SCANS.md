@@ -1,6 +1,11 @@
 # EvoCA Parameter Scans
 
-Each subdirectory `<YYYY-MM-DD>_<name>/` is one scan campaign:
+Each scan campaign is a directory `<YYYY-MM-DD>_<name>/` under its owning
+workstream: `Research/<Workstream>/Scans/<YYYY-MM-DD>_<name>/`. Workstreams
+are listed in `python/evoca_paths.py` (`scans_dir(ws)`, `all_scan_dirs()`
+enumerate them). Scan names are unique across workstreams, so every helper
+also accepts the **bare scan name** (e.g. `'2026-04-27_initial'`) and
+resolves it. Layout of one scan:
 
 ```
 <date>_<name>/
@@ -12,7 +17,8 @@ Each subdirectory `<YYYY-MM-DD>_<name>/` is one scan campaign:
 ```
 
 Top-level cross-scan analyses live as standalone markdown files at
-`Scans/<YYYY-MM-DD>_<name>.md` (e.g. `2026-04-27_three_scan_analysis.md` — a
+`Research/<Workstream>/Scans/<YYYY-MM-DD>_<name>.md` (e.g.
+`Research/Reaction-diffusion/Scans/2026-04-27_scan_analysis.md` — a
 writeup comparing three iterations of a scan campaign with full metric
 definitions, results tables, and diminishing-returns analysis).
 
@@ -20,21 +26,26 @@ The harness module is `python/evoca_explore.py`. `run_sim(params, ...)` runs
 one configuration headless and returns a dict of summary metrics. Drivers
 import that and feed configurations through it; results are gathered to
 CSV. Most public helpers in `evoca_explore` accept `scan_dir=None` and
-will default to the most-recently-modified subdirectory of `Scans/`, so
+will default to the most-recently-modified scan directory across
+`Research/*/Scans/`, so
 you usually don't need to pass it when actively iterating on a campaign.
 
 ## Running a scan from the shell
 
 ```bash
-cd Scans/<date>_<name>
+cd Research/<Workstream>/Scans/<date>_<name>
 python3 scan.py
 ```
+
+Drivers locate the repo root by walking up to the directory containing
+`C/evoca.h` (not by counting directory levels), so they run from any
+working directory.
 
 ## Running a scan from a notebook
 
 ```python
 import sys, os
-SCAN_DIR = 'Scans/2026-04-27_initial'
+SCAN_DIR = 'Research/Reaction-diffusion/Scans/2026-04-27_initial'   # from the repo root
 sys.path.insert(0, 'python')                    # make harness importable
 sys.path.insert(0, SCAN_DIR)                    # make scan.py importable
 import scan                                     # defines main()
@@ -70,7 +81,7 @@ print(metrics)
 
 ```python
 import csv
-with open('Scans/2026-04-27_initial/results.csv') as f:
+with open('Research/Reaction-diffusion/Scans/2026-04-27_initial/results.csv') as f:
     rows = list(csv.DictReader(f))
 # rows[i] is one config's metrics; param_food_inc, correlation_length_mean, etc.
 ```
@@ -83,7 +94,9 @@ For ranking and visualisation, the helpers `evoca_from_scan` and
 
 `evoca_from_scan(scan_dir, config_idx, ...)` reads one CSV row plus the
 scan's `scan_config.json`, builds a recipe dict, and writes a `.evoca`
-file to `Runs/`. That file can then be loaded by `import_run()` and
+file to the scan's workstream `Runs/` directory
+(`Research/<Workstream>/Runs/`; `Research/_unsorted/Runs/` if the scan is not
+under a workstream). That file can then be loaded by `import_run()` and
 launched in the SDL window:
 
 ```python
@@ -94,7 +107,7 @@ from evoca_py import import_run
 from controls import run_with_controls
 
 # Pick by config_idx (matches the 'config_idx' column in results.csv)
-path = evoca_from_scan('Scans/2026-04-27_initial', config_idx=70,
+path = evoca_from_scan('2026-04-27_initial', config_idx=70,       # bare name, resolved under Research/*/Scans/
                        descriptor='large_patch_dynamics',
                        probes={'activity': True, 'q_activity': True,
                                'n_activity': True, 'env_food': True,
@@ -151,7 +164,7 @@ the target by different criteria — each with the same return shape as
 from evoca_explore import nearest_params, nearest_evo, nearest_spatial
 
 # scan_dir is optional — defaults to the most-recently-modified
-# subdirectory under EvoCA/Scans/, so when you have a single live
+# scan directory under Research/*/Scans/, so when you have a single live
 # scan you don't need to pass it.
 
 # Closest in parameter space (Euclidean, axes min-max scaled to [0,1])
@@ -175,7 +188,7 @@ sim, kw = import_run(r[0][1], N=512)
 run_with_controls(sim, **kw)
 
 # To target a specific scan instead of the most-recent:
-r = nearest_params(34, n=5, scan_dir='Scans/2026-04-27_initial', probes={...})
+r = nearest_params(34, n=5, scan_dir='2026-04-27_initial', probes={...})
 ```
 
 The default metric sets are exposed as `EVO_METRICS` and
@@ -186,7 +199,7 @@ By default each call mints its **own** unique subdirectory under
 `/tmp/evoca_scan_neighbors/` (parent constant: `NEAREST_TMP_PARENT`),
 so files from different invocations don't collide and exploring is
 disposable. The chosen path is printed to stdout when verbose=True
-(default). `import_run` reads from any path — copy a winner to `Runs/`
+(default). `import_run` reads from any path — copy a winner to `Research/<Workstream>/Runs/`
 if you want to keep it. To suppress file output entirely, pass
 `write_recipes=False`. To use a fixed location, pass
 `runs_dir='/some/other/path'`.
