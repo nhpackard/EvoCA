@@ -9,7 +9,7 @@ Usage (internal):
 
 ctrl_shm layout (5 × int32)
     [0] quit      1 = exit
-    [1] colormode 0/1/2
+    [1] colormode (index into colormodes.COLOR_MODES)
     [2] step_cnt
     [3] fps × 10
     [4] paused    0/1
@@ -929,7 +929,7 @@ def main():
             print(f"EvoCA SDL: ts SharedMemory open failed: {e}", flush=True)
             ts_shm_name = None
 
-    COLOR_MODES = ["state", "env-food", "priv-food", "births", "age"]
+    from colormodes import COLOR_MODES
 
     # ── SDL2 init ─────────────────────────────────────────────────
     if sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO) != 0:

@@ -415,23 +415,24 @@ The `births` array is set for each child cell (used by colormode 3).
 
 ## Visualization (Color Modes)
 
-Five modes, selectable via dropdown or the `colormode` parameter. Each
+Six modes, selectable via dropdown or the `colormode` parameter. Each
 mode uses ARGB pixel values; alpha is always `0xFF`. All `[0, 1]` floats
 are clamped before the `× 255` cast.
 
 | Mode | Name         | Encodes |
 |------|--------------|---------|
-| 0    | `state`      | alive flag × CA dynamical state, with genome-hash colour |
+| 0    | `genome`     | genome-hash colour (LUT), brightness = CA state; dead black (was named `state` before 2026-10-15) |
 | 1    | `env-food`   | Environmental food on dead cells, private food on alive cells |
 | 2    | `priv-food`  | Private food on alive cells (blue), CA state (red) |
 | 3    | `births`     | Birth events highlighted, modulated by CA state |
 | 4    | `age`        | Cell age via cool→hot log gradient |
+| 5    | `neighborhood` | 3×3 Moore pattern of CA states, 512 hashed colours; all-zero black |
 
-### Mode 0: `state` — genome colour by CA state
+### Mode 0: `genome` — genome colour, brightness by CA state
 
 | | dead | alive, v=0 | alive, v=1 |
 |---|---|---|---|
-| pixel | `0xFF000000` (black) | `0xFF333333` (dark grey) | `lut_color[i]` |
+| pixel | `0xFF000000` (black) | `lut_color[i]` dimmed to ~55% per channel | `lut_color[i]` |
 
 `lut_color[i]` is cached on each cell from an FNV-1a hash of its 32-byte
 LUT. `set_lut_all()` stores the hash of the LUT it loads as the
@@ -513,6 +514,17 @@ $$R = 80 + 175\,v,\quad G = 60 + 560\,v\,(1-v),\quad B = 40 + 180\,(1-v).$$
 
 Useful for spotting long-lived structures vs constant-turnover regions
 in the same window.
+
+### Mode 5: `neighborhood` — Moore pattern of CA states
+
+Each cell is colored by the 9-bit pattern of `v` over its 3×3 Moore
+neighborhood (periodic), bit `(dy+1)*3 + (dx+1)` so the center is bit 4:
+512 patterns, each with a fixed color from a hashed HSV palette (bright,
+saturated; no pattern but all-zero reads as black). This is a pure state
+view: `alive` is ignored, so a dead cell (v=0) next to v=1 cells is
+colored. Tested in `tests/test_colormodes.py` (bit order, wrap, injective
+palette).
+
 
 ---
 
@@ -721,7 +733,7 @@ sim.step()
 
 sim.colorize(pixels, colormode=0)
     # Fill a (N*N,) int32 numpy array with ARGB pixel values.
-    # colormode: 0=state, 1=env-food, 2=priv-food, 3=births
+    # colormode: index into python/colormodes.py COLOR_MODES (0=genome .. 5=neighborhood)
 ```
 
 #### Getters
@@ -854,7 +866,7 @@ notebook cell.  Returns immediately (non-blocking).
 |-------------|-------|----------------|--------------------------------------|
 | `sim`       | EvoCA | (required)     | Initialized EvoCA instance           |
 | `cell_px`   | int   | `sim.cell_px`  | Screen pixels per simulation cell    |
-| `colormode` | int   | 0              | Initial color mode (0/1/2/3)         |
+| `colormode` | int   | 0              | Initial color mode (0–5, see Color Modes) |
 | `paused`    | bool  | False          | Start in paused state                |
 | `probes`    | dict  | None           | Probe names to enable (see [probes.md](probes.md)) |
 
@@ -919,7 +931,7 @@ Main process (Jupyter kernel)
 | Index | Name      | Values                        |
 |-------|-----------|-------------------------------|
 | 0     | quit      | 0 = running, 1 = exit         |
-| 1     | colormode | 0 / 1 / 2                     |
+| 1     | colormode | 0–5 (colormodes.COLOR_MODES)  |
 | 2     | step_cnt  | current time step             |
 | 3     | fps * 10  | FPS scaled for int storage     |
 | 4     | paused    | 0 = running, 1 = paused        |

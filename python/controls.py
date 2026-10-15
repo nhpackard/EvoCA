@@ -46,10 +46,11 @@ import ctypes
 # as the Research notebooks do) or as `python.controls` (repo root on sys.path).
 try:
     from .evoca_py import EGENE_KEY_COUNT, DYN_ACT_COUNT
+    from .colormodes import COLOR_MODES
 except ImportError:
     from evoca_py import EGENE_KEY_COUNT, DYN_ACT_COUNT
+    from colormodes import COLOR_MODES
 
-COLOR_MODES      = ["state", "env-food", "priv-food", "births", "age"]
 _SLIDER_RESUME_S = 0.20   # seconds after last slider touch before auto-resume
 _WORKER          = os.path.join(os.path.dirname(__file__), "sdl_worker.py")
 
@@ -130,7 +131,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     ----------
     sim       : initialised EvoCA instance
     cell_px   : screen pixels per cell (default: sim.cell_px from CELL_PX #define)
-    colormode : initial colour mode (0=state, 1=env-food, 2=priv-food)
+    colormode : initial color mode, index into colormodes.COLOR_MODES
     paused    : if True, start in paused state
     probes    : dict of probe names to enable, e.g. {'env_food': True, 'priv_food': True}
 

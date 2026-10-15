@@ -391,6 +391,7 @@ int   evoca_get_pat_act_ymax(void);
    colormode 3: birth events (yellow=birth, magenta=mutant birth, dim=alive, black=dead)
    colormode 4: cell age (cool→hot log gradient; black=dead) */
 void evoca_colorize(int32_t *pixels, int colormode);
+int  evoca_colormode_count(void);   /* number of modes evoca_colorize handles */
 
 /* ── Accessors ──────────────────────────────────────────────────────── */
 

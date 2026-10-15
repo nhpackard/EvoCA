@@ -302,6 +302,8 @@ class EvoCA:
         L.evoca_colorize.argtypes       = [ctypes.POINTER(ctypes.c_int32),
                                             ctypes.c_int]
         L.evoca_colorize.restype        = None
+        L.evoca_colormode_count.argtypes = []
+        L.evoca_colormode_count.restype  = ctypes.c_int
         L.evoca_get_v.argtypes          = []
         L.evoca_get_v.restype           = ctypes.POINTER(ctypes.c_uint8)
         L.evoca_get_F.argtypes          = []

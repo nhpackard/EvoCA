@@ -4268,11 +4268,67 @@ void evoca_colorize(int32_t *pixels, int colormode)
             }
             break;
         }
+        case 5: {
+            /* Neighborhood: color by the 3x3 Moore pattern of CA states v
+             * (periodic). 9 bits, bit (dy+1)*3+(dx+1), so the center cell
+             * is bit 4 -> 512 colors from a fixed hashed palette; the
+             * all-zero pattern is black. Pure state view: alive is ignored
+             * (dead cells have v=0 but may sit next to v=1 cells). */
+            static int32_t nb_pal[512];
+            static int nb_pal_ready = 0;
+            if (!nb_pal_ready) {
+                nb_pal[0] = (int32_t)0xFF000000;
+                for (int p = 1; p < 512; p++) {
+                    uint32_t h = 2166136261u;            /* FNV-1a */
+                    h = (h ^ (uint32_t)(p & 0xFF)) * 16777619u;
+                    h = (h ^ (uint32_t)(p >> 8))   * 16777619u;
+                    h ^= h >> 15; h *= 0x2c1b3c6du; h ^= h >> 12;
+                    /* HSV with bright, saturated colors so no pattern
+                     * other than 0 reads as black. */
+                    float hue = (float)(h % 3600u) / 600.0f;          /* [0,6) */
+                    float sat = 0.55f + 0.45f * (float)((h >> 12) & 0xFF) / 255.0f;
+                    float val = 0.60f + 0.40f * (float)((h >> 20) & 0xFF) / 255.0f;
+                    int   sec = (int)hue; float f = hue - (float)sec;
+                    float pp = val * (1.0f - sat), q = val * (1.0f - sat * f),
+                          t = val * (1.0f - sat * (1.0f - f));
+                    float r, g, b;
+                    switch (sec) {
+                        case 0:  r = val; g = t;   b = pp;  break;
+                        case 1:  r = q;   g = val; b = pp;  break;
+                        case 2:  r = pp;  g = val; b = t;   break;
+                        case 3:  r = pp;  g = q;   b = val; break;
+                        case 4:  r = t;   g = pp;  b = val; break;
+                        default: r = val; g = pp;  b = q;   break;
+                    }
+                    nb_pal[p] = (int32_t)(0xFF000000u
+                                 | ((uint32_t)(r * 255.0f) << 16)
+                                 | ((uint32_t)(g * 255.0f) <<  8)
+                                 |  (uint32_t)(b * 255.0f));
+                }
+                nb_pal_ready = 1;
+            }
+            int N = gN;
+            for (int row = 0; row < N; row++) {
+                int rm = (row - 1 + N) % N, rp = (row + 1) % N;
+                for (int col = 0; col < N; col++) {
+                    int cm = (col - 1 + N) % N, cp = (col + 1) % N;
+                    int p = (v_curr[rm*N + cm] << 8) | (v_curr[rm*N + col] << 7)
+                          | (v_curr[rm*N + cp] << 6) | (v_curr[row*N + cm] << 5)
+                          | (v_curr[row*N + col] << 4) | (v_curr[row*N + cp] << 3)
+                          | (v_curr[rp*N + cm] << 2) | (v_curr[rp*N + col] << 1)
+                          |  v_curr[rp*N + cp];
+                    pixels[row*N + col] = nb_pal[p];
+                }
+            }
+            break;
+        }
         default:
             for (size_t i = 0; i < cells; i++)
                 pixels[i] = (int32_t)0xFF000000;
     }
 }
+
+int evoca_colormode_count(void) { return 6; }
 
 /* ── Accessors ──────────────────────────────────────────────────── */
 

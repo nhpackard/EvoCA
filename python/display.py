@@ -24,7 +24,10 @@ import numpy as np
 import sdl2
 import sdl2.ext
 
-COLOR_MODES = ["state", "env-food", "priv-food", "births"]
+try:
+    from .colormodes import COLOR_MODES
+except ImportError:
+    from colormodes import COLOR_MODES
 
 
 def run(sim, cell_px=None, colormode=0, steps=-1):
@@ -35,7 +38,7 @@ def run(sim, cell_px=None, colormode=0, steps=-1):
     ----------
     sim       : initialised EvoCA instance
     cell_px   : screen pixels per cell (default: sim.cell_px from C #define)
-    colormode : initial colour mode (0=state, 1=env-food, 2=priv-food)
+    colormode : initial color mode, index into colormodes.COLOR_MODES
     steps     : max steps to run (-1 = unlimited)
     """
     N  = sim.N
