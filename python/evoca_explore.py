@@ -127,7 +127,7 @@ def _spatial_metrics(alive_2d, F_2d):
 _PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff',
                'mu_lut', 'mu_egene', 'mu_egenome', 'p_dup_egene',
                'tax', 'tax_per_egene', 'tax_lut', 'tax_ring',
-               'restricted_mu', 'food_per', 'n_chem')
+               'restricted_mu', 'food_per', 'n_chem', 'food_cap')
 
 
 def init_kwargs(params):
@@ -320,6 +320,10 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
     for k in _PARAM_KEYS:
         if k in params:
             out[f'param_{k}'] = params[k]
+    # Always record the EFFECTIVE mouthful-cap rule (A9 fix, 2026-10-15),
+    # read back from the sim so it cannot disagree with what ran. Scan rows
+    # from before the fix lack this column (they ran uncapped).
+    out['param_food_cap'] = int(sim.food_cap)
     out['N'] = N
     out['n_steps'] = n_steps
     out['seed'] = seed

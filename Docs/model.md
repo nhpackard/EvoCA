@@ -53,6 +53,7 @@ and noted in the table below.
 | `m_scale`       | float | 1.0     | [0, 10]        | Mouthful scale factor for eating                      |
 | `gdiff`         | int   | 0       | [0, 10]        | Food diffusion passes (3x3 box blur) per step         |
 | `food_per`      | int   | 1       | [1, 64]        | Environmental food-regen period. Regen fires every `food_per`-th step, adding `food_inc * food_per` (mean input rate unchanged; lengthens depletion-structure lifetime). 1 = bit-for-bit no-op |
+| `food_cap`      | int   | 1       | non-GUI        | Mouthful cap (A9 fix, 2026-10-15). 1 = mouthful capped at the food present, `min(…, F(x), 1 − f(x))`; 0 = legacy uncapped rule (overdraws `F` when `m_scale·score > 25`), for reproducing pre-fix runs. Identical at `m_scale ≤ 1`. Set via `init(food_cap=…)` or `sim.update_food_cap(c)` |
 | `mu_lut`        | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction      |
 | `mu_egene`      | float | 0.0     | [0, 0.05]      | Per-egene-bit flip probability on reproduction (across all 8×12 = 96 bits per cell — 6 value bits + 6 mask bits per slot — including inactive slots, which drift as pseudogenes) |
 | `mu_egenome`    | float | 0.0     | [0, 0.05]      | Per-active-bit flip probability on reproduction (across the 8 presence bits). Flips that would take Negene to 0 are rejected |
@@ -238,11 +239,25 @@ signed** score across the cell's active egenes:
     score(cell) = max over active s of score(egene[s])
 
 The cell's **mouthful** clamps the negative range away — bad egenes
-don't actively un-eat, they just feed nothing:
+don't actively un-eat, they just feed nothing — and can never exceed
+the food present or the private headroom:
 
-    M(x) = (m_scale / 25) * max(0, score(cell)) * F(x)
+    M(x) = min( (m_scale / 25) * max(0, score(cell)) * F(x),  F(x),  1 - f(x) )
 
-(capped to `1 - f_priv` so private food can't exceed 1).
+(with `F(x)` and `1 - f(x)` floored at 0, so `M(x) >= 0`).
+
+> **2026-10-15 — A9 fix, `food_cap` toggle.** Until this date the rule
+> was `M(x) = (m_scale/25)·max(0,score)·F(x)` capped only by `1 − f(x)`.
+> Since `score ≤ 25`, that stays `≤ F(x)` only when `m_scale ≤ 1`; for
+> `m_scale > 1` a high-scoring cell ate more than was present, driving
+> `F(x)` negative, and the next mouthful from a negative `F` was itself
+> negative, so live cells could hold negative `f(x)` (defect A9,
+> `Docs/Oct2026/06-seeding-findings.md`; guide 08 §2.1). The `F(x)` term
+> in the `min` is the fix. The metaparameter `food_cap` (default 1)
+> selects it; `food_cap=0` restores the legacy rule bit-for-bit for
+> reproducing pre-fix runs and recipes (a recipe without a `food_cap`
+> key imports capped, with a one-line notice when its `m_scale > 1`).
+> At `m_scale ≤ 1` the two rules are identical.
 
 The +1/−1 scoring puts evolutionary pressure on **confident, accurate
 specificity**: declaring "the corner orbit must be 1" is now risky
@@ -349,11 +364,19 @@ cleared. Dead cells are skipped by subsequent phases.
 
 For each alive cell:
 1. Compute fiducial matches (0-25) between 5x5 neighborhood and egenome
-2. `mouthful = (m_scale / 25) * matches * F(x)` (proportional to available food)
-3. Clamp to headroom: `mouthful = min(mouthful, 1.0 - f(x))`
+2. `mouthful = (m_scale / 25) * max(0, score) * F(x)` (proportional to available food)
+3. Clamp to the food present and to headroom (`food_cap=1`, default):
+   `mouthful = min(mouthful, max(F(x), 0), max(1.0 - f(x), 0))`.
+   With `food_cap=0` (legacy, pre-2026-10-15) only the headroom clamp
+   applies, which overdraws `F(x)` when `m_scale·score > 25` (A9; see the
+   eating-score section above).
 4. Transfer: `F(x) -= mouthful`,  `f(x) += mouthful`
 
-Private food f(x) is hard-capped at 1.0.
+Private food f(x) is hard-capped at 1.0; with `food_cap=1`, eating
+keeps `F(x) ≥ 0` and never lowers `f(x)`. Eating is the only withdrawal
+from `F`: regeneration only adds (clamped at 1), diffusion is a convex
+average, tax death clamps `f` to 0, and the reproduction split halves a
+store that is `≥ 1`.
 
 ### Phase 4: Reproduction and Mutation
 
@@ -523,7 +546,8 @@ sim.init(N, food_inc=0.0, m_scale=1.0, gdiff=0,
          mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
          p_dup_egene=1.0,
          tax=0.0, tax_per_egene=0.0, tax_lut=0.0,
-         restricted_mu=0, food_per=1, N_log_interval=1)
+         restricted_mu=0, food_per=1, N_log_interval=1,
+         n_chem=1, food_cap=1)
     # Allocate N x N lattice, set metaparameters.
     # All grids initialized to zero.
 
@@ -545,6 +569,7 @@ sim.update_tax(t)            # float, constant priv-food decrement per step
 sim.update_tax_per_egene(t)  # float, additional decrement per active egene
 sim.update_tax_lut(t)        # float, additional decrement per LUT '1' bit
 sim.update_food_per(p)       # int >=1, env food-regen period (1 = no-op)
+sim.update_food_cap(c)       # 1 = mouthful capped at F (default); 0 = legacy (A9)
 sim.update_N_log_interval(n) # int, ProbeLogs sample interval (Python-side)
 sim.update_restricted_mu(r)  # int (0 or 1)
 sim.update_act_ymax(y)       # int, Y-scale for LUT activity chart

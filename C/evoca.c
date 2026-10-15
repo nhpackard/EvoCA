@@ -184,6 +184,15 @@ static int    gfood_per     = 1;  /* env food-regen PERIOD: regen fires only
                                    * self-generated depletion structure) rises
                                    * with gfood_per. gfood_per=1 => fires every
                                    * step adding gfood_inc: bit-for-bit no-op. */
+static int    gfood_cap     = 1;  /* 1 (default) = cap the Phase-3 mouthful at
+                                   * the food actually present, max(F,0), so
+                                   * F_food can never be overdrawn (A9 fix,
+                                   * Docs/Oct2026/06-seeding-findings.md).
+                                   * 0 = legacy uncapped rule (pre-2026-10-15
+                                   * runs): mouthful = (m/25)*score*F capped
+                                   * only by headroom, which overdraws F when
+                                   * m_scale*score > 25. At m_scale <= 1 the
+                                   * two are bit-for-bit identical. */
 static int    g_diag        = 0; /* diagnostic prints */
 
 /* Restricted mutation: tracks which LUT bit indices are queried each step */
@@ -1362,6 +1371,8 @@ float evoca_get_tax_lut(void)     { return gtax_lut;  }
 float evoca_get_tax_ring(void)    { return gtax_ring; }
 void  evoca_set_food_per(int p)  { gfood_per  = (p < 1) ? 1 : p; }
 int   evoca_get_food_per(void)   { return gfood_per; }
+void  evoca_set_food_cap(int c)  { gfood_cap  = c ? 1 : 0; }
+int   evoca_get_food_cap(void)   { return gfood_cap; }
 void  evoca_set_diag(int d)      { g_diag     = d; }
 int   evoca_get_diag(void)       { return g_diag;    }
 
@@ -1803,7 +1814,23 @@ void evoca_step(void)
             int   eat_score = matches > 0 ? matches : 0;
             float mouthful = (gm_scale / 25.0f) * eat_score * F_food[idx];
             float headroom = 1.0f - f_priv[idx];
-            if (mouthful > headroom) mouthful = headroom;
+            if (gfood_cap) {
+                /* A9 fix: a cell cannot eat more food than is present, nor
+                 * a negative amount. mouthful = min(mouthful, max(F,0),
+                 * max(headroom,0)), so F_food >= 0 and eating never
+                 * lowers f_priv. All downstream accounting (chem store,
+                 * lineage intake, eg_food, g_sum_mouthful, dissipation
+                 * storage) reads this same realised `mouthful`. */
+                float avail = F_food[idx] > 0.0f ? F_food[idx] : 0.0f;
+                if (headroom < 0.0f) headroom = 0.0f;
+                if (mouthful > avail)    mouthful = avail;
+                if (mouthful > headroom) mouthful = headroom;
+            } else {
+                /* Legacy (food_cap=0): headroom-only clamp; overdraws F
+                 * when gm_scale*eat_score > 25. Kept for reproducing
+                 * pre-fix runs bit-for-bit. */
+                if (mouthful > headroom) mouthful = headroom;
+            }
             F_food[idx] -= mouthful;
             /* Intake deposits into the agent's energy compound (compound 0 at
              * N_chem==1); chem_cell_add refreshes the f_priv cache. */
