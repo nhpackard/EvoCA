@@ -188,12 +188,6 @@ static int poisson_sample_from(uint32_t (*next)(void), float lambda)
     return k - 1;
 }
 
-/* Dynamics-stream Poisson sample. */
-static int poisson_sample(float lambda)
-{
-    return poisson_sample_from(rng_next, lambda);
-}
-
 /* ── Grid state ─────────────────────────────────────────────────── */
 
 static int    gN          = 0;
@@ -1679,6 +1673,105 @@ static void diffuse_food_partial(float s)
 
 /* ── Time step ──────────────────────────────────────────────────── */
 
+/* ── Genome mutation operator (one operator, two callers) ──────────
+ *
+ * Applies the Phase-4 child mutation to one genome given by explicit
+ * pointers: a LUT_BYTES LUT, NEGENOME_MAX value and mask bytes, and the
+ * active-slot byte. Called by
+ *   - the real reproduction path (evoca_step Phase 4) with draw=1 and
+ *     next=rng_next: each count is drawn from Poisson at its canonical
+ *     point in the sequence and written back into *c (realized counts);
+ *   - the drift shadow (fs_drift_*) with draw=0 and a shadow stream:
+ *     the counts in *c are REPLAYED (realized counts of a real birth),
+ *     positions are drawn from `next`.
+ * Sequence (unchanged from the pre-refactor inline code, so the real
+ * path consumes the dynamics stream draw-for-draw identically):
+ *   1. nf LUT flips: uniform over [0,LUT_BITS), or over the real run's
+ *      current active_bits when restricted_mu is on (and n_active > 0);
+ *   2. na presence toggles, rejecting any toggle that would make
+ *      Negene = 0;
+ *   3. dup-on-activate: each newly-on slot copies a random active slot's
+ *      (value, mask) with probability gp_dup_egene;
+ *   4. ne value/mask flips over NEGENOME_MAX slots x 12 bits.
+ * Rates are read from globals (gmu_lut, gmu_egenome, gmu_egene) in draw
+ * mode only. */
+typedef struct { int nf, na, ne; } mut_counts_t;
+
+static void genome_mutate(uint8_t *g_lut, uint8_t *g_eg, uint8_t *g_egm,
+                          uint8_t *g_active, mut_counts_t *c, int draw,
+                          uint32_t (*next)(void))
+{
+    /* 1. LUT flips. */
+    int nf;
+    if (grestricted_mu && n_active > 0) {
+        nf = draw ? poisson_sample_from(next, gmu_lut * n_active) : c->nf;
+        for (int f = 0; f < nf; f++)
+            lut_flip(g_lut, active_bits[next() % n_active]);
+    } else {
+        nf = draw ? poisson_sample_from(next, gmu_lut * LUT_BITS) : c->nf;
+        for (int f = 0; f < nf; f++)
+            lut_flip(g_lut, next() % LUT_BITS);
+    }
+
+    /* Egenome mutation pass.
+     * Two rates: gmu_egene (per-egene-bit) and gmu_egenome
+     * (per-active-bit). The egene-bit pass walks all 8x12 bits
+     * uniformly, so inactive-slot bytes also drift (pseudo-gene
+     * reservoir for future activations). The active-bit pass flips
+     * presence bits, with rejection of any flip that would take Negene
+     * to 0. Newly-activated slots may be overwritten with a copy of a
+     * random currently-active egene (gene duplication) before the
+     * egene-bit pass applies; the duplicated copy then picks up fresh
+     * independent point mutations. */
+    uint8_t active_before = *g_active;
+
+    /* 2. Active-bit pass. */
+    int na = draw ? poisson_sample_from(next, gmu_egenome * NEGENOME_MAX)
+                  : c->na;
+    for (int f = 0; f < na; f++) {
+        int b = (int)(next() & 7);
+        uint8_t new_active = *g_active ^ (uint8_t)(1u << b);
+        if (new_active != 0)            /* reject Negene->0 */
+            *g_active = new_active;
+    }
+
+    /* 3. Dup-on-activate: for each newly-on bit, with probability
+     * gp_dup_egene, copy a random currently-active slot's (value, mask)
+     * pair into the new slot. Both bytes copy together so a duplicated
+     * egene retains its parent's wildcard pattern. */
+    uint8_t newly_on = *g_active & ~active_before;
+    while (newly_on) {
+        int s = __builtin_ctz(newly_on);
+        newly_on &= newly_on - 1;
+        uint32_t r16 = next() & 0xFFFFu;
+        uint32_t thr = (uint32_t)(gp_dup_egene * 65536.0f);
+        if (r16 < thr) {
+            int n_act = __builtin_popcount(*g_active);
+            int pick  = (int)(next() % (uint32_t)n_act);
+            uint8_t a2 = *g_active;
+            while (pick-- > 0) a2 &= a2 - 1;
+            int src = __builtin_ctz(a2);
+            g_eg[s]  = g_eg[src];
+            g_egm[s] = g_egm[src];
+        }
+    }
+
+    /* 4. Egene-bit pass: flip every-bit-uniform across all 8 slots x 12
+     * bits (6 value + 6 mask). bits 0..5 hit the value byte, bits 6..11
+     * hit the mask byte (so a value flip and a wildcard-toggle have the
+     * same per-bit rate). */
+    int ne = draw ? poisson_sample_from(next, gmu_egene * NEGENOME_MAX * 12)
+                  : c->ne;
+    for (int f = 0; f < ne; f++) {
+        int slot = (int)(next() & 7);
+        int bit12 = (int)(next() % 12);
+        if (bit12 < 6) g_eg[slot]  ^= (uint8_t)(1u << bit12);
+        else           g_egm[slot] ^= (uint8_t)(1u << (bit12 - 6));
+    }
+
+    c->nf = nf; c->na = na; c->ne = ne;
+}
+
 void evoca_step(void)
 {
     int    N     = gN;
@@ -1984,81 +2077,16 @@ void evoca_step(void)
              * that affects dynamics in this scope, so this line is a pure
              * no-op with respect to simulation output. */
             mu_lut_gene[child] = mu_lut_gene[idx];
-            /* Mutate child's LUT */
-            uint8_t *child_lut = lut + (size_t)child * LUT_BYTES;
-            int nf;
-            if (grestricted_mu && n_active > 0) {
-                nf = poisson_sample(gmu_lut * n_active);
-                for (int f = 0; f < nf; f++)
-                    lut_flip(child_lut, active_bits[rng_next() % n_active]);
-            } else {
-                nf = poisson_sample(gmu_lut * LUT_BITS);
-                for (int f = 0; f < nf; f++)
-                    lut_flip(child_lut, rng_next() % LUT_BITS);
-            }
-
-            /* Egenome mutation pass.
-             * Two rates: gmu_egene (per-egene-bit) and gmu_egenome
-             * (per-active-bit). The egene-bit pass walks all 8×6 bits
-             * uniformly, so inactive-slot bytes also drift (pseudo-
-             * gene reservoir for future activations). The active-bit
-             * pass flips presence bits, with rejection of any flip
-             * that would take Negene to 0. Newly-activated slots may
-             * be overwritten with a copy of a random currently-active
-             * egene (gene duplication) before the egene-bit pass
-             * applies; the duplicated copy then picks up fresh
-             * independent point mutations. */
-            uint8_t active_before = active[child];
-
-            /* Active-bit pass. */
-            int na = poisson_sample(gmu_egenome * NEGENOME_MAX);
-            for (int f = 0; f < na; f++) {
-                int b = (int)(rng_next() & 7);
-                uint8_t new_active =
-                    active[child] ^ (uint8_t)(1u << b);
-                if (new_active != 0)            /* reject Negene→0 */
-                    active[child] = new_active;
-            }
-
-            /* Dup-on-activate: for each newly-on bit, with probability
-             * gp_dup_egene, copy a random currently-active slot's
-             * (value, mask) pair into the new slot. Both bytes copy
-             * together so a duplicated egene retains its parent's
-             * wildcard pattern. */
-            uint8_t newly_on = active[child] & ~active_before;
-            while (newly_on) {
-                int s = __builtin_ctz(newly_on);
-                newly_on &= newly_on - 1;
-                uint32_t r16 = rng_next() & 0xFFFFu;
-                uint32_t thr = (uint32_t)(gp_dup_egene * 65536.0f);
-                if (r16 < thr) {
-                    int n_act = __builtin_popcount(active[child]);
-                    int pick  = (int)(rng_next() % (uint32_t)n_act);
-                    uint8_t a2 = active[child];
-                    while (pick-- > 0) a2 &= a2 - 1;
-                    int src = __builtin_ctz(a2);
-                    egenes[(size_t)child * NEGENOME_MAX + s] =
-                        egenes[(size_t)child * NEGENOME_MAX + src];
-                    egenes_mask[(size_t)child * NEGENOME_MAX + s] =
-                        egenes_mask[(size_t)child * NEGENOME_MAX + src];
-                }
-            }
-
-            /* Egene-bit pass: flip every-bit-uniform across all 8 slots
-             * × 12 bits (6 value + 6 mask). bits 0..5 hit the value
-             * byte, bits 6..11 hit the mask byte (so a value flip and
-             * a wildcard-toggle have the same per-bit rate). */
-            int ne = poisson_sample(gmu_egene * NEGENOME_MAX * 12);
-            for (int f = 0; f < ne; f++) {
-                int slot = (int)(rng_next() & 7);
-                int bit12 = (int)(rng_next() % 12);
-                size_t off = (size_t)child * NEGENOME_MAX + slot;
-                if (bit12 < 6) {
-                    egenes[off] ^= (uint8_t)(1u << bit12);
-                } else {
-                    egenes_mask[off] ^= (uint8_t)(1u << (bit12 - 6));
-                }
-            }
+            /* Mutate the child's genome (LUT + egenome) with the single
+             * shared operator genome_mutate(): draw mode, dynamics stream.
+             * The drift shadow replays these realized counts through the
+             * same function (Docs/shadows.md §5.2). */
+            mut_counts_t mc;
+            genome_mutate(lut + (size_t)child * LUT_BYTES,
+                          egenes + (size_t)child * NEGENOME_MAX,
+                          egenes_mask + (size_t)child * NEGENOME_MAX,
+                          &active[child], &mc, 1, rng_next);
+            int nf = mc.nf, na = mc.na, ne = mc.ne;
 
             /* births: 1 = normal, 2 = mutant */
             int mutated = (nf > 0 || na > 0 || ne > 0);
