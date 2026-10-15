@@ -4026,7 +4026,6 @@ int evoca_dyn_nbuckets(void) { return DYN_NB; }
  * (no RNG). Enabling it cannot change the real trajectory. */
 
 #define DRIFT_MAX_REPS  64
-#define DRIFT_PLANES    24          /* bit-sliced counter depth: 2^24 cells */
 #define MK_NB EGENE_KEY_COUNT       /* marker lives in the 729-key space */
 
 
@@ -4044,6 +4043,48 @@ static uint8_t  *dr_act = NULL;   /* [R*cap] */
 static uint16_t *dr_mk  = NULL;   /* [R*cap] */
 /* Incremental tallies per replicate. */
 static int32_t  *dr_c   = NULL;   /* [R*LUT_BITS] allele-1 counts */
+/* Incremental store behind dr_c: SWAR, two 32-bit lanes per uint64,
+ * [R*DR_CC] with word 4*b+q holding bits 8b+2q (low) and 8b+2q+1 (high)
+ * of LUT byte b. Unpacked into dr_c after every replicate step. */
+#define DR_CC (LUT_BYTES * 4)
+static uint64_t *dr_cc  = NULL;
+static uint64_t  g_spread2[256][4];   /* byte -> 4 two-lane words */
+static uint64_t  g_spread8[256];      /* byte -> 8 one-byte lanes */
+static int16_t   g_tkey[64 * 64];     /* (value, mask) -> ternary key */
+static int       g_drift_tables = 0;
+
+static void drift_build_tables(void)
+{
+    if (g_drift_tables) return;
+    for (int x = 0; x < 256; x++) {
+        uint64_t s8 = 0;
+        for (int j = 0; j < 8; j++)
+            if ((x >> j) & 1) s8 |= (uint64_t)1 << (8 * j);
+        g_spread8[x] = s8;
+        for (int q = 0; q < 4; q++)
+            g_spread2[x][q] = (uint64_t)((x >> (2 * q)) & 1)
+                            | ((uint64_t)((x >> (2 * q + 1)) & 1) << 32);
+    }
+    for (int v = 0; v < 64; v++)
+        for (int m = 0; m < 64; m++)
+            g_tkey[v * 64 + m] = (int16_t)egene_ternary_key((uint8_t)v, (uint8_t)m);
+    g_drift_tables = 1;
+}
+
+static inline int tkey(uint8_t v, uint8_t m)
+{
+    return g_tkey[(v & 0x3F) * 64 + (m & 0x3F)];
+}
+
+static void drift_unpack_c(int r)
+{
+    const uint64_t *cc = dr_cc + (size_t)r * DR_CC;
+    int32_t *c = dr_c + (size_t)r * LUT_BITS;
+    for (int bit = 0; bit < LUT_BITS; bit++) {
+        uint64_t w = cc[bit >> 1];
+        c[bit] = (int32_t)(uint32_t)((bit & 1) ? (w >> 32) : (w & 0xFFFFFFFFu));
+    }
+}
 static int32_t  *dr_e   = NULL;   /* [R*EG_NB] active-egene key counts */
 static int32_t  *dr_m   = NULL;   /* [R*MK_NB] marker key counts */
 static int64_t   dr_T[DRIFT_MAX_REPS];   /* Σ active egenes (= Σ dr_e) */
@@ -4052,6 +4093,10 @@ static double   *dr_A_eg  = NULL;  /* [R*EG_NB] */
 static double   *dr_A_dyn = NULL;  /* [R*DYN_NB] */
 static double   *dr_A_mk  = NULL;  /* [R*MK_NB] */
 static double    dr_negene_sum[DRIFT_MAX_REPS];
+/* Unweighted Σ_t allele frequency per input (run-mean-weight check of the
+ * dyn statistic, §5.4 / Q9): real [250], replicates [R*250]. */
+static double   *dr_Psum  = NULL;
+static double    g_Psum_real[LUT_BITS];
 static double    g_A_eg_real[EG_NB];
 static double    g_A_dyn_real[DYN_NB];   /* design C: n_i * P_i */
 static double    g_A_dynq_real[DYN_NB];  /* design B: queried transitions */
@@ -4098,11 +4143,13 @@ static void fs_drift_free_all(void)
     free(dr_act); dr_act = NULL;
     free(dr_mk);  dr_mk  = NULL;
     free(dr_c);   dr_c   = NULL;
+    free(dr_cc);  dr_cc  = NULL;
     free(dr_e);   dr_e   = NULL;
     free(dr_m);   dr_m   = NULL;
     free(dr_A_eg);  dr_A_eg  = NULL;
     free(dr_A_dyn); dr_A_dyn = NULL;
     free(dr_A_mk);  dr_A_mk  = NULL;
+    free(dr_Psum);  dr_Psum  = NULL;
     free(g_mutlog); g_mutlog = NULL;
     g_mutlog_cap = 0; g_mutlog_n = 0;
     g_drift_on = 0; g_drift_R = 0; g_drift_cap = 0; g_drift_synth = 0;
@@ -4122,14 +4169,19 @@ static int fs_drift_alloc(int R, int cap)
     dr_act = calloc(rc, 1);
     dr_mk  = calloc(rc, sizeof(uint16_t));
     dr_c   = calloc((size_t)R * LUT_BITS, sizeof(int32_t));
+    dr_cc  = calloc((size_t)R * DR_CC, sizeof(uint64_t));
+    drift_build_tables();
     dr_e   = calloc((size_t)R * EG_NB, sizeof(int32_t));
     dr_m   = calloc((size_t)R * MK_NB, sizeof(int32_t));
     dr_A_eg  = calloc((size_t)R * EG_NB,  sizeof(double));
     dr_A_dyn = calloc((size_t)R * DYN_NB, sizeof(double));
     dr_A_mk  = calloc((size_t)R * MK_NB,  sizeof(double));
+    dr_Psum  = calloc((size_t)R * LUT_BITS, sizeof(double));
     g_mutlog = calloc((size_t)cap + 1, sizeof(drift_rec_t));
-    if (!dr_lut || !dr_eg || !dr_egm || !dr_act || !dr_mk || !dr_c || !dr_e
-        || !dr_m || !dr_A_eg || !dr_A_dyn || !dr_A_mk || !g_mutlog) {
+    if (!dr_lut || !dr_eg || !dr_egm || !dr_act || !dr_mk || !dr_c || !dr_cc
+        || !dr_e
+        || !dr_m || !dr_A_eg || !dr_A_dyn || !dr_A_mk || !dr_Psum
+        || !g_mutlog) {
         fs_drift_free_all();
         return -1;
     }
@@ -4147,6 +4199,8 @@ static void fs_drift_reset_accumulators(void)
     if (dr_A_eg)  memset(dr_A_eg,  0, (size_t)R * EG_NB  * sizeof(double));
     if (dr_A_dyn) memset(dr_A_dyn, 0, (size_t)R * DYN_NB * sizeof(double));
     if (dr_A_mk)  memset(dr_A_mk,  0, (size_t)R * MK_NB  * sizeof(double));
+    if (dr_Psum)  memset(dr_Psum,  0, (size_t)R * LUT_BITS * sizeof(double));
+    memset(g_Psum_real, 0, sizeof(g_Psum_real));
     memset(dr_negene_sum, 0, sizeof(dr_negene_sum));
     memset(g_A_eg_real,   0, sizeof(g_A_eg_real));
     memset(g_A_dyn_real,  0, sizeof(g_A_dyn_real));
@@ -4156,9 +4210,10 @@ static void fs_drift_reset_accumulators(void)
     g_drift_steps = 0;
 }
 
-static inline int marker_key(uint16_t m)
+/* Marker ternary key via the (value, mask) table (built at drift alloc). */
+static inline int marker_tkey(uint16_t m)
 {
-    return egene_ternary_key((uint8_t)(m & 0x3F), (uint8_t)((m >> 8) & 0x3F));
+    return g_tkey[(m & 0x3F) * 64 + ((m >> 8) & 0x3F)];
 }
 
 /* Add (sign=+1) or remove (sign=-1) individual j of replicate r from
@@ -4167,13 +4222,21 @@ static void drift_tally(int r, int j, int sign)
 {
     size_t ij = (size_t)r * g_drift_cap + (size_t)j;
     const uint8_t *L = dr_lut + ij * LUT_BYTES;
-    int32_t *c = dr_c + (size_t)r * LUT_BITS;
-    for (int b = 0; b < LUT_BYTES; b++) {
-        uint8_t x = L[b];
-        while (x) {
-            int k = __builtin_ctz(x); x &= (uint8_t)(x - 1);
-            int bit = b * 8 + k;
-            if (bit < LUT_BITS) c[bit] += sign;
+    uint64_t *cc = dr_cc + (size_t)r * DR_CC;
+    /* Lanes never go negative (an individual is removed only after it
+     * was added), so lane-wise add/sub cannot carry or borrow across
+     * lanes. Bits >= LUT_BITS are always 0 in a LUT. */
+    if (sign > 0) {
+        for (int b = 0; b < LUT_BYTES; b++) {
+            const uint64_t *sp = g_spread2[L[b]];
+            cc[4 * b]     += sp[0]; cc[4 * b + 1] += sp[1];
+            cc[4 * b + 2] += sp[2]; cc[4 * b + 3] += sp[3];
+        }
+    } else {
+        for (int b = 0; b < LUT_BYTES; b++) {
+            const uint64_t *sp = g_spread2[L[b]];
+            cc[4 * b]     -= sp[0]; cc[4 * b + 1] -= sp[1];
+            cc[4 * b + 2] -= sp[2]; cc[4 * b + 3] -= sp[3];
         }
     }
     int32_t *e = dr_e + (size_t)r * EG_NB;
@@ -4181,13 +4244,12 @@ static void drift_tally(int r, int j, int sign)
     int n = 0;
     while (a) {
         int s = __builtin_ctz(a); a &= (uint8_t)(a - 1);
-        int key = egene_ternary_key(dr_eg[ij * NEGENOME_MAX + s] & 0x3F,
-                                    dr_egm[ij * NEGENOME_MAX + s] & 0x3F);
-        e[key] += sign;
+        e[tkey(dr_eg[ij * NEGENOME_MAX + s], dr_egm[ij * NEGENOME_MAX + s])]
+            += sign;
         n++;
     }
     dr_T[r] += sign * n;
-    dr_m[(size_t)r * MK_NB + marker_key(dr_mk[ij])] += sign;
+    dr_m[(size_t)r * MK_NB + marker_tkey(dr_mk[ij])] += sign;
 }
 
 static void drift_copy_ind(int r, int dst, int src)
@@ -4205,11 +4267,13 @@ static void drift_copy_ind(int r, int dst, int src)
 static void drift_recount(void)
 {
     memset(dr_c, 0, (size_t)g_drift_R * LUT_BITS * sizeof(int32_t));
+    memset(dr_cc, 0, (size_t)g_drift_R * DR_CC * sizeof(uint64_t));
     memset(dr_e, 0, (size_t)g_drift_R * EG_NB * sizeof(int32_t));
     memset(dr_m, 0, (size_t)g_drift_R * MK_NB * sizeof(int32_t));
     for (int r = 0; r < g_drift_R; r++) {
         dr_T[r] = 0;
         for (int j = 0; j < dr_n[r]; j++) drift_tally(r, j, +1);
+        drift_unpack_c(r);
     }
 }
 
@@ -4261,7 +4325,9 @@ static void drift_rep_step(int r, int D, int B, const drift_rec_t *log, int nlog
         if (B > nlog) B = nlog;
         if (B > g_drift_cap - n) B = g_drift_cap - n;
         int sel = (g_drift_synth && r == 0) ? g_synth_sel_mode : 0;
-        double wmax = (sel == 2) ? 1.0 + g_synth_sel_s : 1.0;
+        double wmax = (sel == 2) ? 1.0 + g_synth_sel_s
+                    : (sel == 1 && g_synth_sel_s < 0.0)
+                      ? pow(1.0 - g_synth_sel_s, (double)g_synth_sel_k) : 1.0;
         /* Without-replacement variant (sel==3): partial Fisher-Yates over
          * a scratch index list of the survivors. */
         int *perm = NULL;
@@ -4300,38 +4366,40 @@ static void drift_rep_step(int r, int D, int B, const drift_rec_t *log, int nlog
         free(perm);
     }
     dr_n[r] = n;
+    drift_unpack_c(r);
     dr_last_births[r] = nb;
     dr_last_nf[r] = snf; dr_last_na[r] = sna;
     dr_last_ne[r] = sne; dr_last_nm[r] = snm;
 }
 
-/* Bit-sliced vertical counter: count allele-1 per LUT bit over all
- * alive cells in O(Np) word ops (no hooks inside the real step). */
+/* Allele-1 count per LUT bit over all alive cells, O(Np) and branch-
+ * free: each LUT byte adds a "spread" word (bit j -> byte lane j) into a
+ * per-byte SWAR accumulator; lanes are flushed into 32-bit counts every
+ * 255 cells, before a lane can overflow. Pure read: no hooks inside the
+ * real step. */
 static void drift_real_allele_counts(int32_t *out)
 {
-    uint64_t P[DRIFT_PLANES][4];
-    memset(P, 0, sizeof(P));
+    uint64_t acc[LUT_BYTES];
+    memset(acc, 0, sizeof(acc));
+    memset(out, 0, LUT_BITS * sizeof(int32_t));
     size_t cells = (size_t)gN * gN;
+    int k = 0;
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) continue;
-        uint64_t x[4];
-        memcpy(x, lut + i * LUT_BYTES, LUT_BYTES);
-        for (int w = 0; w < 4; w++) {
-            uint64_t carry = x[w];
-            for (int j = 0; carry && j < DRIFT_PLANES; j++) {
-                uint64_t t = P[j][w] & carry;
-                P[j][w] ^= carry;
-                carry = t;
+        const uint8_t *L = lut + i * LUT_BYTES;
+        for (int b = 0; b < LUT_BYTES; b++) acc[b] += g_spread8[L[b]];
+        if (++k == 255) {
+            for (int b = 0; b < LUT_BYTES; b++) {
+                for (int j = 0; j < 8 && b * 8 + j < LUT_BITS; j++)
+                    out[b * 8 + j] += (int32_t)((acc[b] >> (8 * j)) & 0xFF);
+                acc[b] = 0;
             }
+            k = 0;
         }
     }
-    for (int bit = 0; bit < LUT_BITS; bit++) {
-        int w = bit >> 6, k = bit & 63;
-        int32_t c = 0;
-        for (int j = 0; j < DRIFT_PLANES; j++)
-            c |= (int32_t)((P[j][w] >> k) & 1u) << j;
-        out[bit] = c;
-    }
+    for (int b = 0; b < LUT_BYTES; b++)
+        for (int j = 0; j < 8 && b * 8 + j < LUT_BITS; j++)
+            out[b * 8 + j] += (int32_t)((acc[b] >> (8 * j)) & 0xFF);
 }
 
 /* Real-side observation at the end of the step: allele counts, egene
@@ -4348,10 +4416,10 @@ static void drift_observe_real(void)
         uint8_t a = active[i];
         while (a) {
             int s = __builtin_ctz(a); a &= (uint8_t)(a - 1);
-            g_real_e[egene_ternary_key(egenes[i * NEGENOME_MAX + s] & 0x3F,
-                                       egenes_mask[i * NEGENOME_MAX + s] & 0x3F)]++;
+            g_real_e[tkey(egenes[i * NEGENOME_MAX + s],
+                          egenes_mask[i * NEGENOME_MAX + s])]++;
         }
-        g_real_m[marker_key(marker[i])]++;
+        g_real_m[marker_tkey(marker[i])]++;
     }
     g_real_np = np;
     drift_real_allele_counts(g_real_c);
@@ -4376,6 +4444,7 @@ static void drift_accumulate(const double *n_q, const uint32_t *q_pop,
         for (int k = 0; k < MK_NB; k++) g_A_mk_real[k] += (double)g_real_m[k];
         for (int i = 0; i < LUT_BITS; i++) {
             double P = (double)g_real_c[i] / Np_ref;
+            g_Psum_real[i] += P;
             g_A_dyn_real[2 * i + 1] += n_q[i] * P;
             g_A_dyn_real[2 * i]     += n_q[i] * (1.0 - P);
         }
@@ -4396,6 +4465,7 @@ static void drift_accumulate(const double *n_q, const uint32_t *q_pop,
         double *Ae = dr_A_eg  + (size_t)r * EG_NB;
         double *Am = dr_A_mk  + (size_t)r * MK_NB;
         double *Ad = dr_A_dyn + (size_t)r * DYN_NB;
+        double *Ps = dr_Psum  + (size_t)r * LUT_BITS;
         if (T > 0) {
             double sc = T_ref / T;
             for (int k = 0; k < EG_NB; k++)
@@ -4406,6 +4476,7 @@ static void drift_accumulate(const double *n_q, const uint32_t *q_pop,
             if (m[k]) Am[k] += scm * (double)m[k];
         for (int i = 0; i < LUT_BITS; i++) {
             double p = (double)c[i] / n;
+            Ps[i] += p;
             Ad[2 * i + 1] += n_q[i] * p;
             Ad[2 * i]     += n_q[i] * (1.0 - p);
         }
@@ -4499,6 +4570,14 @@ void evoca_fs_drift_get(double *eg_real, double *eg_sh, double *dyn_real,
         negene[0] = g_negene_sum_real;
         for (int r = 0; r < R; r++) negene[r + 1] = dr_negene_sum[r];
     }
+}
+
+/* Unweighted Σ_t allele frequencies: real[250], shadow[R*250]. */
+void evoca_fs_drift_get_psum(double *real, double *sh)
+{
+    if (real) memcpy(real, g_Psum_real, sizeof(g_Psum_real));
+    if (sh && g_drift_on)
+        memcpy(sh, dr_Psum, (size_t)g_drift_R * LUT_BITS * sizeof(double));
 }
 
 /* Current tallies (tests): c[R*250], e[R*729], m[R*729], n[R], T[R]. */
@@ -4610,7 +4689,8 @@ int evoca_fs_drift_synth_init(int R, int cap, int n, const uint8_t *lut_in,
 }
 
 /* Selection on replicate 0 (synthetic mode only). mode: 0 none,
- * 1 dyn purifying weight (1-s)^(# allele-1 at loci[0..k)), 2 eg family
+ * 1 dyn weight (1-s)^(# allele-1 at loci[0..k)): s > 0 purifying (keeps
+ * the founder allele 0), s < 0 directional (sweeps allele 1), 2 eg family
  * advantage (1+s), 3 neutral without-replacement parents. */
 void evoca_fs_drift_synth_set_selection(int mode, double s, const int *loci, int k)
 {

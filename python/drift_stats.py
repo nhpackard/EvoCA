@@ -201,20 +201,35 @@ def drift_statistics(acc):
         out['dyn_expression_bias_signed'] = float((Q[1::2] - G[1::2]).sum() / M)
     else:
         out['dyn_expression_bias'] = out['dyn_expression_bias_signed'] = float('nan')
+    # Q9 check: the same consistency statistic with RUN-MEAN query weights
+    # n̄_i (fixed-weight locus test). A material difference from the
+    # contemporaneous version flags a Cov_t(n_i, P_i) term (§5.4).
+    if acc.get('psum_real') is not None and steps > 0:
+        nbar = (G[0::2] + G[1::2]) / steps
+        def _rm(ps):
+            ps = np.asarray(ps, float)
+            o = np.zeros(ps.shape[:-1] + (500,))
+            o[..., 1::2] = nbar * ps
+            o[..., 0::2] = nbar * (steps - ps)
+            return o
+        rm = consistency_stats(_rm(acc['psum_real']), _rm(acc['psum_shadow']))[0]
+        out['dyn_drift_consistency_runmean'] = rm['consistency']
+        out['dyn_drift_z_runmean'] = rm['z']
     out['drift_steps'] = steps
     out['drift_R'] = R
     return out
 
 
 _ACC_ARRAYS = ('eg_real', 'eg_shadow', 'dyn_real', 'dyn_queried', 'dyn_shadow',
-               'marker_real', 'marker_shadow', 'negene_shadow')
+               'marker_real', 'marker_shadow', 'negene_shadow', 'psum_real',
+               'psum_shadow')
 
 
 def window(acc_end, acc_start):
     """Accumulators over (start, end]: elementwise difference."""
     w = {}
     for k in _ACC_ARRAYS:
-        if k in acc_end:
+        if acc_end.get(k) is not None:
             w[k] = np.asarray(acc_end[k]) - np.asarray(acc_start[k])
     w['negene_real'] = acc_end['negene_real'] - acc_start['negene_real']
     w['steps'] = acc_end['steps'] - acc_start['steps']

@@ -72,8 +72,8 @@ def synth_run(seed, R=8, Np=500, b=25, steps=1500, mu_lut=0.0, mu_act=0.0,
     """One synthetic run. Returns an fs_drift_get()-layout dict with
     replicate 0 as 'real' and replicates 1..R as shadows.
 
-    sel_mode: 0 neutral; 1 dyn purifying weight (1-s)^(# allele-1 at
-    `loci`); 2 eg advantage (1+s) for an active egene with orbit-0 digit 2;
+    sel_mode: 0 neutral; 1 dyn weight (1-s)^(# allele-1 at `loci`)
+    (s > 0 purifying, s < 0 directional sweep of allele 1); 2 eg advantage (1+s) for an active egene with orbit-0 digit 2;
     3 neutral with without-replacement parents."""
     L = _lib()
     rng = np.random.default_rng(seed)
@@ -109,10 +109,13 @@ def synth_run(seed, R=8, Np=500, b=25, steps=1500, mu_lut=0.0, mu_act=0.0,
     L.evoca_fs_drift_get(None, eg_sh.ctypes.data_as(P), None, None,
                          dyn_sh.ctypes.data_as(P), None, mk_sh.ctypes.data_as(P),
                          neg.ctypes.data_as(P))
+    psum = np.zeros((Rt, 250))
+    L.evoca_fs_drift_get_psum(None, psum.ctypes.data_as(P))
     steps_done = int(L.evoca_fs_drift_steps())
     L.evoca_fs_drift_disable()
     return {'eg_real': eg_sh[0], 'eg_shadow': eg_sh[1:],
             'dyn_real': dyn_sh[0], 'dyn_queried': None, 'dyn_shadow': dyn_sh[1:],
             'marker_real': mk_sh[0], 'marker_shadow': mk_sh[1:],
+            'psum_real': psum[0], 'psum_shadow': psum[1:],
             'negene_real': neg[1], 'negene_shadow': neg[2:],
             'steps': steps_done, 'R': R}

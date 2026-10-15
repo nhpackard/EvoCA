@@ -435,6 +435,8 @@ class EvoCA:
         L.evoca_fs_drift_reset_accumulators.restype = None
         L.evoca_fs_drift_get.argtypes = [_dp] * 8
         L.evoca_fs_drift_get.restype = None
+        L.evoca_fs_drift_get_psum.argtypes = [_dp, _dp]
+        L.evoca_fs_drift_get_psum.restype = None
         L.evoca_fs_drift_tallies.argtypes = [_i32, _i32, _i32, _i32, _i64]
         L.evoca_fs_drift_tallies.restype = None
         L.evoca_fs_drift_check_tallies.argtypes = []
@@ -1928,8 +1930,9 @@ class EvoCA:
         eg_real[729], eg_shadow[R,729], dyn_real[500] (whole-population
         allele frequencies x real query counts), dyn_queried[500] (real
         queried transitions), dyn_shadow[R,500], marker_real[729],
-        marker_shadow[R,729], negene_real (Σ_t mean Negene),
-        negene_shadow[R], steps, R."""
+        marker_shadow[R,729], psum_real[250] / psum_shadow[R,250]
+        (unweighted Σ_t allele-1 frequency per input), negene_real
+        (Σ_t mean Negene), negene_shadow[R], steps, R."""
         R = self.fs_drift_reps()
         P = ctypes.POINTER(ctypes.c_double)
         a = {'eg_real': np.zeros(729), 'eg_shadow': np.zeros((R, 729)),
@@ -1941,6 +1944,10 @@ class EvoCA:
                 'eg_real', 'eg_shadow', 'dyn_real', 'dyn_queried',
                 'dyn_shadow', 'marker_real', 'marker_shadow', '_neg')])
         neg = a.pop('_neg')
+        a['psum_real'] = np.zeros(250)
+        a['psum_shadow'] = np.zeros((R, 250))
+        self._lib.evoca_fs_drift_get_psum(a['psum_real'].ctypes.data_as(P),
+                                          a['psum_shadow'].ctypes.data_as(P))
         a['negene_real'] = float(neg[0])
         a['negene_shadow'] = neg[1:].copy()
         a['steps'] = int(self._lib.evoca_fs_drift_steps())
