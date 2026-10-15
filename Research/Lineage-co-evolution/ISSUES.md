@@ -32,5 +32,5 @@ The workstream question has two parts: (1) is there adaptive LUT<->egene *coupli
 
 ## Parked
 - Option C/D/E variants of the #8 observable: revisit only if LIN-D1's Option A shows signal that is non-monotone or temporal.
-- Evolving-rate genes (`mu-genome`, A2) as a co-evolution lever: tied to the `mu-genome` branch, outside this workstream until it merges.
+- Evolving-rate genes (`mu-genome`, A2) as a co-evolution lever: A2 storage scaffold merged 2026-10-15 (`get/set_mu_lut_gene`; inherited, not yet mutated or read); the evolvable-rate follow-on is infrastructure work, outside this workstream until it lands.
 - Recipes: none exported; the notebook's example runs are scripted (seeded) rather than saved as `.evoca`, because several need mid-run switches (#3c) or post-init `enable_lineage()` that the recipe format does not appear to capture (not checked in detail).

@@ -51,7 +51,7 @@ see [`research_board_archival.md`](research_board_archival.md).
 
 | # | Workstream | Decision / status |
 |---|---|---|
-| W1-d | Integration | **RESOLVED by N 2026-10-15.** Tier-1 merges after a green combined suite + bit-for-bit default-param parity, one combined review notebook. Tier-2 (`resource-driving`, `mu-genome`, `chem`) stays at N's gate. |
+| W1-d | Integration | **RESOLVED by N 2026-10-15.** Tier-1 merges after a green combined suite + bit-for-bit default-param parity, one combined review notebook. Tier-2 (`resource-driving`, `mu-genome`, `chem`) **merged 2026-10-15** on N's authorization after the same checks (see Dev branches). |
 | W1-a | Activity-metrics | **Proceeding on default** (review §3e): add A_new / z-scores as ranking *options* without changing `EVO_METRICS` defaults (the new-activity choice is the §7 candidates' job); keep legacy excess for comparability. Override any time. |
 | W1-b | Activity-metrics | **Proceeding on default:** keep the p90 neutral threshold for A_new and record p99 alongside. Override any time. |
 | W1-c | Activity-metrics (eff_activity) | **Proceeding on default:** keep the per-cell used-mask diagnostic (+8.4 MB @N=512) as **opt-in**. Override any time. |
@@ -129,11 +129,11 @@ a scan/run program using already-built tools; *infra* = no workstream.
 
 | Code | Plain meaning | Kind | Status / blocker |
 |---|---|---|---|
-| C1 | `food_per`: temporal regeneration period for food | built | branch `resource-driving`; Tier-2, N's gate |
-| C2/L2 | float `env_mask` + relaxation toward mask; spatial gradient niches | needs dev | follows C1, same branch |
+| C1 | `food_per`: temporal regeneration period for food | built | **merged** 2026-10-15 (`c9ecf32`) |
+| C2/L2 | float `env_mask` + relaxation toward mask; spatial gradient niches | needs dev | new branch from `main` (C1 merged) |
 | L1 | dissipation accountant: sum of tax + death + overflow; per-capita throughput Φ (the §B x-axis) | built | **merged** 2026-10-15 (`5de867d`) |
 | §B figure | scan summary of outcome vs `food_inc` and `food_inc/tax` (the inverted-U test); needs B1/B2 notebook | campaign | blocked on L1 + G1 merging |
-| C3 | "temporal lumpiness gives evolutionary opportunity?" as a falsifiable campaign | campaign | blocked on C1 merging |
+| C3 | "temporal lumpiness gives evolutionary opportunity?" as a falsifiable campaign | campaign | unblocked (C1 merged); RES-N5 |
 
 ### Lineage-co-evolution
 
@@ -151,9 +151,9 @@ Old #8 (binary-indicator lineage metric, on hold) is superseded by D2 + H1.
 |---|---|---|---|
 | A1 | env/agent two-dict metaparam split (derived from one recipe) | built | **merged** 2026-10-15 (`5de867d`) |
 | A3 | `model.md` Phase 2c: add the `tax_ring` term (doc fix) | built | **merged** 2026-10-15 (`5de867d`) |
-| A2 | `mu-genome`: per-cell rate-gene storage (mutation off), later evolvable rates | built (storage only); rest needs dev | branch `mu-genome`; Tier-2, N's gate |
-| E1/E3 | chem branch: N_chem machinery (sparse store, N_chem=1 parity) | built (milestone 1) | branch `chem`; Tier-2 |
-| E2 | chem milestone 2: food + waste (N_chem=2), needs a reaction-execution engine | needs dev | blocked on milestone-1 merge; high risk |
+| A2 | `mu-genome`: per-cell rate-gene storage (mutation off), later evolvable rates | built (storage only); rest needs dev | storage **merged** 2026-10-15 (`28e28be`); evolvable rates need dev |
+| E1/E3 | chem branch: N_chem machinery (sparse store, N_chem=1 parity) | built (milestone 1) | **merged** 2026-10-15 (`702143a`), N_chem=1 only |
+| E2 | chem milestone 2: food + waste (N_chem=2), needs a reaction-execution engine | needs dev | new branch from `main`; high risk |
 
 ### Criticality-bifurcation (carried 2026-07-22)
 
@@ -240,7 +240,7 @@ Source: [`Resource-driving/ISSUES.md`](Resource-driving/ISSUES.md)
 _Updated 2026-10-15_
 
 #### Decisions needed (N)
-- **RES-D1**: Gate for the Tier-2 branch `resource-driving` (C1 `food_per`; C2/L2 float `env_mask` and spatial gradient niches follow on the same branch) — options: (a) review in the /tmp worktree with a pre-merge test notebook and bit-for-bit parity at `food_per=1`, then merge; (b) leave on the branch until RES-N1 shows the high-resource flank needs richer structure to be rescued. Recommendation: do RES-N1 on `main` now (needs no branch code), and review the branch in parallel, since C3 and every spatial-niche experiment are blocked on it. Blocks: RES-N5 (C3), RES-N6 (C2/L2). Source: `Docs/Oct2026/00-review-of-prompt1.md`, board W1-d.
+- **RES-D1** (resolved 2026-10-15): N authorized the Tier-2 merge; `resource-driving` (C1 `food_per`) is on `main` after bit-for-bit parity at `food_per=1`. Record: `Docs/Oct2026/01-branch-review.md`, Tier-2 section.
 - **RES-D2**: Evolution arms for the RES-N1 campaign — options: (a) LUT-only (`mu_egene = mu_egenome = 0`), where `A_new` is well posed; (b) joint LUT + egene as in R1 and the checkpoint's two "exception" hypotheses, where `A_new` is not well posed (RES-Q3) and only the fixed-space `eg_excess` / `dyn_excess` and eff-activity are interpretable; (c) both as separate arms. Recommendation: (c), with (a) as the primary inverted-U figure. Blocks: RES-N1 design freeze.
 
 #### Open questions
@@ -257,14 +257,14 @@ _Updated 2026-10-15_
 - **RES-N2**: Promote `digests/resource-driving-inverted-U.ipynb` from skeleton to a result digest after RES-N1: raw vs excess overlay against the ratio and against Phi, 0.013 window marked, markers encode other scan params (LB2); add the adaptive-fraction readout `excess/raw` (B2). Kind: analysis; blocked on RES-N1.
 - **RES-N3**: Adaptive-vs-drift test on the RES-N1 sweep (H1): lineage net return (D2, merged) plus `A_new` plus shadow-beating test at starved/intermediate/rich ratios. Kind: analysis; cross-workstream with Lineage-co-evolution and Activity-metrics; blocked on RES-N1.
 - **RES-N4**: Add Phi and the dissipation breakdown to the interactive `ts` probe (it currently logs `t,pop,F_env,f_priv,lut_div,eg_ent,activity_flux`; no dissipation column) so a run can be watched crossing from the starved to the rich flank in the SDL/notebook UI. Kind: needs dev (small, python/controls.py plus C getter already exists); no blocker.
-- **RES-N5**: C3 campaign: does temporal lumpiness of the food field create evolutionary opportunity? With `food_per` > 1 (C1), hold mean `F_env` fixed while raising its temporal/spatial variance and test whether excess activity rises at the *rich* ratio, where uniform regeneration gives drift. Prediction and negative-result reading in checkpoint section C. Kind: campaign; blocked on RES-D1 (branch merge).
-- **RES-N6**: C2/L2: float `env_mask` ceiling plus relaxation toward the mask (LB3 option (a)), and a spatial source/sink gradient; test whether a more efficient lineage extends the viable distance from the source (checkpoint section L item 2). Kind: needs dev (same branch as C1); blocked on RES-D1.
+- **RES-N5**: C3 campaign: does temporal lumpiness of the food field create evolutionary opportunity? With `food_per` > 1 (C1), hold mean `F_env` fixed while raising its temporal/spatial variance and test whether excess activity rises at the *rich* ratio, where uniform regeneration gives drift. Prediction and negative-result reading in checkpoint section C. Analysis caveat: with `food_per` > 1 the per-step dissipation scalars `run_sim` samples every `sample_every` steps (`diss_*_step_*`, `diss_phi_*`) alias with the regen period, so use the `*_cum_final` totals or pick `sample_every` deliberately relative to `food_per`. Kind: campaign; unblocked (C1 merged 2026-10-15).
+- **RES-N6**: C2/L2: float `env_mask` ceiling plus relaxation toward the mask (LB3 option (a)), and a spatial source/sink gradient; test whether a more efficient lineage extends the viable distance from the source (checkpoint section L item 2). Kind: needs dev (new branch from `main`; the `resource-driving` branch was merged and deleted); no blocker.
 - **RES-N7**: Localize the viability threshold `ratio_crit(tax)` by bisection at several `tax` levels (the pilot shows extinction-to-viable between ratio 0.3 and 0.4 at `tax` 0.035; near-threshold runs are highly sensitive to the random stream: in the pilot the same seed gave 21 cells inside `run_sim` and 255 when the identical configuration was stepped by hand, because the per-sample activity/shadow updates consume the C PRNG; use replicate seeds and report the extinction fraction). It is the cheapest direct test of the ratio hypothesis (RES-Q4). Kind: campaign (small); no blocker.
 
 #### Parked
-- Food + waste model (checkpoint LB6 / E2: waste with its own `W_env` field as a mechanism that keeps selection alive at abundance): belongs to the `chem` branch (Tier-2), not this workstream until chem merges.
+- Food + waste model (checkpoint LB6 / E2: waste with its own `W_env` field as a mechanism that keeps selection alive at abundance): belongs to chem milestone 2 (E2, needs a reaction engine; chem milestone 1 merged 2026-10-15 as N_chem=1 scaffolding only), not this workstream.
 - Motility / navigating a gradient (M1): deferred by N on 2026-07-19; characterize sessile EvoCA first. Not re-pitched here.
-- Per-agent evolvable `tax` (A2, mu-genome): would let harsh environments evolve low-tax agents (N's section A response); infrastructure, tracked on the board, not this workstream.
+- Per-agent evolvable `tax` (A2, mu-genome): would let harsh environments evolve low-tax agents (N's section A response); infrastructure (A2 storage scaffold merged 2026-10-15; the gene is not yet read or mutated), tracked on the board, not this workstream.
 
 ### Lineage-co-evolution
 
@@ -303,7 +303,7 @@ The workstream question has two parts: (1) is there adaptive LUT<->egene *coupli
 
 #### Parked
 - Option C/D/E variants of the #8 observable: revisit only if LIN-D1's Option A shows signal that is non-monotone or temporal.
-- Evolving-rate genes (`mu-genome`, A2) as a co-evolution lever: tied to the `mu-genome` branch, outside this workstream until it merges.
+- Evolving-rate genes (`mu-genome`, A2) as a co-evolution lever: A2 storage scaffold merged 2026-10-15 (`get/set_mu_lut_gene`; inherited, not yet mutated or read); the evolvable-rate follow-on is infrastructure work, outside this workstream until it lands.
 - Recipes: none exported; the notebook's example runs are scripted (seeded) rather than saved as `.evoca`, because several need mid-run switches (#3c) or post-init `enable_lineage()` that the recipe format does not appear to capture (not checked in detail).
 
 ### Reaction-diffusion
@@ -407,8 +407,9 @@ default-param parity). Six branches in `5de867d`; `lineage-return` in
 `6548106` after fixing a pre-existing `enable_lineage()` call-order
 segfault (`fadb242`). Branch refs deleted. Record:
 [`../Docs/Oct2026/01-branch-review.md`](../Docs/Oct2026/01-branch-review.md).
-Tier-2 (`resource-driving`, `mu-genome`, `chem`) stays at N's gate.
-Sketches below are plans, not commitments.
+**Tier-2 merged 2026-10-15** (N-authorized "if bug free"): `resource-driving`
+`c9ecf32`, `mu-genome` `28e28be`, `chem` `702143a` (two chem fixes; see the
+record). Branch refs deleted. Sketches below are plans, not commitments.
 
 ### Activity-metrics
 
@@ -423,9 +424,8 @@ Sketches below are plans, not commitments.
 ### Resource-driving
 
 - `metric-flux` (L1): **merged** `5de867d` 2026-10-15.
-- `resource-driving` (72adb59, C1): Tier-2. Claims `food_per` off = no-op:
-  verify bit-for-bit parity, add a pre-merge test notebook, N reviews in a
-  `/tmp` worktree and decides. C2/L2 continue on the branch after C1 merges.
+- `resource-driving` (C1): **merged** `c9ecf32` 2026-10-15. C2/L2 (RES-N6)
+  start on a new branch from `main`; C3 (RES-N5) is unblocked.
 
 ### Lineage-co-evolution
 
@@ -439,15 +439,15 @@ Sketches below are plans, not commitments.
 ### Infrastructure
 
 - `env-agent-split` (A1/A3): **merged** `5de867d` 2026-10-15.
-- `mu-genome` (6c0a360, A2 storage): Tier-2. Storage-first with mutation off;
-  parity check + test notebook; N's gate. Distribution-seeding assay and
-  evolvable rates are follow-on branches/commits.
+- `mu-genome` (A2 storage): **merged** `28e28be` 2026-10-15. The gene is
+  inherited but not mutated or read; the distribution-seeding assay and
+  evolvable rates are follow-on branches.
 
 ### Chem (no workstream dir until results exist)
 
-- `chem` (74cb1e5, E1/E3 milestone 1): Tier-2. N_chem=1 parity + sparse
-  store; parity check + test notebook; N's gate. Milestone 2 (E2) continues
-  on the branch afterward.
+- `chem` (E1/E3 milestone 1): **merged** `702143a` 2026-10-15 (N_chem=1 only;
+  fixes: `stamp_patch` chem-store resync, `chem_energy` clamped to 1).
+  Milestone 2 (E2) starts on a new branch from `main`.
 
 ### Other branches
 
@@ -496,6 +496,16 @@ program and had silently dropped several tracked threads. Triage (N):
 
 ## Log (newest first)
 
+- **2026-10-15** — **Tier-2 merged.** `resource-driving` (C1 `food_per`),
+  `mu-genome` (A2 rate-gene storage) and `chem` (E1/E3 milestone 1) rebased
+  onto main and merged (`c9ecf32`, `28e28be`, `702143a`): 88 tests (from 68),
+  clean `-Wall`, parity probe BAD 0 / IDENTICAL after each (viable fixture,
+  alive 0.34). Two chem bugs fixed with regression tests shown to fail
+  without the fix: `stamp_patch` wrote `f_priv` behind the chem store (host
+  food leaked into stamped organisms), and `chem_energy != 1` broke the
+  energy identity. New params `food_per`, `n_chem` added to `_PARAM_KEYS`
+  with run_sim reachability tests. Merge-test notebooks in
+  `tests/notebooks/`. Record: `Docs/Oct2026/01-branch-review.md`.
 - **2026-10-15** — **Research restructure + workstream seeding.** Top-level
   Runs/Scans eliminated -> `Research/<WS>/{Runs,Scans,digests}` (names kept;
   `python/evoca_paths.py`; drivers find root by marker; drafts in digests/).

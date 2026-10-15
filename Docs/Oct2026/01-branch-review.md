@@ -15,9 +15,9 @@ session.
 | `eff-activity` (F1) | **merged** | `5de867d` |
 | `env-agent-split` (A1/A3) | **merged** | `5de867d` |
 | `lineage-return` (D2) | **merged after fix** `fadb242` | `6548106` |
-| `resource-driving` (C1) | Tier 2: waiting for N's gate | — |
-| `mu-genome` (A2) | Tier 2: waiting for N's gate | — |
-| `chem` (E1/E3) | Tier 2: waiting for N's gate | — |
+| `resource-driving` (C1) | **merged** (Tier 2) | `c9ecf32` |
+| `mu-genome` (A2) | **merged** (Tier 2) | `28e28be` |
+| `chem` (E1/E3) | **merged after two fixes** (Tier 2) | `702143a` |
 | `research-drafts` | merges with the Research restructure (drafts move into `Research/<WS>/digests/`) | — |
 | `bigLUT` | archival, kept | — |
 | `softmouth`, `pre6todo` | deleted locally and on origin (N's OK). `pre6todo` was one test-cell commit from Mar 16, recoverable as `d413c18` | — |
@@ -129,3 +129,131 @@ For each Tier-2 branch:
 3. Run the suite.
 4. Add a pre-merge test notebook.
 5. N reviews in a `/tmp` worktree and decides.
+
+## Tier 2 merge record (2026-10-15)
+
+N authorized merging the three Tier-2 branches "if they seem bug free". All
+three were merged, `chem` after two fixes.
+
+### Summary
+
+| Branch | Verdict | Merge | Notes |
+|---|---|---|---|
+| `resource-driving` (C1) | merged | `c9ecf32` | conflict with metric-flux resolved; `food_per` in `_PARAM_KEYS` |
+| `mu-genome` (A2) | merged | `28e28be` | storage only; added pytest coverage (branch had none) |
+| `chem` (E1/E3) | merged after fixes | `702143a` | two bugs fixed; `n_chem` in `_PARAM_KEYS` and recipes |
+
+- Tests: 68 → **88**, all green after each step.
+- `make` with `-Wall`: no warnings after each step.
+- Parity probe vs pre-merge `main` (`86d80e1`) after each step: **BAD 0,
+  trajectory IDENTICAL**, no new or lost keys. The fixture was viable
+  (not extinct, both seeds; final alive density 0.338).
+- Step time at N=256 unchanged within noise (about 2.4 ms/step before and
+  after; the chem store adds 72 B/cell, about 19 MB at N=512).
+
+### Method
+
+1. Created the `/tmp/evoca_tier2` worktree on `main`.
+2. Cherry-picked each one-commit branch in order (`resource-driving`,
+   `mu-genome`, `chem`), resolving conflicts and adding tests, then reran the
+   build, the suite and the parity probe.
+3. Rebuilt the history as one `--no-ff` merge commit per branch and
+   fast-forwarded `main`.
+
+### `resource-driving` (C1, `food_per`)
+
+- **Conflict with metric-flux (Phase 2).** The Phase-2 body is now gated on
+  `g_step % food_per == 0` and adds `inc = food_inc*food_per`. The flux
+  accountant's `g_source_step` and the overflow sink count `inc` on firing
+  steps. At `food_per=1`, `inc == food_inc` exactly.
+- **Energy identity.** It holds every step at `food_per=6`; a test was added.
+- **Reachability.** `food_per` was added to `_PARAM_KEYS`. A `run_sim` test
+  checks that the cumulative source equals `food_inc·K·cells·fires`. It
+  **fails without the `_PARAM_KEYS` entry**.
+- **Feature-on smoke test.** With `run_sim` at `food_per=8`, every dynamic
+  scalar moves. At 300 steps the cumulative source is 37 fires × 8, not 300
+  steps' worth.
+- **Caveat for N (analysis, not a bug).** The per-step `diss_*_step_*` and
+  `diss_phi_*` scalars that `run_sim` samples every `sample_every` steps
+  alias with the regen period. Use the `*_cum_final` totals. This is recorded
+  in RES-N5.
+
+### `mu-genome` (A2, rate-gene storage)
+
+- **Review.** The array is always allocated and freed. It is seeded to
+  `mu_lut` with no RNG use, copied at reproduction, and never read by the
+  dynamics.
+- **Tests.** The branch had none, so `tests/test_mu_lut_gene.py` was added.
+  It checks seeding, inertness (a wild gene field leaves the full state
+  bit-identical) and inheritance without mutation.
+- **Caveat.** `extract_patch`/`stamp_patch` do not carry the gene, so stamped
+  cells keep the host slot's value. This is harmless while the gene is
+  unread, but it must be added when the gene starts to matter. The
+  dead-cell setters also leave the gene in place.
+
+### `chem` (E1/E3 milestone 1)
+
+**Conflicts with metric-flux and lineage-return (tax and eating).** Tax and
+intake now go through `chem_cell_add`. The flux `f_before`, the dissipation
+sinks and the lineage accumulators are kept.
+
+The branch's own golden-snapshot test, captured before the Tier-1 merges,
+still passes bit-for-bit.
+
+**Bug 1: `stamp_patch` bypassed the chem store.**
+- *Cause.* `python/evoca_py.py: stamp_patch` writes `f_priv` straight
+  through the `evoca_get_f()` pointer. With chem, the sparse store is the
+  storage of record, so the next `chem_cell_add` (the tax) restored the
+  host cell's old private food into the stamped organism.
+- *Effect.* An overwrite stamp onto a host fed at f=0.8 left 64 of 64
+  stamped cells alive after one step. On `main` it leaves 0, since stamped
+  cells start at f=0 and are taxed to death.
+- *Scope.* Invade mode onto dead ground was unaffected, because the store
+  was already 0 there.
+- *Fix.* New `evoca_chem_sync_from_f()`, called at the end of
+  `stamp_patch`.
+- *Test.* The regression test **fails with the call removed**.
+- *Rule going forward.* Any future Python write through `evoca_get_f()`
+  must also call `evoca_chem_sync_from_f()`.
+
+**Bug 2: `set_chem_energy` accepted weights other than 1.**
+- *Cause.* Intake, tax, the split and the eating headroom move amounts. A
+  weight of 2 on compound 0 therefore let f exceed 1.
+- *Effect.* It broke the dissipation energy identity: the residual was about
+  2e3 over 50 steps, against 3e-5 at weight 1.
+- *Fix.* Milestone 1 now clamps the weight to 1.0 with a stderr notice,
+  mirroring `set_n_chem`. Milestones 2–3 must define energy-weighted intake
+  before lifting this.
+- *Test.* The regression test **fails without the clamp**.
+
+**Parameters.** `n_chem` was added to:
+- `_PARAM_KEYS`;
+- `params()`, `_DEFAULTS` and the recipe `metaparams_init`/`_final`.
+
+The `run_sim` reachability test (`n_chem=4` reaches the C setter, which
+prints its clamp notice) **fails without the `_PARAM_KEYS` entry**.
+
+**Feature-on smoke test.** Only `N_chem=1` exists at milestone 1, so there is
+no "on" state beyond the clamp checks above.
+
+### Files relocated
+
+- Merge-test notebooks went from the repo root to `tests/notebooks/`:
+  `resource-driving-test.ipynb`, `mu-genome-test.ipynb`,
+  `chem-test.ipynb`.
+- Each now finds the repo root via the `C/evoca.h` marker and was executed
+  with outputs.
+- The `resource-driving` notebook no longer writes a PNG into the repo root.
+- `chem-test.ipynb` gained a cell for the `stamp_patch` fix.
+- `Docs/plan-chem.md` stays in `Docs/`. There is no Chem workstream dir until
+  there are results.
+- None of the branches wrote to `Runs/` or `Scans/`.
+
+### Deferred / for N
+
+- **Lab notebook snapshot.** `Research/Resource-driving/Resource-driving.ipynb`
+  still shows the pre-merge RES-D1/N5/N6 text as a snapshot. `ISSUES.md` and
+  the board are updated.
+- **C2/L2 (RES-N6) and chem milestone 2 (E2)** were planned to continue on
+  their branches. Those branches are now merged and deleted, so each needs a
+  new branch from `main`.
