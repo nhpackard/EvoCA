@@ -252,3 +252,30 @@ def test_run_sim_always_records_effective_food_cap():
     r = run_sim(dict(food_inc=0.015, m_scale=2.0, tax=0.01), n_steps=10,
                 sample_every=10, N=16, seed=1, shadow=False)
     assert r['param_food_cap'] == 1
+
+
+def test_evoca_from_scan_pre_fix_rows_reproduce_uncapped(tmp_path):
+    """A scan row with no param_food_cap ran uncapped; its recipe must
+    carry food_cap=0 so import_run reproduces it. Rows that recorded
+    the column keep their value."""
+    import csv, json
+    from evoca_explore import evoca_from_scan
+    scan = tmp_path / '2026-01-01_old'
+    scan.mkdir()
+    import shutil, evoca_paths
+    real = next(d for d in evoca_paths.all_scan_dirs()
+                if os.path.exists(os.path.join(d, "scan_config.json")))
+    shutil.copy(os.path.join(real, 'scan_config.json'), scan / 'scan_config.json')
+    base = {'config_idx': 0, 'param_food_inc': '0.01', 'param_m_scale': '3.0',
+            'param_tax': '0.03'}
+    rows = [base, dict(base, config_idx=1, param_food_cap='1')]
+    with open(scan / 'results.csv', 'w', newline='') as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[1]))
+        w.writeheader()
+        w.writerow(dict(rows[0], param_food_cap=''))
+        w.writerow(rows[1])
+    out = tmp_path / 'runs'
+    r0 = json.load(open(evoca_from_scan(str(scan), 0, runs_dir=str(out))))
+    r1 = json.load(open(evoca_from_scan(str(scan), 1, runs_dir=str(out))))
+    assert r0['metaparams_init']['food_cap'] == 0
+    assert r1['metaparams_init']['food_cap'] == 1

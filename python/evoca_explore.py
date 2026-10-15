@@ -576,6 +576,11 @@ def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
         v = _row_param_value(row, k)
         if v != '':
             metaparams[k] = v
+    # Scans recorded before the A9 fix have no param_food_cap column: they
+    # ran the legacy uncapped mouthful, so the recipe must say so to
+    # reproduce them (correct the data here, at load time).
+    if 'food_cap' not in metaparams:
+        metaparams['food_cap'] = 0
 
     if runs_dir is None:
         runs_dir = evoca_paths.runs_dir_for_scan(scan_dir)
