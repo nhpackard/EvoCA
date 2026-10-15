@@ -257,6 +257,21 @@ int  evoca_lineage_enabled(void);
 void evoca_get_lineage_parent_hash(uint32_t *out);  /* out[N*N] */
 void evoca_get_lineage_birth_id(uint64_t *out);     /* out[N*N] */
 void evoca_get_lineage_parent_id(uint64_t *out);    /* out[N*N] */
+
+/* ── Per-lineage net metabolic return reducer (checkpoint §D2) ────────
+ * Also gated by evoca_enable_lineage(); zero-cost when lineage is OFF.
+ * Net return of a lineage (keyed by full-genome FNV-1a hash) = cumulative
+ * intake by its members − cumulative tax paid by its members, accumulated
+ * over the whole run and retained after extinction. */
+void   evoca_lineage_return_update(void);   /* refresh pop_count/last_step */
+int    evoca_lineage_return_count(void);    /* # distinct lineages         */
+int    evoca_get_lineage_return(uint32_t *hash, double *intake, double *tax,
+                                uint64_t *births, uint32_t *pop,
+                                uint32_t *first_step, uint32_t *last_step);
+double evoca_get_lineage_intake_total(void);
+double evoca_get_lineage_tax_total(void);
+void   evoca_get_lineage_intake(double *out); /* out[N*N] per-cell, this life */
+void   evoca_get_lineage_tax(double *out);    /* out[N*N] per-cell, this life */
 void evoca_get_lut_hashes(uint32_t *out);           /* out[N*N] LUT-only FNV-1a */
 
 /* ── Egenome activity tracking ─────────────────────────────────────── */

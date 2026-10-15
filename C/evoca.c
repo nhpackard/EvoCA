@@ -258,6 +258,53 @@ static uint64_t *lin_birth_id    = NULL; /* [N*N] this cell's birth id    */
 static uint64_t *lin_parent_id   = NULL; /* [N*N] parent's birth id       */
 static uint64_t  g_birth_counter = 0;    /* monotonic; 0 == "no birth"    */
 
+/* ── Per-lineage net metabolic return reducer (checkpoint §D2/§B/§H) ──
+ * Opt-in, gated by the same g_lineage_on flag as the lineage record.
+ * "Net return" of a lineage = cumulative mouthful eaten by its members −
+ * cumulative tax paid by its members. A "lineage" is keyed by the full-
+ * genome FNV-1a hash (lut_hash_cache) — the same genome identity the
+ * activity tracker uses and the same value stored in lin_parent_hash, so
+ * parent→child chains and the reducer agree on what a lineage is.
+ *
+ * Two layers, one accumulation site each in the tax and eating phases:
+ *   (1) per-cell life accumulators lin_intake_cell / lin_tax_cell — the
+ *       intake and tax attributable to each cell over its *current* life
+ *       (reset to 0 when a cell is born into the slot); and
+ *   (2) a persistent genome-hash-keyed reducer table (lret_*) that
+ *       accumulates over the *whole run* and survives cell death/rebirth,
+ *       so extinct lineages keep their final net-return and extinction
+ *       step. Unlike the activity table it is never compacted (opt-in, so
+ *       history retention is the point).
+ *
+ * Hot-path cost: the per-step tax/eating sites only touch the per-cell
+ * arrays (cheap, no hashing). The hash table is touched only at cell
+ * *death* (flush the departing cell's life accumulators into its genome's
+ * bucket — dead_intake/dead_tax) and at *export* (fold every live cell's
+ * running accumulators into live_intake/live_tax, recomputed each call).
+ * Reported intake = dead_intake + live_intake, so a lineage's cumulative
+ * return is always complete whether its members are alive or extinct.
+ * When lineage is OFF none of this is allocated and every site is a
+ * single perfectly-predicted branch — zero observable cost. */
+static double   *lin_intake_cell = NULL;  /* [N*N] intake this life        */
+static double   *lin_tax_cell    = NULL;  /* [N*N] tax paid this life      */
+static double    g_lin_intake_total = 0.0;/* run-cumulative intake (all)   */
+static double    g_lin_tax_total    = 0.0;/* run-cumulative tax   (all)    */
+
+typedef struct {
+    double   dead_intake;/* intake flushed from members that have died    */
+    double   dead_tax;   /* tax    flushed from members that have died     */
+    double   live_intake;/* intake of current live members (set on update)*/
+    double   live_tax;   /* tax    of current live members (set on update)*/
+    uint64_t births;     /* number of births into this genome             */
+    uint32_t pop_count;  /* current live population (refreshed on update) */
+    uint32_t first_step; /* step this genome first appeared               */
+    uint32_t last_step;  /* most recent step with pop>0 (extinction proxy)*/
+} lret_entry_t;
+static uint32_t     *lret_keys = NULL;    /* genome hash (0 == empty slot) */
+static lret_entry_t *lret_vals = NULL;
+static int           lret_cap  = 0;
+static int           lret_cnt  = 0;
+
 /* Per-step demography counters (used by the neutral shadow). A "birth" is
  * any successful reproduction event; a "death" is either a tax death or
  * the eviction of an alive cell by an overwriting reproduction. So
@@ -971,6 +1018,76 @@ static inline void cell_rehash(int i)
 
 /* ── Lifecycle ──────────────────────────────────────────────────── */
 
+/* ── Per-lineage net-return reducer: table helpers ─────────────────
+ * Open-addressing hash table keyed by full-genome FNV-1a hash, mirroring
+ * the activity table but never compacted (extinct lineages are retained).
+ * Only touched when g_lineage_on. Key 0 is the empty sentinel; a genome
+ * that genuinely hashes to 0 is remapped to 1 (negligible, same trick the
+ * hash color path already tolerates). */
+static void lret_reset(void)
+{
+    free(lret_keys); lret_keys = NULL;
+    free(lret_vals); lret_vals = NULL;
+    lret_cap = 0;
+    lret_cnt = 0;
+    g_lin_intake_total = 0.0;
+    g_lin_tax_total    = 0.0;
+    if (!g_lineage_on) return;
+    lret_cap  = 1024;
+    lret_keys = calloc((size_t)lret_cap, sizeof(uint32_t));
+    lret_vals = calloc((size_t)lret_cap, sizeof(lret_entry_t));
+}
+
+static void lret_resize(void)
+{
+    int new_cap = lret_cap * 2;
+    uint32_t     *nk = calloc((size_t)new_cap, sizeof(uint32_t));
+    lret_entry_t *nv = calloc((size_t)new_cap, sizeof(lret_entry_t));
+    for (int i = 0; i < lret_cap; i++) {
+        if (lret_keys[i] == 0u) continue;
+        uint32_t slot = lret_keys[i] % (uint32_t)new_cap;
+        while (nk[slot] != 0u) slot = (slot + 1) % (uint32_t)new_cap;
+        nk[slot] = lret_keys[i];
+        nv[slot] = lret_vals[i];
+    }
+    free(lret_keys); free(lret_vals);
+    lret_keys = nk; lret_vals = nv; lret_cap = new_cap;
+}
+
+static lret_entry_t *lret_find_or_insert(uint32_t key)
+{
+    if (key == 0u) key = 1u;                 /* fold the sentinel away */
+    if (lret_cnt * 10 >= lret_cap * 7) lret_resize();
+    uint32_t slot = key % (uint32_t)lret_cap;
+    while (lret_keys[slot] != 0u) {
+        if (lret_keys[slot] == key) return &lret_vals[slot];
+        slot = (slot + 1) % (uint32_t)lret_cap;
+    }
+    lret_keys[slot] = key;
+    lret_entry_t *e = &lret_vals[slot];
+    e->dead_intake = 0.0; e->dead_tax = 0.0;
+    e->live_intake = 0.0; e->live_tax = 0.0;
+    e->births = 0;
+    e->pop_count = 0; e->first_step = g_step; e->last_step = g_step;
+    lret_cnt++;
+    return e;
+}
+
+/* Flush a dying cell's life accumulators into its genome's bucket (using
+ * the cell's current genome hash, i.e. before any death/rebirth rehash),
+ * then reset the per-cell accumulators. No-op when lineage is off. */
+static void lret_flush_cell(size_t i)
+{
+    if (!lret_keys) return;
+    if (lin_intake_cell[i] != 0.0 || lin_tax_cell[i] != 0.0) {
+        lret_entry_t *e = lret_find_or_insert(lut_hash_cache[i]);
+        e->dead_intake += lin_intake_cell[i];
+        e->dead_tax    += lin_tax_cell[i];
+    }
+    lin_intake_cell[i] = 0.0;
+    lin_tax_cell[i]    = 0.0;
+}
+
 void evoca_init(int N, float food_inc, float m_scale)
 {
     evoca_free();
@@ -999,7 +1116,11 @@ void evoca_init(int N, float food_inc, float m_scale)
         lin_parent_hash = calloc(cells, sizeof(uint32_t));
         lin_birth_id    = calloc(cells, sizeof(uint64_t));
         lin_parent_id   = calloc(cells, sizeof(uint64_t));
+        /* Per-lineage net-return: per-cell life accumulators. */
+        lin_intake_cell = calloc(cells, sizeof(double));
+        lin_tax_cell    = calloc(cells, sizeof(double));
     }
+    lret_reset();               /* (re)allocate the reducer table if on */
     g_birth_counter = 0;
     env_mask = malloc(cells * sizeof(uint8_t));
     memset(env_mask, 1, cells);   /* default: all sites regenerate */
@@ -1061,6 +1182,12 @@ void evoca_free(void)
     free(lin_parent_hash); lin_parent_hash = NULL;
     free(lin_birth_id);    lin_birth_id    = NULL;
     free(lin_parent_id);   lin_parent_id   = NULL;
+    free(lin_intake_cell); lin_intake_cell = NULL;
+    free(lin_tax_cell);    lin_tax_cell    = NULL;
+    free(lret_keys);       lret_keys = NULL;
+    free(lret_vals);       lret_vals = NULL;
+    lret_cap = 0; lret_cnt = 0;
+    g_lin_intake_total = 0.0; g_lin_tax_total = 0.0;
     free(env_mask);  env_mask  = NULL;
     free(alive);     alive     = NULL;
     evoca_activity_free();
@@ -1454,10 +1581,21 @@ void evoca_step(void)
              * f_priv (which then clamps to 0), so the removed amount is
              * the pre-tax f_priv, not the full nominal t. */
             float f_before = f_priv[i];
+            /* Per-lineage net return: accumulate this cell's tax into its
+             * cheap per-cell life accumulator (no hashing on the hot
+             * path). It is folded into the lineage table lazily — at
+             * export (if still alive) or at death (flushed below). */
+            if (g_lineage_on && t != 0.0f) {
+                lin_tax_cell[i] += (double)t;
+                g_lin_tax_total += (double)t;
+            }
             f_priv[i] -= t;
             if (f_priv[i] <= 0.0f) {
                 g_diss_tax_step += (double)f_before;
                 f_priv[i] = 0.0f;
+                /* Tax death: flush this cell's life accumulators into its
+                 * genome bucket before the LUT is zeroed and rehashed. */
+                if (g_lineage_on) lret_flush_cell(i);
                 alive[i] = 0;
                 g_deaths_last++;
                 /* Death: zero out LUT and clear active mask so the
@@ -1491,6 +1629,14 @@ void evoca_step(void)
             if (mouthful > headroom) mouthful = headroom;
             F_food[idx] -= mouthful;
             f_priv[idx] += mouthful;
+            /* Per-lineage net return: accumulate the realised mouthful
+             * (post-headroom-clamp = actual food moved) into this cell's
+             * cheap per-cell life accumulator; folded into the lineage
+             * table lazily at export/death (no hashing on the hot path). */
+            if (g_lineage_on && mouthful != 0.0f) {
+                lin_intake_cell[idx] += (double)mouthful;
+                g_lin_intake_total += (double)mouthful;
+            }
             /* eg_food: split mouthful equally across max-match
              * winners (option-c attribution). Each share goes into
              * the winner's ternary-key bucket so wildcard-different
@@ -1551,6 +1697,9 @@ void evoca_step(void)
                  * when the child overwrites it below → sink (b). */
                 g_diss_death_step += (double)f_priv[child];
                 g_deaths_last++;
+                /* Flush the evicted occupant's life accumulators into its
+                 * (old) genome bucket before its slot is overwritten. */
+                if (g_lineage_on) lret_flush_cell((size_t)child);
             }
             alive[child] = 1;
             g_births_last++;
@@ -1688,6 +1837,12 @@ void evoca_step(void)
                 lin_parent_hash[child] = lut_hash_cache[idx];
                 lin_parent_id[child]   = lin_birth_id[idx];
                 lin_birth_id[child]    = bid;
+                /* Per-lineage net return: the child begins a fresh life,
+                 * so its per-cell accumulators reset. Count this birth
+                 * against the child's (post-mutation) genome lineage. */
+                lin_intake_cell[child] = 0.0;
+                lin_tax_cell[child]    = 0.0;
+                lret_find_or_insert(lut_hash_cache[child])->births++;
             }
 
             /* v_curr is dynamical state, not genome — do not copy */
@@ -1865,12 +2020,25 @@ int evoca_get_population(void)
 }
 
 /* ── Opt-in lineage record API (research-directions §1) ──────────────
- * Call evoca_enable_lineage(1) BEFORE evoca_init for the arrays to be
- * allocated and Phase-4 writes to happen. Default OFF: zero added work
- * in the hot path and no memory used. */
+ * Set before evoca_init, the arrays are allocated there. Set on an
+ * already-initialized lattice, they are allocated here (current cells
+ * become founders: no recorded parent, empty life accumulators) — the
+ * hot path gates on g_lineage_on alone, so the flag must never be on
+ * while the arrays are NULL. Default OFF: zero added work in the hot
+ * path and no memory used. */
 void evoca_enable_lineage(int on)
 {
     g_lineage_on = on ? 1 : 0;
+    if (g_lineage_on && alive && !lin_parent_hash) {
+        size_t cells = (size_t)gN * gN;
+        lin_parent_hash = calloc(cells, sizeof(uint32_t));
+        lin_birth_id    = calloc(cells, sizeof(uint64_t));
+        lin_parent_id   = calloc(cells, sizeof(uint64_t));
+        lin_intake_cell = calloc(cells, sizeof(double));
+        lin_tax_cell    = calloc(cells, sizeof(double));
+        lret_reset();
+        g_birth_counter = 0;
+    }
 }
 
 int evoca_lineage_enabled(void)
@@ -1930,6 +2098,100 @@ void evoca_get_lineage_parent_id(uint64_t *out)
         return;
     }
     for (size_t i = 0; i < cells; i++) out[i] = lin_parent_id[i];
+}
+
+/* ── Per-lineage net metabolic return reducer API (checkpoint §D2) ────
+ * The per-step tax/eating phases accumulate each cell's intake and tax
+ * into cheap per-cell arrays (zero-cost when lineage off). Dead members'
+ * accumulators are flushed into their genome bucket at death; live
+ * members' accumulators are folded in by evoca_lineage_return_update(),
+ * which also refreshes pop_count and stamps last_step (the extinction
+ * proxy) — call it once per step (or before each export) to keep the
+ * live intake/tax and extinction step current. The accessors below then
+ * export the table (reported intake/tax = dead + live) so Python can
+ * build a per-lineage net-return trajectory. */
+void evoca_lineage_return_update(void)
+{
+    if (!lret_keys || !alive || !lut_hash_cache) return;
+    size_t cells = (size_t)gN * gN;
+    /* Recompute the live contribution from scratch each call: reset the
+     * live fields and pop_count, then fold every alive cell's running
+     * life accumulators into its genome bucket. dead_intake/dead_tax are
+     * untouched (only death flushes into them), so no double counting. */
+    for (int i = 0; i < lret_cap; i++) {
+        if (lret_keys[i] == 0u) continue;
+        lret_vals[i].pop_count   = 0;
+        lret_vals[i].live_intake = 0.0;
+        lret_vals[i].live_tax    = 0.0;
+    }
+    for (size_t i = 0; i < cells; i++) {
+        if (!alive[i]) continue;
+        lret_entry_t *e = lret_find_or_insert(lut_hash_cache[i]);
+        e->pop_count++;
+        e->live_intake += lin_intake_cell[i];
+        e->live_tax    += lin_tax_cell[i];
+    }
+    for (int i = 0; i < lret_cap; i++)
+        if (lret_keys[i] != 0u && lret_vals[i].pop_count > 0)
+            lret_vals[i].last_step = g_step;
+}
+
+/* Number of distinct lineages recorded so far (sizes the export arrays). */
+int evoca_lineage_return_count(void)
+{
+    return lret_cnt;
+}
+
+/* Export the persistent per-lineage reducer into caller-provided arrays,
+ * each of length evoca_lineage_return_count(). Any pointer may be NULL to
+ * skip that column. net = intake − tax is left to the caller. Returns the
+ * number of rows written. */
+int evoca_get_lineage_return(uint32_t *hash, double *intake, double *tax,
+                             uint64_t *births, uint32_t *pop,
+                             uint32_t *first_step, uint32_t *last_step)
+{
+    if (!lret_keys) return 0;
+    int n = 0;
+    for (int i = 0; i < lret_cap; i++) {
+        if (lret_keys[i] == 0u) continue;
+        lret_entry_t *e = &lret_vals[i];
+        if (hash)       hash[n]       = lret_keys[i];
+        if (intake)     intake[n]     = e->dead_intake + e->live_intake;
+        if (tax)        tax[n]        = e->dead_tax    + e->live_tax;
+        if (births)     births[n]     = e->births;
+        if (pop)        pop[n]        = e->pop_count;
+        if (first_step) first_step[n] = e->first_step;
+        if (last_step)  last_step[n]  = e->last_step;
+        n++;
+    }
+    return n;
+}
+
+/* Run-cumulative intake / tax over all lineages (independent totals used
+ * to cross-check that the reducer decomposition is complete). */
+double evoca_get_lineage_intake_total(void) { return g_lin_intake_total; }
+double evoca_get_lineage_tax_total(void)    { return g_lin_tax_total;    }
+
+/* Copy per-cell current-life intake / tax accumulators into out[N*N].
+ * All zeros when lineage is disabled. */
+void evoca_get_lineage_intake(double *out)
+{
+    size_t cells = (size_t)gN * gN;
+    if (!lin_intake_cell) {
+        for (size_t i = 0; i < cells; i++) out[i] = 0.0;
+        return;
+    }
+    for (size_t i = 0; i < cells; i++) out[i] = lin_intake_cell[i];
+}
+
+void evoca_get_lineage_tax(double *out)
+{
+    size_t cells = (size_t)gN * gN;
+    if (!lin_tax_cell) {
+        for (size_t i = 0; i < cells; i++) out[i] = 0.0;
+        return;
+    }
+    for (size_t i = 0; i < cells; i++) out[i] = lin_tax_cell[i];
 }
 
 void evoca_get_ages(int32_t *out)

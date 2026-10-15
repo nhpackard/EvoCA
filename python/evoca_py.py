@@ -443,6 +443,30 @@ class EvoCA:
         L.evoca_get_lineage_parent_id.argtypes = [
             ctypes.POINTER(ctypes.c_uint64)]
         L.evoca_get_lineage_parent_id.restype  = None
+        # Per-lineage net metabolic return reducer (checkpoint §D2)
+        L.evoca_lineage_return_update.argtypes = []
+        L.evoca_lineage_return_update.restype  = None
+        L.evoca_lineage_return_count.argtypes  = []
+        L.evoca_lineage_return_count.restype   = ctypes.c_int
+        L.evoca_get_lineage_return.argtypes = [
+            ctypes.POINTER(ctypes.c_uint32),   # hash
+            ctypes.POINTER(ctypes.c_double),   # intake
+            ctypes.POINTER(ctypes.c_double),   # tax
+            ctypes.POINTER(ctypes.c_uint64),   # births
+            ctypes.POINTER(ctypes.c_uint32),   # pop
+            ctypes.POINTER(ctypes.c_uint32),   # first_step
+            ctypes.POINTER(ctypes.c_uint32)]   # last_step
+        L.evoca_get_lineage_return.restype  = ctypes.c_int
+        L.evoca_get_lineage_intake_total.argtypes = []
+        L.evoca_get_lineage_intake_total.restype  = ctypes.c_double
+        L.evoca_get_lineage_tax_total.argtypes = []
+        L.evoca_get_lineage_tax_total.restype  = ctypes.c_double
+        L.evoca_get_lineage_intake.argtypes = [
+            ctypes.POINTER(ctypes.c_double)]
+        L.evoca_get_lineage_intake.restype  = None
+        L.evoca_get_lineage_tax.argtypes = [
+            ctypes.POINTER(ctypes.c_double)]
+        L.evoca_get_lineage_tax.restype  = None
         # Egenome activity
         L.evoca_eg_activity_update.argtypes  = []
         L.evoca_eg_activity_update.restype   = None
@@ -1324,10 +1348,16 @@ class EvoCA:
 
     # ── Opt-in lineage record (research-directions §1) ───────────────
     def enable_lineage(self, on=True):
-        """Toggle the opt-in per-cell lineage record. Must be called
-        BEFORE init() to take effect (the C arrays are allocated in
-        evoca_init only when the flag is set). Default OFF -> zero
-        added cost in the CA hot path."""
+        """Toggle the opt-in per-cell lineage record on an initialized
+        lattice (cells alive now become founders). To record from step 0,
+        pass init(..., lineage=True) instead. Calling this before init()
+        raises: init() sets the flag from its own `lineage` kwarg, so a
+        pre-call would be silently undone. Default OFF -> zero added cost
+        in the CA hot path."""
+        if not getattr(self, '_N', 0):
+            raise RuntimeError(
+                "enable_lineage() before init() would be overridden by "
+                "init(lineage=False); use init(..., lineage=True)")
         self._lib.evoca_enable_lineage(1 if on else 0)
 
     def lineage_enabled(self):
@@ -1371,6 +1401,87 @@ class EvoCA:
         out = np.zeros(self._N * self._N, dtype=np.uint64)
         self._lib.evoca_get_lineage_parent_id(
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)))
+        return out.reshape(self._N, self._N)
+
+    # ── Per-lineage net metabolic return reducer (checkpoint §D2) ─────
+    def lineage_return_update(self):
+        """Refresh each lineage's live pop_count and extinction step.
+        Call once per step (or periodically) to keep last_step current.
+        No-op when lineage is disabled."""
+        self._lib.evoca_lineage_return_update()
+
+    def get_lineage_return(self, update=True):
+        """Return the per-lineage net-return reducer as a structured
+        numpy array, one row per distinct genome-hash lineage seen so far
+        (including extinct ones — the table is never compacted).
+
+        Fields: hash (uint32 full-genome FNV-1a), intake, tax, net
+        (= intake − tax, all float64 cumulative over the run), births
+        (uint64), pop (uint32 current live count), first_step, last_step
+        (uint32; last_step is the extinction-step proxy — the most recent
+        step the lineage had a live member as of the last update).
+
+        Net return of a lineage = cumulative mouthful eaten by its members
+        − cumulative tax paid by its members. Sampling this each step (and
+        keying by hash) builds the per-lineage net-return trajectory the
+        §D punctuation detector and §H adaptive-vs-drift program need.
+
+        With update=True (default) pop_count/last_step are refreshed first.
+        Returns an empty array when lineage is disabled."""
+        if update:
+            self._lib.evoca_lineage_return_update()
+        n = int(self._lib.evoca_lineage_return_count())
+        dt = np.dtype([('hash', np.uint32), ('intake', np.float64),
+                       ('tax', np.float64), ('net', np.float64),
+                       ('births', np.uint64), ('pop', np.uint32),
+                       ('first_step', np.uint32), ('last_step', np.uint32)])
+        if n == 0:
+            return np.empty(0, dtype=dt)
+        h  = np.zeros(n, dtype=np.uint32)
+        ic = np.zeros(n, dtype=np.float64)
+        tx = np.zeros(n, dtype=np.float64)
+        bi = np.zeros(n, dtype=np.uint64)
+        pp = np.zeros(n, dtype=np.uint32)
+        fs = np.zeros(n, dtype=np.uint32)
+        ls = np.zeros(n, dtype=np.uint32)
+        m = int(self._lib.evoca_get_lineage_return(
+            h.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            ic.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            tx.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            bi.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+            pp.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            fs.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+            ls.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))))
+        out = np.empty(m, dtype=dt)
+        out['hash'] = h[:m]; out['intake'] = ic[:m]; out['tax'] = tx[:m]
+        out['net'] = ic[:m] - tx[:m]
+        out['births'] = bi[:m]; out['pop'] = pp[:m]
+        out['first_step'] = fs[:m]; out['last_step'] = ls[:m]
+        return out
+
+    def lineage_return_totals(self):
+        """Return (intake_total, tax_total): run-cumulative intake and tax
+        summed over all lineages. Independent counters that must equal the
+        column sums of get_lineage_return() (a completeness cross-check)."""
+        return (float(self._lib.evoca_get_lineage_intake_total()),
+                float(self._lib.evoca_get_lineage_tax_total()))
+
+    def get_lineage_intake(self):
+        """Return (N, N) float64 of each cell's cumulative intake over its
+        *current* life (reset to 0 when the cell is (re)born). All zeros
+        when lineage is disabled."""
+        out = np.zeros(self._N * self._N, dtype=np.float64)
+        self._lib.evoca_get_lineage_intake(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
+        return out.reshape(self._N, self._N)
+
+    def get_lineage_tax(self):
+        """Return (N, N) float64 of each cell's cumulative tax paid over
+        its *current* life (reset to 0 when the cell is (re)born). All
+        zeros when lineage is disabled."""
+        out = np.zeros(self._N * self._N, dtype=np.float64)
+        self._lib.evoca_get_lineage_tax(
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
         return out.reshape(self._N, self._N)
 
     def activity_crossings(self, decile_lo=2, decile_hi=3, window=8,
