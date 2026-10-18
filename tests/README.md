@@ -91,3 +91,17 @@ The Channon neutral shadow draws from its own RNG stream (derived from the seed 
 
 - `test_lut_hash_is_egene_invariant_and_correct` — changing only the egenome leaves every lut-hash unchanged (the property the combined hash fails); uniform GoL LUT hashes to the independent Python FNV mirror.
 - `test_lut_hash_tracks_lut_change` — changing the LUT changes every cell's hash, matching the independent FNV mirror.
+
+## Drift shadow + neutral marker — `test_drift_shadow.py` (Docs/shadows.md §5–7, §13)
+
+- `test_drift_and_marker_do_not_perturb_trajectory` — drift R=8/3, marker, Channon: real lattice hashes identical to drift off.
+- `test_run_sim_modes_bit_identical_on_common_keys` — `fs_shadow` tracking/drift/both (+marker): every shared key identical.
+- `test_fs_shadow_modes_reach_run_sim`, `test_fs_resync_and_marker_mu_reach_run_sim` — modes, `fs_reps`, `fs_resync`, `marker_mu` take effect; not in `_PARAM_KEYS`; invalid mode raises.
+- `test_drift_keys_reproducible_with_seed`, `test_replicate_streams_distinct_and_seeded` — P5; replicates on distinct streams.
+- `test_demography_and_flip_replay_match_real[restricted]` — each step every replicate has the real births/deaths, replays the real nf / na+ne, n_r == alive; tallies == recount.
+- `test_real_allele_counts_match_recount` — SWAR real-side counts == numpy recount; marker keys.
+- `test_c_replicates_match_python_reference` — C replicates == `python/drift_ref.py`, tally for tally, 1000 steps.
+- `test_clonal_frozen_run_reads_exactly_zero` — all μ=0: every drift statistic 0, p=1.
+- `test_synthetic_strong_selection_is_detected_and_neutral_is_not` — strong selection hits the rank-p floor.
+- `test_forced_output_fixture_purifying_detected_at_target`, `test_forced_output_fixture_sweep_detected_two_sided` — constructed EvoCA fixtures (§7(b)); sweeps read negative one-sided, caught by TV.
+- `test_measurement_block_in_recipes`, `test_evoca_from_scan_writes_measurement` — scan config / recipe v4 `measurement` block round-trip.

@@ -1053,3 +1053,171 @@ and `dyn-shadow-frozen-rich-substrate`.
 - Background for §5–6 (standard population genetics, not specific papers): Wright–Fisher
   and Moran neutral models; mutation–drift balance (θ); genetic draft and hitchhiking
   under linkage.
+
+---
+
+## 13. Implementation (branch `drift-shadow`, 2026-10-18)
+
+### 13.0 Summary first
+
+- **Built as designed**, with N's §8 decisions: design C for dyn, `fs_shadow` ∈ {tracking, drift,
+  both} (`run_sim` default `'both'`, C default off), neutral marker trait, R = 8 default,
+  per-replicate streams, parents with replacement, cumulative-from-enable plus a last window,
+  contemporaneous query weights, Channon untouched, `*_concentration_*` aliases for the tracking
+  keys. One mutation operator, `genome_mutate`, is called by the real path (draw mode) and by the
+  shadow (replay mode). The pure refactor was committed and parity-checked first.
+- **Parity:** `tools/parity_probe.py` (food_cap 0) vs `main` 3598e08: trajectory IDENTICAL, BAD 0 on
+  all 84 common keys, after the refactor and again with the drift shadow on by default. Drift on/off,
+  marker on/off and Channon on/off leave the real lattice bit-identical (pytest).
+- **Synthetic validation passes** for the primary statistics (calibration at R = 19, power above the
+  §7(b) targets), **except** the per-bucket |z|>3 ≤ 1 % criterion.
+- **Two design findings the doc did not anticipate:**
+  1. *One-sided statistics miss sweeps.* A directional sweep that completes inside the window splits
+     cumulative activity between the old and the new component. `dyn_drift_consistency` and
+     `*_drift_concentration` therefore read it **negative** (power 0.00–0.01). I added a two-sided
+     test, `*_drift_tv_z` / `*_drift_tv_p` (power 0.67–0.85 on sweeps).
+  2. *The panmictic shadow is misspecified for EvoCA's demography.* The frozen-clonal marker null
+     fails: a marker that nothing reads scores concentration z −4 to −18. Measured cause: real
+     lineages carry 1.1–2.2× the shadow's mutation load. EvoCA's life history is age/state
+     structured, so newborn lineages have higher reproductive value than uniform parent choice
+     gives them. The one-sided tests stay conservative (0 % rejections) but are strongly biased
+     negative. The two-sided TV test always rejects on EvoCA.
+- **EvoCA verdict:** no evolving run (JOINT, LUT_only, pure-evo winner; 4 seeds each, N=128,
+  5,000 steps, R=19) shows one-sided `eg` or `dyn` drift excess. All read negative, in the bias
+  direction. Against the in-run marker floor, `eg` is above the floor in 4/4 JOINT seeds
+  (+0.38 to +1.56 log-Simpson) and 2/4 winner seeds: suggestive, not established. `dyn` has no
+  marker floor. `negene_drift` = −0.46 to −0.86 is the one robust selection reading, because it
+  opposes the bias. Fixing finding 2 is the gating item for ACT-D1 (§13.6).
+
+### 13.1 What was built
+
+| Piece | Where | Notes |
+|---|---|---|
+| `genome_mutate(lut, eg, egm, active, counts, draw, next)` | `C/evoca.c` | Draw mode draws each Poisson count at its original point in the sequence, so the real stream is draw-for-draw unchanged. Replay mode takes the counts |
+| `marker_mutate`, `marker[N*N]`, `g_marker_rng` | `C/evoca.c` | 12-bit trait (value bits 0–5, mask bits 8–13), one key in the 729 space, inherited in Phase 4, `nm ~ Poisson(marker_mu·12)` from its own stream. Read by nothing |
+| Mutation log `g_mutlog` | Phase 4 | `(nf, na, ne, nm)` per real birth, filled only while the drift shadow is allocated. The only drift hook in the real step (no RNG) |
+| Drift core `fs_drift_*` | `C/evoca.c` | Structure-of-arrays genomes per replicate, swap-remove deaths, replay births, incremental tallies (allele counts as two-lane SWAR words; eg and marker key counts through a (value, mask) lookup table) |
+| Real side | `drift_observe_real` | Full recount at the end of the step, no incremental hooks: allele counts by byte-lane SWAR (flushed every 255 cells), eg keys, marker keys, Np |
+| Streams | `seed_mix` | Replicate r: `seed_mix(seed ^ "DRIFTSHD" ^ r·0x9E3779B9)`; marker: `seed_mix(seed ^ "MARKERNG")`; the Channon derivation is unchanged. All are reseeded in `evoca_set_seed` |
+| Synthetic hook | `evoca_fs_drift_synth_*` | Lattice-free context driven by an explicit event stream. Replicate 0 plays "real" (optionally with selection or without-replacement parents) |
+| Python API | `python/evoca_py.py` | `fs_drift_enable/disable/reps/reseed/get/tallies/check_tallies/real_obs/last_events/population`, `set_marker_mu/get_marker_mu/get_marker/set_marker_all`, `test_force_bit` (test only) |
+| Statistics | `python/drift_stats.py` | All §6.3 statistics. Each replicate is scored against the other R units (the real run included), so the R+1 units are exchangeable |
+| Reference | `python/drift_ref.py` | Draw-for-draw Python port of the replicate step; bit parity with C over 1,000 steps (pytest) |
+| Synthetic driver | `python/drift_synth.py` | Calibration and power runs through the C hook |
+| Campaign | `tools/drift_validation.py` | §7 (a) (b) (c) and timing → `tests/notebooks/drift-shadow-validation.json` |
+| Surface | `python/evoca_explore.py` | `run_sim(..., fs_shadow='both', fs_reps=8, fs_resync=None, marker_mu=0.0)`, not in `_PARAM_KEYS`, echoed in the output. `save_scan_config` and recipes (version 4) carry a `measurement` block. `import_run` restores `marker_mu` and keeps the block on `sim._measurement`; it does not auto-enable the drift shadow |
+
+### 13.2 Keys emitted by `run_sim` (drift on)
+
+- `eg_drift_{concentration,z,p,tv,tv_z,tv_p,nhi,frac_z3}`, and the same set for `marker_drift_*`;
+- `dyn_drift_{consistency,z,p,concentration,concentration_z,concentration_p,tv,tv_z,tv_p,nhi,frac_z3}`;
+- `dyn_drift_consistency_runmean`, `dyn_drift_z_runmean`, `negene_drift`, `dyn_expression_bias`,
+  `dyn_expression_bias_signed`, `drift_steps`, `drift_R`;
+- every key above except `drift_R` again with suffix `_last`;
+- `fs_shadow`, `fs_reps`, `fs_resync`, `marker_mu`.
+
+Tracking mode adds the aliases `eg_concentration_{final,slope}` and `dyn_concentration_{final,slope}`.
+
+### 13.3 Deviations from the design, with reasons
+
+| # | Design | Built | Reason |
+|---|---|---|---|
+| 1 | Real allele counts kept incrementally by hooks at tax death, eviction and birth | Full end-of-step recount (SWAR, about 0.1 ms at Np 15k) | Keeps observer hooks out of the real step (structural risk, §10). Cannot desync if Python changes the grid between steps |
+| 2 | Shadow birth b takes record π(b), π a random permutation | Record b in raster order | Parents are iid uniform, so the record↔parent assignment is already exchangeable; saves draws |
+| 3 | `*_drift_z` = statistic / leave-one-out replicate sd | Every unit (real and each replicate) scored against the other R units; rank p and z from those | Makes the R+1 units exchangeable, so the rank p is exact under H0 |
+| 4 | `dyn_expression_bias` = Σ n_i(P̂_queriers − P_i) | ½ Σ_k \|Q_k − A_k\| / M (two-sided, scale-free), plus the doc's signed version as `dyn_expression_bias_signed` | The signed sum cancels enrichment of 0 at some inputs against enrichment of 1 at others |
+| 5 | — | Added `*_drift_tv_z`, `*_drift_tv_p` | Finding 1 (sweeps read negative on the one-sided statistics) |
+| 6 | — | Added `*_drift_frac_z3` | Needed for the §7(a) per-bucket criterion |
+| 7 | Floor σ_k ≥ max(1, 0.01 μ_k) on activities | Same; for per-input homozygosity σ_i ≥ max(1e-6, 0.01·(1−F̄_i)) | The doc gives no floor for F |
+| 8 | §7(a) at R = 8 implied | Calibration at R = 19; R = 8 recomputed from the first 8 shadows | The rank p at R = 8 cannot go below 1/9, so rejections at α = 0.05 are impossible |
+| 9 | Accessibility × eg-like cells | Accessibility varies only the dyn query weights; eg and marker are scored in the same runs | Accessibility has no meaning for the eg key statistic |
+| 10 | Constructed fixture: aggregate `dyn_drift_z > 5` | Purifying forcing: target-input ζ > 3 (vs < 2 unforced). Sweep forcing on a frozen base: `dyn_drift_tv_z > 5` at the p floor | In an evolving base the other inputs' negative ζ (finding 2) outweigh one purified input |
+| 11 | KS test of the p-values | χ² on the R+1 discrete values | KS is not valid for a discrete law |
+| 12 | One drift context | One per process (C globals); the synthetic hook replaces a live context | Matches the rest of the library |
+| 13 | Timing estimated from op counts | First build: +90 % at R = 8. SWAR tallies and the key table: +33 % | Took the §5.6 fallback ("bit-sliced tally") |
+
+### 13.4 Validation results
+
+**(a) Synthetic neutral.** Np = 500, 25 births and deaths per step, 75 generations, 400 runs per
+cell, θ ∈ {0.5, 2, 10, 50} × accessibility {uniform, geo 0.7, geo 0.9}, R = 19.
+
+| Criterion | Result |
+|---|---|
+| Rejection at 0.05 in [0.028, 0.072], primary statistics (dyn consistency, eg concentration), 24 cells | 22/24 inside. Outside: dyn consistency θ=0.5 geo0.7 = 0.085, eg concentration θ=50 uniform = 0.075 (about 1.3 expected outside by chance) |
+| p uniformity (χ² p > 0.01) | All primary cells pass. One secondary fails (eg TV in the variant, 0.007) |
+| Mean z within ±0.10 | Primary: max \|mean\| 0.08 (pass). TV statistics up to 0.14 |
+| sd z in [0.90, 1.20] | Primary 1.01–1.17 (pass). dyn concentration up to 1.24, TV up to 1.28. At R = 8: 1.2–1.4, against a t₇ expectation of about 1.25 |
+| Per-bucket \|z\|>3 ≤ 1 % | **Fail**: dyn 0.1–4.6 % (fails in the low-θ uniform cells), eg 1.8–5.2 %, marker 2.9–5.3 %. The tracking shadow gave 23–35 % |
+| Without-replacement real parents | Passes on the primary statistics |
+
+**(b) Power.** Np = 500, θ = 10, geo 0.7 weights, 100 runs per cell, R = 19, α = 0.05.
+
+| Cell | consistency | dyn concentration | dyn TV | Target |
+|---|---|---|---|---|
+| purifying s=0.05, k=1, 150 gen | 0.69 | **0.85** | 0.36 | ≥ 0.70 on the better: pass |
+| purifying s=0.02, k=5, 150 gen | **0.79** | 0.66 | 0.45 | ≥ 0.65: pass |
+| s = 0.01 / 0.02 / 0.05, k=1, 75 gen | 0.11 / 0.17 / 0.34 | 0.16 / 0.20 / 0.39 | | monotone in s: pass |
+| s = 0.01 / 0.02 / 0.05, k=1, 150 gen | 0.14 / 0.24 / 0.69 | 0.16 / 0.25 / 0.85 | | monotone in generations: pass |
+| directional s=0.05, k=1 | 0.01 | 0.01 | **0.85** | finding 1 |
+| directional s=0.02, k=5 | 0.00 | 0.00 | **0.67** | finding 1 |
+| eg family s=0.05 | eg concentration 0.09 | | | low power |
+
+The R = 8 curve at its floor α = 1/9 is in the JSON (for example 0.70 / 0.92 in the first cell).
+
+**(c) EvoCA.** N=128 unless noted, 5,000 steps, R = 19.
+
+| Test | Result |
+|---|---|
+| P4 observer | Pass (pytest: lattice, alive, LUT hashes, egenes, f and F identical across off / drift / drift+marker / +Channon; `run_sim` common keys identical across modes) |
+| P5 reproducible | Pass |
+| Clonal wiring | Every drift statistic exactly 0 (p = 1) |
+| Frozen-clonal marker null (N 64/128 × marker μ 0.001/0.003/0.01 × 20 seeds) | One-sided rejection 0/120, so the ≤ 0.10 criterion is met trivially. But mean marker concentration z is −3.9, −5.4, −7.1 (N=64) and −8.5, −12.4, −18.1 (N=128), and the TV p is at the floor in 75–100 % of seeds. **Calibration fails.** Null band (q95 of \|marker concentration\|): 0.30 / 0.67 / 1.30 (N=64), 0.32 / 0.67 / 1.38 (N=128); TV q95 0.14–0.35 |
+| Lineage mutation load | Marker weight real / shadow: 0.269 / 0.157, 0.136 / 0.119 (N=64); 0.280 / 0.129, 0.212 / 0.119 (N=128) |
+| Draft floor, JOINT | eg concentration −1.31, −1.22, −0.45, −1.02; marker −1.69, −1.60, −2.01, −1.40; dyn consistency −12 to −14; negene_drift −0.77 to −0.86 |
+| Draft floor, LUT_only | eg 0 (no egene mutation); marker −2.3 to −3.0; dyn −11 to −13 |
+| Pure-evo joint winner recipe | eg −1.29 to −1.91; marker −1.38 to −2.16; dyn −39 to −43; negene_drift −0.46 to −0.49 |
+| Frozen control recipe | eg and dyn exactly 0; marker −0.52 to −0.65 |
+| Standing-variation freeze (N=64, random LUTs, μ=0, 20 seeds) | dyn_drift_z > 0 in **20/20** (accept ≥ 18) |
+| Q9, Cov(n_i, P_i) | Run-mean weights move consistency by ≤ 20 % (−12.2 → −14.7; 5.15 → 5.21). Not material, so contemporaneous weights are kept |
+| dyn_expression_bias | 0 frozen clonal; 0.02–0.03 standing variation; 0.06–0.07 winner; 0.11–0.13 JOINT and LUT_only |
+| Timing, N=256, Np 15.5k | off 1.63 ms/step; R=1 1.97 (+21 %); **R=8 2.17 (+33 %)**; R=16 2.45 (+50 %). Accept ≤ +60 % at R=8: pass. The tracking shadow has no off switch in C, so "off" = tracking |
+
+### 13.5 Tests
+
+`tests/test_drift_shadow.py` has 16 tests, all entering through `run_sim`, the `EvoCA` API or the
+synthetic hook:
+
+- the observer property, directly and through `run_sim`;
+- reachability of mode, R, resync and marker;
+- reproducibility, and distinct streams;
+- demography and flip-count replay per step, with and without `restricted_mu`;
+- the real allele-count recount;
+- C-vs-Python bit parity over 1,000 steps;
+- clonal zero and synthetic detection;
+- the two forced-output fixtures;
+- recipe and scan measurement blocks.
+
+No pre-existing bug was fixed on this branch, so no fail-without-fix regression test applies. The
+pre-merge notebook is `tests/notebooks/drift-shadow-test.ipynb`.
+
+### 13.6 Open items for N
+
+1. **Demographic misspecification (finding 2).** Options:
+   - (a) an age-structured mirror: shadow individuals carry a birth step, and each real death and
+     each real parent is mirrored by a uniform draw within the same age class. This conditions on
+     the realized life history and is still genotype-blind; it absorbs selection on life history
+     into the null, which is conservative;
+   - (b) a per-channel marker floor. It would need a dyn-space marker: a neutral 250-bit LUT
+     riding the real genealogy;
+   - (c) accept the bias and use only floor-referenced effect sizes.
+
+   I recommend (a), validated against the same frozen-clonal marker null.
+2. **Primary statistic.** The one-sided consistency and concentration statistics cannot see
+   sweeps. Once item 1 is fixed, adopt `*_drift_tv_*` (two-sided) as the selection test and keep
+   the one-sided statistics as descriptors of direction.
+3. `marker_mu` defaults to 0 (Q11), so default runs report no draft floor. A nonzero default
+   (for example 0.003) costs nothing and does not touch the dynamics.
+4. Per-bucket z tails are not calibrated (activity is heavy-tailed). Use `*_drift_nhi`.
+5. This is a structural-risk merge: pluggable modes, a second caller of the mutation operator, an
+   observer hook in the real step, and a second measurement path. It is a natural point for
+   `/code-review ultra` (user-triggered).
