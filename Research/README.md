@@ -52,6 +52,14 @@ the other scan helpers accept a bare scan name. A **new** recipe goes to
 the workstream named in the `EVOCA_WORKSTREAM` environment variable, else
 to `Research/_unsorted/Runs/` (sort it later with `git mv`).
 
+Lab-notebook helpers shared across workstreams live in
+[`python/evoca_nb.py`](../python/evoca_nb.py) (`rgb`, `make_sim`,
+`load_recipe`, `sim_from_scan`, `params_from_row`, `export_recipe_once`,
+`slope`); the standard headless initialization is
+`evoca_explore.build_sim`. Notebooks import these rather than keeping
+private copies; export recipes with `export_recipe_once` so a Run All
+does not write a new dated copy into `Runs/`.
+
 Conventions:
 
 - **Notebooks are committed with their outputs** so GitHub renders the
