@@ -256,7 +256,7 @@ Reading:
 
   So 20/20 is consistent with selection sorting standing variation *and* with H3 alone. It shows
   the statistic can go positive, not that it measures selection. **[reasoned]**
-- **$\Delta$Negene < 0 is a second positive control.** `tax_per_egene` imposes a known cost per
+- **$\Delta$Negene < 0 is the one clean positive control.** `tax_per_egene` imposes a known cost per
   active egene, and the shadow sees real Negene held *below* neutral.
   - The load bias should push in the other direction, because neutral toggling with
     dup-on-activate drifts Negene upward and real lineages accumulate more of it.
@@ -350,7 +350,7 @@ real death or real parent is mirrored by a uniform draw within the same age clas
 | **B** (branch's (b)) | Marker "floor": compare channel statistics with a neutral marker on the real genealogy | Only if marker kernel and rates match the channel; currently they don't | eg − marker difference | a dyn-space marker is needed for dyn |
 | **C** (branch's (c)) | Accept the bias; report only floor-referenced effect sizes | No | — | none; leaves ACT-D1 blocked |
 | **P** (recommended) | **Pedigree shadow.** For each real cell, R neutral shadow genomes (full 250-bit LUT + egenome) that ride the real parent→child events. At each real birth the child's shadow genomes copy the parent's and get the child's real mutation counts at fresh random positions (`genome_mutate` replay). At each real death or eviction they die with the cell | **Yes**: under content-neutrality the real genome and each shadow genome are exchangeable given the pedigree | $E_{\text{ped}}$: expression-weighted substitution contrast (below); TV becomes meaningful | 49 B × R per cell (25 MB at N=256, R=8). It generalizes the existing per-cell marker. Reuses `genome_mutate` |
-| **S** (preview, no C change) | **Internal synonymous-site contrast.** LUT inputs that are never (or rarely) queried are neutral sites on the *same* genealogy with the *same* per-bit mutation rate (without `restricted_mu`). Compare turnover at expressed inputs with turnover at unexpressed ones | Approximately: needs a clean "never queried" set; the query distribution evolves | purifying selection at expressed inputs; positive selection if expressed sites diverge *faster* | analysis only, using existing data (per-input query counts, allele frequencies) |
+| **S** (preview, no C change) | **Internal synonymous-site contrast.** LUT inputs that are never (or rarely) queried are neutral sites on the *same* genealogy with the *same* per-bit mutation rate (without `restricted_mu`). Compare divergence at expressed inputs with divergence at unexpressed ones | Approximately: needs a clean "never queried" set; the query distribution evolves | purifying selection at expressed inputs; positive selection if expressed sites diverge *faster* | analysis only, using existing data (per-input query counts, allele frequencies) |
 
 ### 7.1 The statistic for Option P (the dN/dS analog)
 
@@ -369,7 +369,7 @@ Define the expression-weighted contrast
 
 $$K^{(u)} \;=\; \frac{\sum_i w_i\,\Delta^{(u)}_i}{\sum_i \Delta^{(u)}_i}\;\Big/\;\frac{\sum_i w_i}{250}\,,$$
 
-the share of turnover that lands on expressed sites, relative to a uniform spread.
+the share of divergence that lands on expressed sites, relative to a uniform spread.
 - **Purifying selection** at expressed inputs gives $K^{(0)} < K^{(r)}$: real changes avoid
   expressed sites.
 - **Adaptive change** gives $K^{(0)} > K^{(r)}$: real changes concentrate there.
