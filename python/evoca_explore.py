@@ -537,6 +537,17 @@ def _load_scan(scan_dir):
     return cfg, rows
 
 
+def correct_scan_row_params(params):
+    """Load-time corrections for params read from a scan results row, in
+    place; returns params. The one place these corrections live (used by
+    evoca_from_scan and evoca_nb.params_from_row).
+      - food_cap: scans recorded before the A9 fix have no param_food_cap
+        column; they ran the legacy uncapped mouthful, so set food_cap=0."""
+    if 'food_cap' not in params:
+        params['food_cap'] = 0
+    return params
+
+
 def _row_param_value(row, key):
     """Pull a param_<key> from a CSV row, parsing booleans."""
     raw = row.get(f'param_{key}', '')
@@ -579,11 +590,7 @@ def evoca_from_scan(scan_dir=None, config_idx=None, descriptor=None,
         v = _row_param_value(row, k)
         if v != '':
             metaparams[k] = v
-    # Scans recorded before the A9 fix have no param_food_cap column: they
-    # ran the legacy uncapped mouthful, so the recipe must say so to
-    # reproduce them (correct the data here, at load time).
-    if 'food_cap' not in metaparams:
-        metaparams['food_cap'] = 0
+    correct_scan_row_params(metaparams)
 
     if runs_dir is None:
         runs_dir = evoca_paths.runs_dir_for_scan(scan_dir)

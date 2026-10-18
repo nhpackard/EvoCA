@@ -196,12 +196,32 @@ def test_override_without_setter_raises():
 def test_params_from_row_matches():
     d = pd.read_csv(os.path.join(ee.evoca_paths.scans_dir('Lineage-co-evolution'),
                                  '2026-05-17_pure_evo_egene_on_winners', 'results.csv')).set_index('config_idx')
+    # The old helper plus the pre-A9 load-time correction (this scan has no
+    # param_food_cap column, so its rows ran uncapped).
+    assert 'param_food_cap' not in d.columns
     for cfg in (236, 237, 252, 253):
-        assert nb.params_from_row(d.loc[cfg]) == OLD_params_from_row(d.loc[cfg])
+        assert nb.params_from_row(d.loc[cfg]) == dict(OLD_params_from_row(d.loc[cfg]), food_cap=0)
     p = nb.params_from_row(d.loc[252])
-    old = fingerprint(ee.build_sim(OLD_params_from_row(d.loc[252]), N=N, seed=0))
+    old = fingerprint(ee.build_sim(dict(OLD_params_from_row(d.loc[252]), food_cap=0), N=N, seed=0))
     new = fingerprint(ee.build_sim(p, N=N, seed=0))
     assert old == new
+
+
+def test_params_from_row_agrees_with_evoca_from_scan(tmp_path):
+    """Both scan-row loaders apply the same load-time corrections (one
+    source: ee.correct_scan_row_params), so a row means the same run
+    whichever path loads it."""
+    import json
+    scan = '2026-05-18_R1_mscale_bracket'          # pre-A9, has scan_config.json
+    d = pd.read_csv(os.path.join(ee.evoca_paths.scans_dir('Resource-driving'),
+                                 scan, 'results.csv')).set_index('config_idx')
+    assert 'param_food_cap' not in d.columns
+    rec = json.load(open(ee.evoca_from_scan(scan, 208, runs_dir=str(tmp_path))))
+    mp = rec['metaparams_init']
+    p = nb.params_from_row(d.loc[208])
+    assert p['food_cap'] == mp['food_cap'] == 0
+    for k, v in p.items():
+        assert float(mp[k]) == float(v), k
 
 
 # ── equivalence: build_sim replaces the Lineage hand setups ───────────

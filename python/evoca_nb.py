@@ -98,11 +98,14 @@ def sim_from_scan(scan, config_idx, N=None, seed=0, runs_dir=None,
 def params_from_row(row):
     """Scan results row (pandas Series) -> build_sim params: every
     param_<key> column for key in _PARAM_KEYS; restricted_mu as int,
-    the rest as float. A missing column is left out (build_sim default)."""
+    the rest as float. A missing column is left out (build_sim default),
+    apart from evoca_explore.correct_scan_row_params (a pre-A9 row without
+    param_food_cap gets food_cap=0, as it ran)."""
     import evoca_explore as ee
     p = {k: row['param_' + k] for k in ee._PARAM_KEYS if 'param_' + k in row.index}
     p['restricted_mu'] = int(p.get('restricted_mu', 0))
-    return {k: float(v) if k != 'restricted_mu' else v for k, v in p.items()}
+    p = {k: float(v) if k != 'restricted_mu' else v for k, v in p.items()}
+    return ee.correct_scan_row_params(p)
 
 
 # ── recipes ───────────────────────────────────────────────────────────

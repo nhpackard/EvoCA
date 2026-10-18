@@ -15,7 +15,8 @@
     "tax_per_egene": 0.0008,
     "tax_lut": 0.0,
     "tax_ring": 0.0,
-    "restricted_mu": 1
+    "restricted_mu": 1,
+    "food_cap": 0
   },
   "metaparams_final": {
     "food_inc": 0.016,
@@ -29,7 +30,8 @@
     "tax_per_egene": 0.0008,
     "tax_lut": 0.0,
     "tax_ring": 0.0,
-    "restricted_mu": 1
+    "restricted_mu": 1,
+    "food_cap": 0
   },
   "initialization": {
     "lut": "gol",
