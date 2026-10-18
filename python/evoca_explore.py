@@ -142,28 +142,31 @@ def init_kwargs(params):
     return {k: params[k] for k in _PARAM_KEYS if k in params}
 
 
-def build_sim(params, N=256, seed=0, init='halfplane'):
+def build_sim(params, N=256, seed=0, init='halfplane', *, lineage=False,
+              egenome='uniform'):
     """Construct and initialise one EvoCA configuration headless.
 
-    Shared by run_sim() and python/dyn_analysis.py so both use the
-    identical fixed initialisation (GoL LUT, plus-shape egenome,
-    density-0.5 v, halfplane/fraction alive seeding).
+    Shared by run_sim(), python/dyn_analysis.py and the lab notebooks so
+    all use the identical fixed initialisation (GoL LUT, plus-shape
+    egenome, density-0.5 v, halfplane/fraction alive seeding).
 
     params: dict with keys from _PARAM_KEYS. Defaults applied if missing.
     N: grid side length.
     seed: numpy seed for v_curr init; also reseeds the C PRNG.
     init: 'halfplane' (left half alive) or 'fraction' (random 50%).
+    lineage: record lineage from step 0 (init(..., lineage=True)).
+    egenome: 'uniform' (value 0b000011) or 'random' (set_egenome_random).
 
     Returns a live EvoCA instance (caller is responsible for .free()).
     """
     rng = np.random.default_rng(seed)
 
     sim = EvoCA()
-    sim.init(N, **init_kwargs(params))
+    sim.init(N, lineage=lineage, **init_kwargs(params))
     # Reseed the C PRNG: pool workers are reused, so the C RNG state
     # would otherwise carry across configs and break reproducibility.
     sim.set_seed(seed)
-    sim.state(lut='gol', egenome='uniform', egenome_value=0b000011)
+    sim.state(lut='gol', egenome=egenome, egenome_value=0b000011)
     sim.set_v(rng.integers(0, 2, (N, N), dtype=np.uint8))
     sim.set_f_all(0.5)
     sim.set_F_all(1.0)
