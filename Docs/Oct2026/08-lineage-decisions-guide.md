@@ -45,12 +45,12 @@ This is N's call. A fix belongs on its own branch with the parity probe at
 `m_scale` ≤ 1, where it should be a no-op.
 
 **Read first** (about 40 minutes; §7 has the full guide):
-1. Notebook §4b, **cells 26–27**: the nominal/actual tax table and the
+1. Notebook §4b, **cells 30–32**: the nominal/actual tax table and the
    "−0.020 per-capita net" observation. These are the D3 numbers. Read them
    alongside §2 of this guide, which explains them as overdraw.
-2. Notebook §4a, **cells 23–24**: the genotype-singleton table. Note that the
+2. Notebook §4a, **cells 26–28**: the genotype-singleton table. Note that the
    `mu_lut` 0.01/0.03 columns are crashed populations of 320–410 cells (D2).
-3. Notebook §3, **cells 18–20**: the binary-indicator saturation and Hamming
+3. Notebook §3, **cells 20–23**: the binary-indicator saturation and Hamming
    variance (D1).
 4. `Docs/plan-8-lineage-coevolution.md`, "Possible fixes", **Option F
    caveat**. It already warned that the active footprint is most of 250 bits;
@@ -154,7 +154,7 @@ then dies, by tax (actual tax removed = negative `f_before`) or by eviction
 - **LIN-D3's 20–23% gap is overdraw, not "tax a dying cell could not pay".**
   An actual-tax column would faithfully record negative tax for indebted
   cells; it would encode the defect rather than correct for it.
-- **LIN-Q3's "constant per-capita net −0.020"** (control, cell 27) is the
+- **LIN-Q3's "constant per-capita net −0.020"** (control, cell 32) is the
   leak's signature. A population of 9,136 paying 0.035 each per step on an
   intake of about 139 per step can only persist on erased debt. The structural
   point of LIN-Q3 still holds without the leak: intake ≈ source, so raw net is
@@ -275,7 +275,7 @@ the LUT frozen. The 4b "slow" evolving run (`mu_lut`=0.0003, egene rates
 `mu_lut` (option (a) in `ISSUES.md`) does not make genotypes persist unless
 the egene rates come down as well.
 
-**[V] The `mu_lut` ≥ 0.01 rows in notebook cell 23 are crashed or bottlenecked
+**[V] The `mu_lut` ≥ 0.01 rows in notebook cell 26 are crashed or bottlenecked
 populations** (320–410 alive of 9,216 at t=2000 in seed 2). "Productive
 corner" is a stretch for those exact runs. At N=256 the same `mu_lut`=0.03
 start keeps 10k–43k cells over 600 steps [V, one seed], so the bottleneck is
@@ -329,7 +329,7 @@ Overall: 22/30, sign test p=0.016, Wilcoxon p=0.0009.
 
 The arms also differ hugely in demography. Mean final pop is A 48.9k vs C
 27.1k; mean min pop is A 21.7k vs C 5.6k. C cycles boom-bust, and the
-cumulative excess moves with the cycles (notebook cell 16). The modest
+cumulative excess moves with the cycles (notebook cell 18). The modest
 "co-evolving beats freezing" result is therefore real as a record. It is
 not a coupling measurement, and that motivates keeping a direct #8 test.
 
@@ -367,7 +367,7 @@ separate effects. It needs no shadow and no frozen arm.
 2. **Silent flips dilute any magnitude.** Most flipped bits are never queried
    by the lineage (§2.2).
 3. **Survival over 40–200 steps is a weak proxy, and the survivor-only
-   statistic is scale-dependent** (§2.3). Notebook cell 20 already notes that
+   statistic is scale-dependent** (§2.3). Notebook cell 23 already notes that
    the survival filter "barely moves P(ΔLUT>0)" [R].
 4. **Snapshot capture (S=50 in the spec) drops short-lived edges.** The
    permutation null does not repair this, because it permutes within what was
@@ -488,13 +488,13 @@ negative") suggests not.
 ## 6. Interaction with A2 (shadow RNG) and the `shadow-rng` branch
 
 - **Example runs that enable the shadow will change** when A2 merges:
-  notebook §1 (cells 8–10) and §2 (cells 14–16). Their conclusions
+  notebook §1 (cells 8–11) and §2 (cells 15–18). Their conclusions
   (frozen-GoL viability is a coin flip; the A/C fork is bit-identical) should
   survive, but the specific outcomes, such as config 253 surviving or dying,
   will move.
 - **Example runs without the shadow should stay bit-identical**, if the fix
-  only re-routes the shadow's draws: §3 (cell 18 `edge_table`) and §4
-  (cells 23 and 26 `run_lineage`) never call `neutral_enable()` [V: code
+  only re-routes the shadow's draws: §3 (cell 20 `edge_table`) and §4
+  (cells 26 and 30 `run_lineage`) never call `neutral_enable()` [V: code
   read]. That makes them a convenient parity check on the `shadow-rng` branch.
 - **LIN-Q4 is answered** by A2 [R/V in `06-seeding-findings.md`]. Enabling
   the shadow does perturb the real run's stream. Close it once A2 merges.
@@ -514,13 +514,13 @@ so you can find them without counting.
 
 | # | Where | What to look at | Bears on |
 |---|---|---|---|
-| 1 | §4b "Per-lineage net-return trajectories…", **cell 26** (output table) and **cell 27** (observations) | `total intake` ≈ source (414,067 vs 414,720); nominal vs actual tax; the "−0.020 per-capita net" bullet. Read it knowing the dense, negative-net steady state is the overdraw leak (§2.1). The 70% `net` < 0 also reflects the uncounted endowment (§1.2). | D3, LIN-Q3, A9 |
-| 2 | §4a "What does a hash-keyed 'lineage' resolve…", **cell 23** (table) and **cell 24** | The "alive cells" row: 6,385 → 3,160 → **410 → 320**. The `mu_lut` ≥ 0.01 columns are bottlenecked populations. 582k genotypes even at `mu_lut`=0.001 shows the egene-driven churn (§2.4). | D2 |
-| 3 | §3 "Campaign #8 … binary-indicator degeneracy", **cell 18** (table), **cell 19** (figure), **cell 20** | Analytic vs measured P(ΔLUT>0); the Hamming sd growing 0.5→2.7; Spearman ≈ 0 with ~5–11k surviving edges (noise floor about ±0.01). Notice that "surviving" means seen across ≥ 40 steps; that is the cut A′ removes. | D1 |
-| 4 | §2 "Campaign #3c…", **cell 14** (table), **cell 15** (figure), **cell 16** | C's boom-bust cycles in seed 1; the dyn-excess artifact in A; paired C−A of −3.9/−1.0/−0.3/+26 across seeds. Then see §2.6 here for the by-`mu_lut` split of the recorded campaign. | D1 motivation, LIN-Q2 |
-| 5 | §1 "Campaign #3…", **cell 8** (table) and **cell 10** | Config 253 is extinct here but survived in the record; the shadow flip; 3b at 46% extinct. A quick read. | A2, LIN-Q4 |
-| 6 | §4c "D3 preview…", **cells 29–30** | Negene saturates by ~500 steps; no population-level staircase. The per-lineage linkage need is what `parent_hash` in the reducer would solve. | D2 (genotype rows retained), LIN-N1 |
-| 7 | §5 "Current state and directions", **cell 31** | Note that it lists only LIN-D1 and LIN-D2; **LIN-D3 is missing** there (a minor inconsistency with `ISSUES.md`). | — |
+| 1 | §4b "Per-lineage net-return trajectories…", **cell 30** (output table) and **cell 32** (observations) | `total intake` ≈ source (414,067 vs 414,720); nominal vs actual tax; the "−0.020 per-capita net" bullet. Read it knowing the dense, negative-net steady state is the overdraw leak (§2.1). The 70% `net` < 0 also reflects the uncounted endowment (§1.2). | D3, LIN-Q3, A9 |
+| 2 | §4a "What does a hash-keyed 'lineage' resolve…", **cell 26** (table) and **cell 28** | The "alive cells" row: 6,385 → 3,160 → **410 → 320**. The `mu_lut` ≥ 0.01 columns are bottlenecked populations. 582k genotypes even at `mu_lut`=0.001 shows the egene-driven churn (§2.4). | D2 |
+| 3 | §3 "Campaign #8 … binary-indicator degeneracy", **cell 20** (table), **cell 22** (figure), **cell 23** | Analytic vs measured P(ΔLUT>0); the Hamming sd growing 0.5→2.7; Spearman ≈ 0 with ~5–11k surviving edges (noise floor about ±0.01). Notice that "surviving" means seen across ≥ 40 steps; that is the cut A′ removes. | D1 |
+| 4 | §2 "Campaign #3c…", **cell 15** (table), **cell 17** (figure), **cell 18** | C's boom-bust cycles in seed 1; the dyn-excess artifact in A; paired C−A of −3.9/−1.0/−0.3/+26 across seeds. Then see §2.6 here for the by-`mu_lut` split of the recorded campaign. | D1 motivation, LIN-Q2 |
+| 5 | §1 "Campaign #3…", **cell 8** (table) and **cell 11** | Config 253 is extinct here but survived in the record; the shadow flip; 3b at 46% extinct. A quick read. | A2, LIN-Q4 |
+| 6 | §4c "D3 preview…", **cells 34–35** | Negene saturates by ~500 steps; no population-level staircase. The per-lineage linkage need is what `parent_hash` in the reducer would solve. | D2 (genotype rows retained), LIN-N1 |
+| 7 | §5 "Current state and directions", **cell 36** | Note that it lists only LIN-D1 and LIN-D2; **LIN-D3 is missing** there (a minor inconsistency with `ISSUES.md`). | — |
 | 8 | `Docs/plan-8-lineage-coevolution.md`: "Possible fixes" (Options A–F, especially the **F caveat**), then "Original spec" D3/D5 and "Caveats" | The spec's claim that the permutation null "cancels survivor-capture bias" (true for capture, not for the §2.3 selection effect); the regime `m_scale=3.0`, S=50, `T_surv`=200. | D1 |
 | 9 | `Docs/checkpoint 3 July 2026.md` ~1376–1381 (original D2 intent: reduce by lineage root) and ~1407–1435 (H1 four-step program) | What H1 promises; step 2's per-lineage shadow, which does not exist. | D2, H1 |
 | 10 | `Docs/Oct2026/01-branch-review.md`, "Semantic note for N" and "The `lineage-return` crash" | The nominal/actual definitions. The `enable_lineage()` trap: `init(lineage=True)` is the safe path. | D3 |
@@ -623,13 +623,13 @@ print(a.final_pop.mean(), c.final_pop.mean(), a.min_pop.mean(), c.min_pop.mean()
 | Lineage `eff_used_mask` median 60–130 bits | **V** | `nactive.py`, one seed |
 | Berkson / scale dependence | **V** | Toy simulation (`berkson.py`), not EvoCA data |
 | A6 (no genotype reaches 10 births at 0.03) | **V** | 3 seeds plus an egene-off variant (`a6.py`) |
-| P(ΔLUT>0) = 1 − exp(−250·`mu_lut`) | **V** (arithmetic) + **R** (notebook cell 18 measured) | — |
+| P(ΔLUT>0) = 1 − exp(−250·`mu_lut`) | **V** (arithmetic) + **R** (notebook cell 20 measured) | — |
 | Egene-driven genotype churn (18–36% per birth) | **A** | From the mutation code; not measured directly |
 | Exact per-step barcode tracking and its cost | **V** | `barcode.py`, three configs |
 | #3c C−A split by phase-1 `mu_lut`, demographic gap | **V** | Re-analysis of the recorded `results.csv` |
 | `lret` memory and collision estimates | **A** | Struct size and birthday bound |
 | Shadow perturbs the RNG stream (A2) | **R** here (V in `06`) | — |
-| Notebook §3/§4 runs don't enable the shadow | **V** | Code read of cells 18, 23 |
+| Notebook §3/§4 runs don't enable the shadow | **V** | Code read of cells 20, 26 |
 | Resource-driving density ≈ `food_inc/tax` | **R** | `06-seeding-findings.md` §B |
 
 ---

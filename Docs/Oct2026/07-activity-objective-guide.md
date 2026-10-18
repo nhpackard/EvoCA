@@ -81,10 +81,10 @@ Two further points come from re-reading the recorded data.
 **Read first** (committed notebook indices; in your working copy, cells after 4b are
 shifted by +2, so use the headings as anchors):
 
-1. Notebook **4a, cell 22** (objective comparison and eg/dyn scatter), read with section 2.4
+1. Notebook **4a, cell 27** (objective comparison and eg/dyn scatter), read with section 2.4
    below.
-2. **Section 3, cells 16–18** (causal controls; `A_new` = 0).
-3. **4b/4c, cells 25–31** (winner vs. frozen control; z histograms; `dyn_report` says
+2. **Section 3, cells 20–23** (causal controls; `A_new` = 0).
+3. **4b/4c, cells 30–37** (winner vs. frozen control; z histograms; `dyn_report` says
    `silent-churn`).
 4. `C/evoca.c` **`fs_space_step` (about lines 3376–3445) and `fs_excess_pc` (about
    3496–3511)**. They are about 70 lines, and they are the whole of finding 1.
@@ -176,7 +176,7 @@ causal-control arms, the `dyn` top config 293, and the evo_focus top):
 **Consequences.**
 
 - **The reciprocal-freeze "validation" is tautological** (v2: `Scans/2026-05-17_causal_control_v2`;
-  digest `neutral-model-methodology` cells 0–3; notebook cells 16–18 and 26).
+  digest `neutral-model-methodology` cells 0–3; notebook cells 20–23 and 32).
   - Freezing a subsystem sets its flux to 0, and flux 0 sets shadow = observed by
     construction.
   - The null tests whether the code wires flux correctly. It says nothing about whether a
@@ -192,7 +192,7 @@ causal-control arms, the `dyn` top config 293, and the evo_focus top):
 - **The evo_focus artifact (ACT-Q3) is this identity at `D_G=1`.**
   - In that base `mu_egenome` flips presence bits (flux > 0) while only one key is occupied.
   - The slope is then about `T(1 − 1/729)` ≈ active egenes per step ≈ 1.6e4, matching
-    16,914 (notebook cell 10/14) and 16,322 in my run.
+    16,914 (notebook cell 11/18) and 16,322 in my run.
 - **The `dyn` space has the wrong baseline even in principle.**
   - A LUT flip at input `i` moves a cell between buckets `(i,0)` and `(i,1)`. Input
     frequencies come from the v-field statistics.
@@ -221,7 +221,7 @@ causal-control arms, the `dyn` top config 293, and the evo_focus top):
 - Skewed targets (geometric over bucket index; a stand-in for skewed input frequencies):
   - `D_G` ≈ 225, `n(z>3)` ≈ 113, `n(z<−3)` ≈ 384.
   - Final cumulative excess ≈ 2.1e4, against the EvoCA winner's 2.35e4 (`run_sim`, cell
-    28) and 2.86e4 (`dyn_report`, cell 30) at N=96 / 3000 steps.
+    28) and 2.86e4 (`dyn_report`, cell 36) at N=96 / 3000 steps.
 - **Caveats.** The model is stylized and its parameters are mine, not fitted. It is an
   existence proof that **a selection-free process produces EvoCA-sized `dyn` readouts**.
   It does not show that EvoCA has no selection.
@@ -276,7 +276,7 @@ All numbers are on the 284 joint candidates and 180 LUT-only candidates.
 **The composite** (5 keys, positive-clipped, min–max, mean):
 - Spearman with `eg` 0.689 and with `dyn` 0.409.
 - Its top-5 {28, 199, 26, 80, 69} and the `dyn` top-5 {293, 240, 146, 256, 67} are disjoint.
-- These match notebook cell 22.
+- These match notebook cell 27.
 
 **The trade-off is a stratification effect.**
 
@@ -311,7 +311,7 @@ All numbers are on the 284 joint candidates and 180 LUT-only candidates.
 - `dyn_excess_pc` is, by 2.1, roughly `T(1/D_G − 1/K)`, which is **high** when the
   distribution is concentrated.
 - The two are monotone in the same underlying quantity, the concentration of the `dyn`
-  distribution, with opposite interpretations. Their disagreement on the winner (cell 31:
+  distribution, with opposite interpretations. Their disagreement on the winner (cell 37:
   `silent-churn`, `dyn_eff` 38/500, `dyn` excess strongly positive) is therefore expected
   and will recur. Recalibrating the gates (ACT-Q7) cannot reconcile them.
 - The scientific question beneath both is:
@@ -328,16 +328,16 @@ All numbers are on the 284 joint candidates and 180 LUT-only candidates.
 
 | Candidate | Measures (precisely) | Known pathologies (evidence) | Defensible as primary objective? |
 |---|---|---|---|
-| `excess_activity_slope` (legacy ΣG−ΣN) | Slope of total whole-genome activity minus total Channon-shadow activity | Inverts at high `mu_lut`, because the shadow is no-heredity (research directions §2). Scope bug: real side is whole genome, shadow is LUT-only (v1 EGENE_only −9.1; notebook cells 16, 18). Sign unstable across N, seed and length (cell 14: +2.7 vs −1.8 recorded) | **No** |
-| `excess_pc_slope` (whole-genome, per component) | Slope of ΣG/D_G − ΣN/D_N | Same scope bug (EGENE_only −16.8 at N=96, −46.4 in v2). About 0 everywhere in #1 (median 2e-4). Not a null under freeze (+4,000 cumulative on one component, cell 26) | **No** |
+| `excess_activity_slope` (legacy ΣG−ΣN) | Slope of total whole-genome activity minus total Channon-shadow activity | Inverts at high `mu_lut`, because the shadow is no-heredity (research directions §2). Scope bug: real side is whole genome, shadow is LUT-only (v1 EGENE_only −9.1; notebook cells 20, 23). Sign unstable across N, seed and length (cell 18: +2.7 vs −1.8 recorded) | **No** |
+| `excess_pc_slope` (whole-genome, per component) | Slope of ΣG/D_G − ΣN/D_N | Same scope bug (EGENE_only −16.8 at N=96, −46.4 in v2). About 0 everywhere in #1 (median 2e-4). Not a null under freeze (+4,000 cumulative on one component, cell 32) | **No** |
 | `dyn_excess_pc_slope` (500 transitions) | `A_occ/D_G − M/K` whenever LUT flux > 0, i.e. mean cumulative activity per used transition minus a uniform baseline, **extensive in population** (2.1). Exactly 0 when flux = 0 | Memoryless shadow, null tautological (2.1). Uniform baseline wrong for input-frequency-structured space (2.1). Neutral model reproduces its magnitude (2.2). Frozen-rich-substrate artifact (#3c arm A +335; memory note; digest `neutral-model-methodology` cell 6–7). Population-confounded (recorded Spearman with density 0.32) | **Not as is.** A valid *descriptor* of transition concentration; becomes a candidate only on a stateful, input-conditioned shadow (Option B) |
-| `eg_excess_pc_slope` (729 keys) | Same identity over active-egene keys; T = active egenes | All of the above, plus a `D_G=1` blow-up (ACT-Q3: 1.7e4 in the evo_focus base; cell 14). Void when `tax_per_egene=0` (median 0.1). Presence-bit flips count as flux although they never change a key (`EG_BITS_PER_COMPONENT`, about line 3326) | **Not as is**; same route as `dyn` |
-| `A_new` (G1; `a_new_final/slope`) | Number of present whole-genome components whose cumulative activity exceeds the p90 of present Channon-shadow components (`run_sim` about lines 262–282) | Blind in egene-evolving / LUT-frozen runs: 0 in 4 of 4 seeds, verified (2.3). Not a null under freeze (= 1, cell 26). Threshold collapses to 2–5 units, so it becomes persistence-weighted diversity (2.3). p99 never recorded (A7). Differs from the BSP "new activity" semantics | **No**; repair is possible but buys little (Option C) |
-| Eff-species / `eff_activity` (F1) | Species keyed by LUT masked with the population-union used mask, plus egenes | Union saturates at 250/250 bits, so eff = full species in every run (cells 7, 25, 33). Alternative keys also fail to coarsen at productive `mu_lut` (2.3) | **No** as an objective; at most a churn diagnostic |
-| Per-bucket z-scores (G2) | `(obs_act − nact)/sqrt(Σ m T² q(1−q)/Np)` per bucket | z>3 count ≈ count of buckets above uniform share (2.2). Neutral false-positive rate far above nominal (147–173 of 500). Bidirectional with hundreds of large negative values (cell 27) | **No** as built; meaningful only against a stateful shadow with a calibrated variance |
+| `eg_excess_pc_slope` (729 keys) | Same identity over active-egene keys; T = active egenes | All of the above, plus a `D_G=1` blow-up (ACT-Q3: 1.7e4 in the evo_focus base; cell 18). Void when `tax_per_egene=0` (median 0.1). Presence-bit flips count as flux although they never change a key (`EG_BITS_PER_COMPONENT`, about line 3326) | **Not as is**; same route as `dyn` |
+| `A_new` (G1; `a_new_final/slope`) | Number of present whole-genome components whose cumulative activity exceeds the p90 of present Channon-shadow components (`run_sim` about lines 262–282) | Blind in egene-evolving / LUT-frozen runs: 0 in 4 of 4 seeds, verified (2.3). Not a null under freeze (= 1, cell 32). Threshold collapses to 2–5 units, so it becomes persistence-weighted diversity (2.3). p99 never recorded (A7). Differs from the BSP "new activity" semantics | **No**; repair is possible but buys little (Option C) |
+| Eff-species / `eff_activity` (F1) | Species keyed by LUT masked with the population-union used mask, plus egenes | Union saturates at 250/250 bits, so eff = full species in every run (cells 7, 30, 39). Alternative keys also fail to coarsen at productive `mu_lut` (2.3) | **No** as an objective; at most a churn diagnostic |
+| Per-bucket z-scores (G2) | `(obs_act − nact)/sqrt(Σ m T² q(1−q)/Np)` per bucket | z>3 count ≈ count of buckets above uniform share (2.2). Neutral false-positive rate far above nominal (147–173 of 500). Bidirectional with hundreds of large negative values (cell 33) | **No** as built; meaningful only against a stateful shadow with a calibrated variance |
 | `dyn_report` verdict (D1) | Crosses genome-churn rate with `dyn_eff` level (gate 60/500) | Gates tuned on `mu_lut=0.03` demo regimes. Structurally anti-aligned with `dyn` excess (2.5) | **No** as a selection criterion; keep as descriptor |
 | Pure-evo 5-key composite | Mean of min–max-normalized, positive-clipped {`excess_pc`, `eg`, `dyn`, `n_distinct_temporal_std`, `unique_top_genomes`} | `eg`-dominated (0.69 vs 0.41). One term is void (`excess_pc` normalized SD 0.06). `unique_top_genomes` anti-correlates with `dyn` (−0.55) and is likely sample-cap bound. Pool-relative. Compensatory (review §6) | **No** (section 4) |
-| Legacy `EVO_METRICS` mean | 4 keys including `excess_activity_slope` and `unique_top_genomes` | Internally contradictory (Spearman −0.68 between two of its keys; cell 20/23). Picked `mu_lut=0.06` as an artifact | **No**; keep under an explicit legacy name (ACT-D3) |
+| Legacy `EVO_METRICS` mean | 4 keys including `excess_activity_slope` and `unique_top_genomes` | Internally contradictory (Spearman −0.68 between two of its keys; cell 25/28). Picked `mu_lut=0.06` as an artifact | **No**; keep under an explicit legacy name (ACT-D3) |
 | Lineage net-return (D2), Φ (L1) | Adaptive return per lineage; per-capita dissipation | Not activity; hash lineages are near-singletons (A6); nominal vs actual tax (A5) | Second axes, not ACT-D1 candidates |
 
 ---
@@ -345,34 +345,34 @@ All numbers are on the 284 joint candidates and 180 LUT-only candidates.
 ## 4. Why the composite misleads (exact pointers)
 
 1. **It is a weighted `eg` objective in disguise.**
-   - Spearman with `eg` 0.69, with `dyn` 0.41 [recorded; notebook 4a, cell 22 output; also
+   - Spearman with `eg` 0.69, with `dyn` 0.41 [recorded; notebook 4a, cell 27 output; also
      reproduced].
    - Mechanism: `excess_pc_slope` has almost no spread after normalization (SD 0.06 vs
      0.21–0.25 for the others), so it contributes a near-constant.
    - `unique_top_genomes` has the largest spread (0.245) but anti-correlates with `dyn`
-     (−0.55, cell 20).
+     (−0.55, cell 25).
    - So the effective weights favor `eg` and penalize `dyn`.
-2. **Its top-5 shares no config with the `dyn` top-5** (cell 22).
+2. **Its top-5 shares no config with the `dyn` top-5** (cell 27).
    - The `eg` / composite leaders all have `tax_per_egene=8e-4`. The `dyn` leaders all have
      `tax_per_egene=0`, `food_inc=0.010` and `m_scale` 1.0–1.5.
    - Section 2.4 adds that this is two egene-cost regimes, not a smooth trade-off: within
      the costed half the channels agree (0.68).
 3. **The headline levers are channel-specific.**
    - `m_scale=2.5`, the composite winner, is the **worst** marginal `dyn` value (14.5 vs
-     26.7–31.5; cell 21). ACT-Q5.
-   - The "conditional `mu_lut` optimum" is invisible in marginal means (cell 21) and in
+     26.7–31.5; cell 26). ACT-Q5.
+   - The "conditional `mu_lut` optimum" is invisible in marginal means (cell 26) and in
      cost-stratified means (2.4).
 4. **The #1 vs #2 contrast confounds egene mutation with egene cost.**
    - #2 zeroed `tax_per_egene` as well as the mutation rates (`Scans/2026-05-17_pure_evo_lut_only/notes.md`;
-     notebook cell 23, last bullet).
+     notebook cell 28, last bullet).
    - Inside #1, the cost-free half already looks like #2 in `dyn` (2.4).
    - The v2 causal controls keep the cost in all arms, but their comparison is the
      tautological-null construction of 2.1, and their `eg` synergy does not reproduce at
-     N=96 (cell 18).
-   - The N=96 neighborhood re-ranking reverses the contrast (cell 34: LUT-only `dyn` 8.9–11.3
+     N=96 (cell 23).
+   - The N=96 neighborhood re-ranking reverses the contrast (cell 41: LUT-only `dyn` 8.9–11.3
      vs joint 6.2–6.3). That reversal is consistent with the population term in 2.1:
      LUT-only runs carry no egene tax and hold more cells (4,743 vs 3,791).
-5. **Each of the six neighborhood configs wins under some readout** (cell 33/34). A
+5. **Each of the six neighborhood configs wins under some readout** (cell 39/41). A
    composite of disagreeing readouts mostly records which readouts were included.
 
 The composite is not *wrong* about everything. Three of its top-5 lie on the (`eg`, `dyn`)
@@ -553,21 +553,21 @@ concentration, not adaptation (section 2).
 
 ## 7. Reading guide (ordered)
 
-Notebook = committed `Research/Activity-metrics/Activity-metrics.ipynb` (37 cells). In your
-working copy (39 cells) the two extra cells sit between 4a/4b and 4c, so from the 4c heading
-onward add 2. Headings are the stable anchors.
+Notebook = `Research/Activity-metrics/Activity-metrics.ipynb` (44 cells since 2026-10-18, when the
+commented "run interactively" cells were added; all cell numbers in this guide are 0-based and were
+remapped then). Headings are the stable anchors.
 
 | # | Where | What to look for | Bearing on ACT-D1 |
 |---|---|---|---|
-| 1 | Notebook **§4a, cell 22** (top-5 tables, Spearman line, eg-vs-dyn scatter colored by `tax_per_egene`) and **cell 23** (observations) | The two clouds in the scatter: blue (`tax_per_egene=0`) along the `dyn` axis, red (8e-4) on a rising diagonal | The "trade-off" is a cost-regime split; within red the channels agree (0.68, section 2.4). Decides whether Pareto is needed *within* strata or only across them |
-| 2 | Notebook **§4a, cells 20–21** (Spearman matrix; marginal `dyn` means by `mu_lut` and `m_scale`) | `unique_top_genomes` vs `dyn` −0.55; flat `mu_lut` marginals; `m_scale=2.5` the worst `dyn` | Why the composite and legacy `EVO_METRICS` mislead; ACT-Q4/Q5 |
-| 3 | Notebook **§3, cells 16–18** (v1/v2 recorded tables, N=96 reproduction, null asserts) | `a_new_final` = 0.0 for EGENE_only; nulls hold to 1e-3 | `A_new` blindness (now verified on 2 more seeds). Read the null assertions knowing they are true by construction (2.1) |
-| 4 | Notebook **§4b, cells 25–27** (winner vs frozen control panels, summary table, z histograms) | Control: every layer zero, except whole-genome `excess_pc` (+4,000) and `A_new` (1). Winner: z histogram with a large negative mass | The frozen "null holds at every layer" is flux = 0. The bidirectional z pattern is what a share-above-uniform statistic looks like (2.2). Note the control also drops `tax_per_egene` (cell 23 text), so it is not cost-matched |
-| 5 | Notebook **§4c, cells 30–31** (`dyn_report`) | `silent-churn`, `dyn_eff` 38/500, while `dyn_excess_pc_final` ≈ 2.9e4 | The A8 disagreement; structural, not calibration (2.5) |
-| 6 | Notebook **§4d, cells 33–34** (six-config re-ranking) | Every config wins under some readout; LUT-only `dyn` > joint at N=96; eff = full species | Objective choice drives the answer; the population term in 2.1 explains the LUT-only reversal |
-| 7 | Notebook **§2, cells 10–14** (evo_focus winner, `mu_lut` sweep, cfg 98) | `eg_excess_pc_slope` ≈ 17,000 with `eg_keys_present = 1`; legacy excess rising with `mu_lut` while `dyn` is flat | The `D_G=1` case of the 2.1 identity (ACT-Q3); legacy metric retraction |
-| 8 | Notebook **§1, cells 7–8** | eff species = full species (1,614 = 1,614); union 250/250 | ACT-Q2 / A3; with 2.3, drop eff keys as an objective |
-| 9 | Notebook **§5, cell 35** | The "settled core" bullet | The bullet "fixed-space shadows pass their null controls" is the one this guide revises |
+| 1 | Notebook **§4a, cell 27** (top-5 tables, Spearman line, eg-vs-dyn scatter colored by `tax_per_egene`) and **cell 28** (observations) | The two clouds in the scatter: blue (`tax_per_egene=0`) along the `dyn` axis, red (8e-4) on a rising diagonal | The "trade-off" is a cost-regime split; within red the channels agree (0.68, section 2.4). Decides whether Pareto is needed *within* strata or only across them |
+| 2 | Notebook **§4a, cells 25–26** (Spearman matrix; marginal `dyn` means by `mu_lut` and `m_scale`) | `unique_top_genomes` vs `dyn` −0.55; flat `mu_lut` marginals; `m_scale=2.5` the worst `dyn` | Why the composite and legacy `EVO_METRICS` mislead; ACT-Q4/Q5 |
+| 3 | Notebook **§3, cells 20–23** (v1/v2 recorded tables, N=96 reproduction, null asserts) | `a_new_final` = 0.0 for EGENE_only; nulls hold to 1e-3 | `A_new` blindness (now verified on 2 more seeds). Read the null assertions knowing they are true by construction (2.1) |
+| 4 | Notebook **§4b, cells 30–33** (winner vs frozen control panels, summary table, z histograms) | Control: every layer zero, except whole-genome `excess_pc` (+4,000) and `A_new` (1). Winner: z histogram with a large negative mass | The frozen "null holds at every layer" is flux = 0. The bidirectional z pattern is what a share-above-uniform statistic looks like (2.2). Note the control also drops `tax_per_egene` (cell 28 text), so it is not cost-matched |
+| 5 | Notebook **§4c, cells 36–37** (`dyn_report`) | `silent-churn`, `dyn_eff` 38/500, while `dyn_excess_pc_final` ≈ 2.9e4 | The A8 disagreement; structural, not calibration (2.5) |
+| 6 | Notebook **§4d, cells 39–41** (six-config re-ranking) | Every config wins under some readout; LUT-only `dyn` > joint at N=96; eff = full species | Objective choice drives the answer; the population term in 2.1 explains the LUT-only reversal |
+| 7 | Notebook **§2, cells 11–18** (evo_focus winner, `mu_lut` sweep, cfg 98) | `eg_excess_pc_slope` ≈ 17,000 with `eg_keys_present = 1`; legacy excess rising with `mu_lut` while `dyn` is flat | The `D_G=1` case of the 2.1 identity (ACT-Q3); legacy metric retraction |
+| 8 | Notebook **§1, cells 7–9** | eff species = full species (1,614 = 1,614); union 250/250 | ACT-Q2 / A3; with 2.3, drop eff keys as an objective |
+| 9 | Notebook **§5, cell 42** | The "settled core" bullet | The bullet "fixed-space shadows pass their null controls" is the one this guide revises |
 | 10 | `C/evoca.c` **`fs_space_step` (about 3376–3445)**, **`fs_shadow_step` (about 3461)**, **`fs_excess_pc` (about 3496)**, **`fs_zscores` (about 3573)** | `q[k]` built from this step's `obs_f`, with no use of the previous `q` | The mechanism of 2.1–2.2; about 120 lines in total |
 | 11 | `python/evoca_explore.py` **`run_sim`, about lines 262–282 (A_new) and 386–447 (excess keys)** | p90 of present shadow components; slopes of cumulative series | `A_new` construction; threshold collapse (2.3) |
 | 12 | `python/dyn_analysis.py` **module docstring and `dyn_report` docstring** | "Concentration = LOW & FLAT `dyn_eff`" means silent | The opposite reading of concentration from `dyn` excess (2.5) |
