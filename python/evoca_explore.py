@@ -542,7 +542,11 @@ def correct_scan_row_params(params):
     place; returns params. The one place these corrections live (used by
     evoca_from_scan and evoca_nb.params_from_row).
       - food_cap: scans recorded before the A9 fix have no param_food_cap
-        column; they ran the legacy uncapped mouthful, so set food_cap=0."""
+        column; they ran the legacy uncapped mouthful, so set food_cap=0.
+      - mu_egenome: scans recorded before the 2026-04-28 rename store the
+        egene mutation rate as param_mu_egenome (evoca_py.correct_legacy_mu_egenome)."""
+    from evoca_py import correct_legacy_mu_egenome
+    correct_legacy_mu_egenome(params)
     if 'food_cap' not in params:
         params['food_cap'] = 0
     return params

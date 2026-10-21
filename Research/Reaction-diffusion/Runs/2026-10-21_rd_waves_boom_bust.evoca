@@ -1,0 +1,58 @@
+{
+  "version": 3,
+  "created": "2026-10-21T09:43:15",
+  "descriptor": "rd_waves_boom_bust",
+  "N": 256,
+  "metaparams_init": {
+    "food_inc": 0.013,
+    "m_scale": 1.2,
+    "gdiff": 0.06,
+    "mu_lut": 0.001,
+    "mu_egene": 0.003,
+    "mu_egenome": 0.0,
+    "p_dup_egene": 1.0,
+    "tax": 0.035,
+    "tax_per_egene": 0.0,
+    "tax_lut": 0.0,
+    "tax_ring": 0.0,
+    "restricted_mu": 1,
+    "food_per": 1,
+    "n_chem": 1,
+    "food_cap": 0
+  },
+  "metaparams_final": {
+    "food_inc": 0.013,
+    "m_scale": 1.2,
+    "gdiff": 0.06,
+    "mu_lut": 0.001,
+    "mu_egene": 0.003,
+    "mu_egenome": 0.0,
+    "p_dup_egene": 1.0,
+    "tax": 0.035,
+    "tax_per_egene": 0.0,
+    "tax_lut": 0.0,
+    "tax_ring": 0.0,
+    "restricted_mu": 1,
+    "food_per": 1,
+    "n_chem": 1,
+    "food_cap": 0
+  },
+  "initialization": {
+    "lut": "gol",
+    "egenome": "uniform",
+    "egenome_value": 3,
+    "v_density": 0.5,
+    "f_init": 0.5,
+    "F": "uniform",
+    "F_init": 1.0,
+    "alive": "halfplane",
+    "alive_axis": 0,
+    "lut_to_dead": false
+  },
+  "display": {
+    "colormode": 1,
+    "probes": {
+      "ts": true
+    }
+  }
+}

@@ -2238,6 +2238,7 @@ def import_run(filepath=None, recipe='init', lib_path=None, N=None):
     else:
         mp = data['metaparams']  # v1 fallback
 
+    mp = correct_legacy_mu_egenome(dict(mp))
     _food_cap_legacy_notice(mp, filepath)
 
     sim = EvoCA(lib_path=lib_path)
@@ -2263,6 +2264,19 @@ def import_run(filepath=None, recipe='init', lib_path=None, N=None):
         display_kwargs['probes'] = disp['probes']
 
     return sim, display_kwargs
+
+
+def correct_legacy_mu_egenome(mp):
+    """Load-time correction for the 2026-04-28 rename (4bd3fd9): the per-bit
+    egene mutation rate was called `mu_egenome` before it, and that name now
+    means the Negene slot-growth rate. A metaparam dict with `mu_egenome` but
+    no `mu_egene` predates the rename (rows of the 2026-04-27 scans, recipes
+    exported from them; export_recipe always writes both keys), so its value
+    is mu_egene. Corrects in place; returns mp. Shared by import_run and
+    evoca_explore.correct_scan_row_params."""
+    if 'mu_egenome' in mp and 'mu_egene' not in mp:
+        mp['mu_egene'] = mp.pop('mu_egenome')
+    return mp
 
 
 def _food_cap_legacy_notice(mp, filepath):
