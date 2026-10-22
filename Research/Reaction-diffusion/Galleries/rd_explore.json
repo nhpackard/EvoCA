@@ -1,0 +1,21 @@
+{
+ "name": "rd_explore",
+ "description": "the two April interactive-session recipes",
+ "workstream": "Reaction-diffusion",
+ "owner": "2026-04-25 / 04-26",
+ "entries": [
+  {
+   "label": "waves_in_blank_half",
+   "recipe": "2026-04-25_waves_in_blank_half.evoca",
+   "params": "final",
+   "title": "front invasion (final metaparams; the init ones go extinct)"
+  },
+  {
+   "label": "fill_dead_region",
+   "recipe": "2026-04-26_fill_dead_region_with_evolving_patches.evoca",
+   "params": "init",
+   "title": "domain mosaic (gdiff=20)"
+  }
+ ],
+ "saved": "2026-10-21T16:53:39"
+}

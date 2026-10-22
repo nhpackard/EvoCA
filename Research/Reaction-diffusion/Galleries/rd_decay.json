@@ -1,0 +1,27 @@
+{
+ "name": "rd_decay",
+ "description": "three campaign-#4 bases re-run long (recipes as written)",
+ "workstream": "Reaction-diffusion",
+ "owner": "2026-05-18: campaign #4",
+ "entries": [
+  {
+   "label": "initial.cfg49",
+   "recipe": "2026-04-27_top_1_cfg49_score0.75.evoca",
+   "params": "init",
+   "title": "collapses to blob"
+  },
+  {
+   "label": "initial.cfg39",
+   "recipe": "2026-04-27_top_10_cfg39_score0.55.evoca",
+   "params": "init",
+   "title": "fragments"
+  },
+  {
+   "label": "initial.cfg35",
+   "recipe": "2026-04-27_top_5_cfg35_score0.62.evoca",
+   "params": "init",
+   "title": "most persistent"
+  }
+ ],
+ "saved": "2026-10-21T16:54:32"
+}

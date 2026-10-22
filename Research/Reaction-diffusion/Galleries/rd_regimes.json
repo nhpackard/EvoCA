@@ -1,0 +1,63 @@
+{
+ "name": "rd_regimes",
+ "description": "nine visually distinct RD regimes (recipes as written: food_cap per RXD-D4)",
+ "workstream": "Reaction-diffusion",
+ "owner": "The gallery: six-plus visual regimes",
+ "entries": [
+  {
+   "label": "initial.cfg49",
+   "recipe": "2026-04-27_top_1_cfg49_score0.75.evoca",
+   "params": "init",
+   "title": "Front sweep then salt-and-pepper colony"
+  },
+  {
+   "label": "initial.cfg39",
+   "recipe": "2026-04-27_top_10_cfg39_score0.55.evoca",
+   "params": "init",
+   "title": "Fragmented speckle (many small patches)"
+  },
+  {
+   "label": "push_edges.cfg236",
+   "recipe": "2026-04-27_top_1_cfg236_score0.90.evoca",
+   "params": "init",
+   "title": "Sparse colonies in a food lawn (invasion fronts)"
+  },
+  {
+   "label": "push_edges.cfg102",
+   "recipe": "2026-04-27_top_16_cfg102_score0.73.evoca",
+   "params": "init",
+   "title": "Broad patchy bands (large-patch turbulence)"
+  },
+  {
+   "label": "push_edges.cfg247",
+   "recipe": "2026-04-27_top_4_cfg247_score0.82.evoca",
+   "params": "init",
+   "title": "Low-density archipelago with food lakes"
+  },
+  {
+   "label": "push_edges.cfg53",
+   "recipe": "2026-04-27_top_evo_19_cfg53_score0.52.evoca",
+   "params": "init",
+   "title": "Labyrinth texture (high gdiff, short correlation)"
+  },
+  {
+   "label": "fill_dead_region",
+   "recipe": "2026-04-26_fill_dead_region_with_evolving_patches.evoca",
+   "params": "init",
+   "title": "Frozen domain mosaic (gdiff=20)"
+  },
+  {
+   "label": "RD_to_static_colony",
+   "recipe": "2026-04-27_R-D_to_static_colony_filling_world.evoca",
+   "params": "init",
+   "title": "Uniform dot lattice (RD-to-static end state)"
+  },
+  {
+   "label": "waves_in_blank_half",
+   "recipe": "2026-04-25_waves_in_blank_half.evoca",
+   "params": "final",
+   "title": "Invasion front into blank half"
+  }
+ ],
+ "saved": "2026-10-21T16:54:25"
+}

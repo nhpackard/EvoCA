@@ -1,0 +1,33 @@
+{
+ "name": "rd_waves",
+ "description": "sustained RD wave configs (run them with food_cap=0 for the legacy rule)",
+ "workstream": "Reaction-diffusion",
+ "owner": "Where the big RD waves are",
+ "entries": [
+  {
+   "label": "boom_bust",
+   "recipe": "2026-10-21_rd_waves_boom_bust.evoca",
+   "params": "init",
+   "title": "boom-bust: test.ipynb corner"
+  },
+  {
+   "label": "push_edges.cfg246",
+   "recipe": "2026-10-21_rd_waves_patchy_cfg246.evoca",
+   "params": "init",
+   "title": "patchy: push_edges cfg246"
+  },
+  {
+   "label": "push_edges.cfg102",
+   "recipe": "2026-04-27_top_16_cfg102_score0.73.evoca",
+   "params": "init",
+   "title": "patchy: cfg102 (gallery \"broad bands\")"
+  },
+  {
+   "label": "foodinc013_osc",
+   "recipe": "2026-10-15_foodinc013_osc.evoca",
+   "params": "init",
+   "title": "boom-bust: Criticality, m_scale 3.5"
+  }
+ ],
+ "saved": "2026-10-21T16:53:43"
+}

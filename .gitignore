@@ -9,3 +9,4 @@ Research/*/Scans/**/run.log
 jupyter.out
 .DS_Store
 ProbeLogs/
+.cache/

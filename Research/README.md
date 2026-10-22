@@ -36,6 +36,7 @@ Research/
     ISSUES.md                   <- single source of open questions / next directions
     digests/                    <- finished campaign digest notebooks (+ unapproved drafts)
     Runs/<file>.evoca           <- recipes
+    Galleries/<name>.json       <- named, indexed lists of recipes / scan rows (evoca_gallery)
     Scans/<date>_<name>/        <- scan.py, scan_config.json, results.csv, notes.md
     Scans/<date>_<name>.md      <- (optional) cross-scan analysis write-up
   _unsorted/Runs/               <- default home for new recipes with no workstream
@@ -51,6 +52,16 @@ finds a recipe by bare filename, and `evoca_from_scan('<date>_<name>')` and
 the other scan helpers accept a bare scan name. A **new** recipe goes to
 the workstream named in the `EVOCA_WORKSTREAM` environment variable, else
 to `Research/_unsorted/Runs/` (sort it later with `git mv`).
+
+Lists of configurations (a regime gallery, a set of Pareto picks, ...) are
+`Gallery` objects from [`python/evoca_gallery.py`](../python/evoca_gallery.py):
+an index table, lookup by position or label (`G[3]`, `G['cfg246']`),
+`G.show(i, N=512)` for the SDL window, `G.load(i)` for a headless sim,
+`G.split('layer')` for sub-galleries, and `G.run(...)` for parallel,
+disk-cached headless runs (`.cache/gallery_runs/`). A notebook section saves
+the galleries it builds to `Research/<WS>/Galleries/`, so
+`Gallery.open('<name>')` works from any kernel. An entry is a recipe file or
+a scan row; scan-row entries get the scan-row load-time corrections.
 
 Lab-notebook helpers shared across workstreams live in
 [`python/evoca_nb.py`](../python/evoca_nb.py) (`rgb`, `make_sim`,
