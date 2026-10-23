@@ -128,7 +128,7 @@ _PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff',
                'mu_lut', 'mu_egene', 'mu_egenome', 'p_dup_egene',
                'tax', 'tax_per_egene', 'tax_lut', 'tax_ring',
                'restricted_mu', 'food_per', 'n_chem', 'food_cap',
-               'wdiff', 'waste_sink', 'waste_disp')
+               'wdiff', 'waste_sink', 'waste_disp', 'waste_tox')
 
 
 def init_kwargs(params):

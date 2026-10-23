@@ -1,0 +1,32 @@
+diff --git C/evoca.c private/tmp/claude-505/-Users-n-Projects-EvoCA/456b738e-872f-424f-b99a-b54e8e6d60c8/scratchpad/twoway/evoca.c
+index e236f90..b7747fd 100644
+--- C/evoca.c
++++ private/tmp/claude-505/-Users-n-Projects-EvoCA/456b738e-872f-424f-b99a-b54e8e6d60c8/scratchpad/twoway/evoca.c
+@@ -2153,17 +2153,18 @@ void evoca_step(void)
+             if (!alive[i]) continue;
+             int toxic = 0;
+             for (int c = 1; c < g_n_chem; c++) {
++                /* EXPERIMENT (two-way passive membrane exchange):
++                 * d = disp * (a - E); d > 0 excretes, d < 0 takes up. */
+                 float *a = chem_slot((int)i, c, 0);
+-                if (!a) continue;
+-                if (chem_disp[c] > 0.0f && *a > 0.0f) {
+-                    float room = 1.0f - chem_env[c][i];
+-                    if (room > 0.0f) {
+-                        float d = chem_disp[c] * *a * room;
+-                        if (d > *a) d = *a;
+-                        *a -= d;
+-                        chem_env[c][i] += d;
+-                    }
++                float av = a ? *a : 0.0f, E = chem_env[c][i];
++                if (chem_disp[c] > 0.0f && av != E) {
++                    float d = chem_disp[c] * (av - E);
++                    if (d > av) d = av;
++                    if (-d > E) d = -E;
++                    if (d < 0.0f && !a) a = chem_slot((int)i, c, 1);
++                    if (a) { *a -= d; chem_env[c][i] += d; }
+                 }
++                if (!a) continue;
+                 if (chem_tox[c] > 0.0f && *a >= chem_tox[c]) toxic = 1;
+             }
+             f_priv[i] = chem_reduce_to_f((int)i);

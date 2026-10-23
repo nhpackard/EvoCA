@@ -321,3 +321,23 @@ experimenter injection). Only the waste mass is balanced across it.
 - **Colormodes.** Colormode 6 (food-waste) is now built like env-food (1): a dead cell shows the environmental fields, food F in green and waste W in blue; an alive cell shows red 180 plus its private stores, food f in green and waste w in blue. The earlier encoding was red = W, green = F, blue = alive. New colormode 7 (env-waste) is the waste analog of env-food: waste only, in blue. Tests: `test_food_waste_colormode_channels` and `test_env_waste_colormode_channels`, both with constructed fields; together with the colormode count check they fail on the previous build.
 - **Run/Pause label.** `Gallery.show` opened running with the button reading "Run". The front end snaps a slider value to its step (`m_scale` 3.5 becomes 3.5000000000000004) and sends it back. The slider callback took that as a move and paused, and its 200 ms timer then resumed the sim without updating the label. Now a change below float rounding is ignored, and the resume goes through `_set_paused(False)`. `tests/test_controls_pause_label.py` drives `run_with_controls` headless; 2 of its 3 tests fail without the fix.
 - `Chem.ipynb` was re-executed; its text outputs are unchanged, and the film is in the new colors.
+
+## 10. Toxicity as a metaparameter, CHEM-N5, and the two-way exchange experiment (2026-10-23)
+
+**Plan (N).** Add waste sliders, write up CHEM-N5 and a toxicity sweep, and test two-way exchange the cheap way (a local film at the balance point).
+
+**Done.**
+- **`waste_tox` is a metaparameter** (default 1.0, the old fixed value, so every recipe and scan row loads unchanged).
+  - The food/waste metaparameters now live in one list, `EvoCA.WASTE_DEFAULTS`. `init`, `set_n_chem`, `params()` and the `_DEFAULTS` used by `params_str` are built from it, so a fifth parameter is one edit there.
+  - It still has to be added by hand to `export_recipe`'s `metaparams_final`, `_init_metaparams`, `_PARAM_KEYS` (`evoca_explore`) and `_PARAM_COLS` (`evoca_gallery`).
+  - Sliders for `waste_sink`, `wdiff`, `waste_disp` and `waste_tox` appear when `n_chem == 2`.
+  - Tests: `tests/test_waste_tox.py` (5) and the slider tests in `tests/test_controls_pause_label.py`. Six of them fail on the previous Python layer.
+- **CHEM-N5** (159 runs, torque): the balance regime is reproducible but 0.001-0.002 wide in `waste_sink`, and nothing propagates.
+- **Toxicity sweep** (notebook): a low `waste_tox` kills everywhere alike, so it gives no refractory contrast. The coarsest mosaic is at `waste_tox` 0.4, `waste_sink` 0.019.
+- **Two-way exchange** (`Research/Chem/Experiments/2026-10-23_twoway_exchange`, a patch, outside the model):
+  - the structured band widens;
+  - W stays bounded;
+  - traveling phase waves and wave sources appear;
+  - spirals are not established.
+- **Chem.ipynb**, new section "No spirals yet" with the N5 figure and table, the toxicity sweep, and the space-time plot and phase maps of the two-way experiment.
+- **Decision open:** CHEM-D4 (adopt two-way exchange, as an option).

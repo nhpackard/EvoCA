@@ -94,3 +94,46 @@ def test_real_slider_move_resumes_with_pause_label(session):
     assert (btn.description, btn.value) == ("Pause", False)
     t0 = sim.get_step(); time.sleep(0.2)
     assert sim.get_step() > t0
+
+
+# ── Food/waste sliders (n_chem=2 only) ────────────────────────────────
+
+WASTE = ("waste_sink", "wdiff", "waste_disp", "waste_tox")
+
+
+def _panel(monkeypatch, **init):
+    shown = []
+    monkeypatch.setattr(controls.subprocess, "Popen", lambda *a, **k: _FakeProc())
+    monkeypatch.setattr(controls, "ipy_display", lambda w: shown.append(w))
+    sim = EvoCA()
+    sim.init(32, food_inc=0.016, m_scale=1.0, tax=0.035, **init)
+    sim.state(lut="gol")
+    controls.run_with_controls(sim, cell_px=1, paused=True)
+    sliders = {w.description.rstrip(":"): w for x in shown for w in _walk(x)
+               if type(w).__name__ == "FloatSlider"}
+    return sim, sliders
+
+
+def test_waste_sliders_absent_for_single_food(monkeypatch):
+    sim, sliders = _panel(monkeypatch)
+    try:
+        assert not set(WASTE) & set(sliders)
+    finally:
+        controls._active_stop()
+
+
+def test_waste_sliders_reach_the_sim(monkeypatch):
+    sim, sliders = _panel(monkeypatch, n_chem=2, wdiff=0.01, waste_sink=0.015,
+                          waste_disp=0.5, waste_tox=1.0)
+    try:
+        assert set(WASTE) <= set(sliders)
+        assert sliders["waste_tox"].min > 0
+        new = dict(waste_sink=0.02, wdiff=0.05, waste_disp=0.3, waste_tox=0.4)
+        for k, v in new.items():
+            sliders[k].value = v
+        for k, v in new.items():
+            assert getattr(sim, k) == pytest.approx(v, rel=1e-6), k
+        inc, sink, diff, disp, tox = sim.get_chem_params(EvoCA.WASTE)
+        assert (sink, diff, disp, tox) == pytest.approx((0.02, 0.05, 0.3, 0.4), rel=1e-6)
+    finally:
+        controls._active_stop()

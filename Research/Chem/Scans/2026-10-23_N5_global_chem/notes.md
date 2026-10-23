@@ -30,4 +30,23 @@ Calibration on built test fields:
 
 Smoke test at t <= 1500 (balance, N=512, `wdiff` 0.03): persistence 108 against a chance level of 82. That is no cores, matching the frame by eye: patches of about 50 cells, no fronts.
 
-**Results.** Pending (torque).
+**Results** (159 runs, 0 errors, 0 extinctions; analysis and figure in `Chem.ipynb`, "No spirals yet").
+- **The balance rule holds, as a knife edge.**
+  - The structured regime (largest alive std, period 100-140) sits at the last `waste_sink` step below the measured waste production:
+
+    | `food_inc` | Structured at `waste_sink` | Measured production |
+    |---|---|---|
+    | 0.013 | 0.011-0.012 | 0.0125 |
+    | 0.016 | 0.015 | 0.0153 |
+    | 0.020 | 0.019 | 0.0192 |
+
+  - All 3 seeds agree.
+  - Further below, waste piles up (mean W up to 5, 20 and 39 at the three food supplies) and nearly every death is toxic.
+  - One step above, waste never matters.
+- **Part B: no spiral cores.**
+  - Persistent defects run 1.04-1.69x chance, with the highest ratios in the pile-up regime, where nothing propagates.
+  - The frames show patches, with no fronts or rotation.
+  - `wdiff` 0.01-0.03 keeps the regime one step further (`waste_sink` 0.016).
+- **Follow-ups.**
+  - The toxicity sweep is in `Chem.ipynb`.
+  - The two-way exchange experiment is in `../../Experiments/2026-10-23_twoway_exchange/`.

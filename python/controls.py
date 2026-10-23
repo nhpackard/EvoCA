@@ -877,6 +877,17 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         value=sim.tax_ring, min=0.0, max=txr_max, step=txr_step,
         description="tax_ring:", readout_format=".5f", **sl_kw)
 
+    # Food/waste sliders, only for the food/waste chemistry (n_chem=2).
+    # waste_tox must stay > 0, so its slider starts one step above 0.
+    sl_waste = {}
+    if sim.n_chem == 2:
+        for attr, floor, fmt in (('waste_sink', 1e-4, ".4f"), ('wdiff', 1e-3, ".3f"),
+                                 ('waste_disp', 1e-3, ".3f"), ('waste_tox', 1e-3, ".3f")):
+            mx, stp = _flt_lims(getattr(sim, attr), floor)
+            sl_waste[attr] = widgets.FloatSlider(
+                value=getattr(sim, attr), min=stp if attr == 'waste_tox' else 0.0,
+                max=mx, step=stp, description=f"{attr}:", readout_format=fmt, **sl_kw)
+
     # ── ymax halve / double buttons ──────────────────────────────────
     def _make_ymax_btns(name, initial, update_fn):
         val = [initial]
@@ -933,6 +944,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         sl_food_inc, sl_m_scale, sl_gdiff, sl_food_per,
         sl_mu_lut, sl_mu_egene, sl_mu_egenome,
         sl_tax, sl_tax_per_egene, sl_tax_lut, sl_tax_ring,
+        *sl_waste.values(),
     ]
     if _ymax_btns:
         _rows.append(widgets.HBox(_ymax_btns))
@@ -1301,6 +1313,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     _make_slider_cb("tax_per_egene", sl_tax_per_egene)
     _make_slider_cb("tax_lut",    sl_tax_lut)
     _make_slider_cb("tax_ring",   sl_tax_ring)
+    for _attr, _sl in sl_waste.items():
+        _make_slider_cb(_attr, _sl)
 
     # ── Simulation thread ─────────────────────────────────────────
     def _sim_thread():

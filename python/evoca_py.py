@@ -620,10 +620,11 @@ class EvoCA:
              tax=0.0, tax_per_egene=0.0, tax_lut=0.0, tax_ring=0.0,
              restricted_mu=0, food_per=1, n_ent=2,
              N_log_interval=1, lineage=False, n_chem=1, food_cap=1,
-             wdiff=0.0, waste_sink=0.0, waste_disp=0.0):
+             wdiff=0.0, waste_sink=0.0, waste_disp=0.0, waste_tox=1.0):
         # Refuse a bad chemistry before any side effect, so a rejected call
         # leaves a live instance (its N, metaparams and C lattice) untouched.
-        wdiff, waste_sink, waste_disp = self._check_chem(n_chem, wdiff, waste_sink, waste_disp)
+        waste = self._check_chem(n_chem, wdiff=wdiff, waste_sink=waste_sink,
+                                 waste_disp=waste_disp, waste_tox=waste_tox)
         stop = getattr(self, '_stop_display', None)
         if stop is not None:
             stop()
@@ -647,7 +648,8 @@ class EvoCA:
         # Food/waste chemistry (chem milestone 2; Docs/plan-chem.md §7).
         # n_chem=2 is the food/waste preset; the waste metaparams need it.
         self.n_chem     = int(n_chem)
-        self.wdiff, self.waste_sink, self.waste_disp = wdiff, waste_sink, waste_disp
+        for k, v in waste.items():
+            setattr(self, k, v)
         self._n_ent     = int(n_ent)
         self.N_log_interval = max(1, int(N_log_interval))
         self._state_params = {}
@@ -712,20 +714,34 @@ class EvoCA:
             'wdiff': self.wdiff,
             'waste_sink': self.waste_sink,
             'waste_disp': self.waste_disp,
+            'waste_tox': self.waste_tox,
         }
 
-    @staticmethod
-    def _check_chem(n_chem, wdiff=0.0, waste_sink=0.0, waste_disp=0.0):
-        """Validate a chemistry (n_chem + waste metaparams); return the waste
-        metaparams as floats. Raises ValueError, with no side effect."""
-        w = tuple(float(x) for x in (wdiff, waste_sink, waste_disp))
-        if not all(np.isfinite(x) for x in w):
-            raise ValueError(f"wdiff / waste_sink / waste_disp must be finite, got {w}")
+    # The food/waste metaparameters and their defaults: the one list that
+    # init(), set_n_chem(), params() and recipes are built from. At the
+    # defaults n_chem=1 is the single-food model; any other value needs
+    # n_chem=2. waste_tox is the private waste at which a cell dies (> 0).
+    WASTE_DEFAULTS = dict(wdiff=0.0, waste_sink=0.0, waste_disp=0.0, waste_tox=1.0)
+
+    @classmethod
+    def _check_chem(cls, n_chem, **waste):
+        """Validate a chemistry (n_chem + waste metaparams); return all the
+        waste metaparams as a dict of floats (defaults filled in). Raises
+        ValueError, with no side effect."""
+        unknown = set(waste) - set(cls.WASTE_DEFAULTS)
+        if unknown:
+            raise ValueError(f"unknown waste metaparams {sorted(unknown)}")
+        w = {k: float(waste.get(k, d)) for k, d in cls.WASTE_DEFAULTS.items()}
+        if not all(np.isfinite(x) for x in w.values()):
+            raise ValueError(f"waste metaparams must be finite, got {w}")
         if not np.isfinite(float(n_chem)) or int(n_chem) not in (1, 2):
             raise ValueError(f"n_chem={n_chem}: only 1 (single food) and 2 (food/waste) "
                              f"are configured; larger universes are chem milestone 3")
-        if int(n_chem) == 1 and any(w):
-            raise ValueError("wdiff / waste_sink / waste_disp need n_chem=2 (food/waste)")
+        if w['waste_tox'] <= 0:
+            raise ValueError(f"waste_tox must be > 0, got {w['waste_tox']}")
+        if int(n_chem) == 1 and w != cls.WASTE_DEFAULTS:
+            raise ValueError(f"{sorted(k for k in w if w[k] != cls.WASTE_DEFAULTS[k])} "
+                             f"need n_chem=2 (food/waste)")
         return w
 
     def _apply_chem(self):
@@ -743,13 +759,14 @@ class EvoCA:
 
     def _configure_food_waste(self):
         """The food/waste special case of the general chemistry: compound 1
-        (waste) carries no energy, kills at a private amount of 1, is what the
+        (waste) carries no energy, kills at a private amount waste_tox, is what the
         tax converts food into, is excreted at rate waste_disp * w * (1 - W),
         and in the environment has no source, a uniform sink waste_sink and
         diffusion wdiff (the counterparts of food_inc and gdiff)."""
         W = self.WASTE
         self._lib.evoca_set_chem_energy(W, ctypes.c_float(0.0))
-        self._lib.evoca_set_chem_exchange(W, ctypes.c_float(self.waste_disp), ctypes.c_float(1.0))
+        self._lib.evoca_set_chem_exchange(W, ctypes.c_float(self.waste_disp),
+                                          ctypes.c_float(self.waste_tox))
         self._lib.evoca_set_chem_env(W, ctypes.c_float(0.0), ctypes.c_float(self.waste_sink),
                                      ctypes.c_float(self.wdiff))
         self._lib.evoca_set_metab_product(W)
@@ -772,6 +789,14 @@ class EvoCA:
         """Waste excretion rate: d = waste_disp * w * max(0, 1 - W) per step."""
         self._require_waste('waste_disp')
         self.waste_disp = max(0.0, float(r)); self._configure_food_waste()
+
+    def update_waste_tox(self, x):
+        """Toxicity: a cell dies when its private waste reaches waste_tox (> 0)."""
+        self._require_waste('waste_tox')
+        x = float(x)
+        if not x > 0:
+            raise ValueError(f"waste_tox must be > 0, got {x}")
+        self.waste_tox = x; self._configure_food_waste()
 
     def get_chem_env(self, c):
         """Environment field of compound c (N x N copy; c = 0 is the food
@@ -945,7 +970,7 @@ class EvoCA:
                       p_dup_egene=1.0, tax=0.0, tax_per_egene=0.0,
                       tax_lut=0.0, tax_ring=0.0,
                       restricted_mu=0, food_per=1, n_chem=1, food_cap=1,
-                      wdiff=0.0, waste_sink=0.0, waste_disp=0.0)
+                      **WASTE_DEFAULTS)
 
     def params(self):
         """Return current metaparameters as a dict suitable for init(**d)."""
@@ -957,7 +982,7 @@ class EvoCA:
                     tax_lut=self.tax_lut, tax_ring=self.tax_ring,
                     restricted_mu=self.restricted_mu, food_per=self.food_per,
                     n_chem=self.n_chem, food_cap=self.food_cap,
-                    wdiff=self.wdiff, waste_sink=self.waste_sink, waste_disp=self.waste_disp)
+                    **{k: getattr(self, k) for k in self.WASTE_DEFAULTS})
 
     def params_str(self):
         """Return a copy-pasteable sim.init(...) call with defaults annotated."""
@@ -1223,10 +1248,11 @@ class EvoCA:
         calls the C entry point _lib.evoca_set_n_chem directly, outside
         the Python view.) Returns the effective value."""
         n = int(n)
-        w = (0.0, 0.0, 0.0) if n == 1 else (self.wdiff, self.waste_sink, self.waste_disp)
-        w = self._check_chem(n, *w)
+        w = ({} if n == 1 else {k: getattr(self, k) for k in self.WASTE_DEFAULTS})
+        w = self._check_chem(n, **w)
         self.n_chem = n
-        self.wdiff, self.waste_sink, self.waste_disp = w
+        for k, v in w.items():
+            setattr(self, k, v)
         self._apply_chem()
         return self.n_chem
 
@@ -2159,6 +2185,7 @@ class EvoCA:
                 'wdiff': self.wdiff,
                 'waste_sink': self.waste_sink,
                 'waste_disp': self.waste_disp,
+                'waste_tox': self.waste_tox,
             },
             'initialization': dict(self._state_params),
             'display': {
