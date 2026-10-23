@@ -13,3 +13,4 @@ ProbeLogs/
 Research/*/Scans/**/frames/
 Research/*/Experiments/**/*.dylib
 Research/*/Experiments/**/evoca_patched.c
+Research/*/Scans/**/kymo/
