@@ -315,3 +315,9 @@ experimenter injection). Only the waste mass is balanced across it.
 - `_apply_metaparams` turns the Restart re-initialization from a hand-maintained setter list into a derived one: a new metaparameter now reaches Restart by being added to `_apply_metaparams`.
 - `evoca_chem_release` and `chem_cell_vacate` add outside-the-step call sites of `chem_return_to_env` (it was called only from tax death, toxic death and eviction).
 
+
+## 9. Display follow-ups (2026-10-23, N)
+
+- **Colormodes.** Colormode 6 (food-waste) is now built like env-food (1): a dead cell shows the environmental fields, food F in green and waste W in blue; an alive cell shows red 180 plus its private stores, food f in green and waste w in blue. The earlier encoding was red = W, green = F, blue = alive. New colormode 7 (env-waste) is the waste analog of env-food: waste only, in blue. Tests: `test_food_waste_colormode_channels` and `test_env_waste_colormode_channels`, both with constructed fields; together with the colormode count check they fail on the previous build.
+- **Run/Pause label.** `Gallery.show` opened running with the button reading "Run". The front end snaps a slider value to its step (`m_scale` 3.5 becomes 3.5000000000000004) and sends it back. The slider callback took that as a move and paused, and its 200 ms timer then resumed the sim without updating the label. Now a change below float rounding is ignored, and the resume goes through `_set_paused(False)`. `tests/test_controls_pause_label.py` drives `run_with_controls` headless; 2 of its 3 tests fail without the fix.
+- `Chem.ipynb` was re-executed; its text outputs are unchanged, and the film is in the new colors.

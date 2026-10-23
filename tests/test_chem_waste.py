@@ -249,16 +249,46 @@ def test_gallery_entry_override(tmp_path, monkeypatch):
     assert t.n_chem.iloc[0] == 2 and t.waste_sink.iloc[0] == pytest.approx(0.03)
 
 
-def test_food_waste_colormode_channels(make_sim):
-    """Colormode 6: green = F, red = W (clipped), blue = alive."""
+def _colormode_fixture(make_sim):
+    """Row 0 dead, the rest alive; env F = 0.5, env W a ramp 0..1.5 (to
+    test the clip), private f = 0.5, private w a ramp 0..0.6."""
     s = _still(make_sim, N=8, tax=0.0)
+    a = np.ones((8, 8), np.uint8); a[0, :] = 0
+    s.set_alive(a)
     s.set_F_all(0.5)
     env = np.ctypeslib.as_array(s._lib.evoca_get_chem_env(1), shape=(64,))
     env[:] = np.linspace(0, 1.5, 64, dtype=np.float32)
-    a = np.ones((8, 8), np.uint8); a[0, :] = 0
-    s.set_alive(a)
-    px = s.colorize(np.zeros(64, np.int32), 6).view(np.uint32)
-    r, g, b = (px >> 16) & 255, (px >> 8) & 255, px & 255
-    assert np.all(g == 127)
-    assert np.array_equal(r, (np.minimum(env, 1.0) * 255).astype(np.uint32))
-    assert np.array_equal(b, np.where(a.ravel() == 1, 255, 0))
+    s.set_w(np.linspace(0, 0.6, 64, dtype=np.float32).reshape(8, 8))
+    w = s.get_w().ravel()
+    f = s.get_f().ravel()
+    return s, a.ravel() == 1, env.copy(), w, f
+
+
+def _channels(s, cm):
+    px = s.colorize(np.zeros(64, np.int32), cm).view(np.uint32)
+    return (px >> 16) & 255, (px >> 8) & 255, px & 255
+
+
+def _u8(x):
+    return (np.clip(x, 0, 1) * 255).astype(np.uint32)
+
+
+def test_food_waste_colormode_channels(make_sim):
+    """Colormode 6, built like env-food (1): dead = env F green + env W blue;
+    alive = red 180 + private f green + private w blue."""
+    s, alive, env, w, f = _colormode_fixture(make_sim)
+    assert w[alive].max() > 0 and np.all(w[~alive] == 0)
+    r, g, b = _channels(s, 6)
+    assert np.array_equal(r, np.where(alive, 180, 0))
+    assert np.array_equal(g, np.where(alive, _u8(f), _u8(np.full(64, 0.5))))
+    assert np.array_equal(b, np.where(alive, _u8(w), _u8(env)))
+
+
+def test_env_waste_colormode_channels(make_sim):
+    """Colormode 7, the waste analog of env-food: dead = env W blue;
+    alive = red 180 + private w blue; no green."""
+    s, alive, env, w, f = _colormode_fixture(make_sim)
+    r, g, b = _channels(s, 7)
+    assert np.array_equal(r, np.where(alive, 180, 0))
+    assert np.all(g == 0)
+    assert np.array_equal(b, np.where(alive, _u8(w), _u8(env)))

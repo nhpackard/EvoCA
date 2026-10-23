@@ -4668,23 +4668,38 @@ void evoca_colorize(int32_t *pixels, int colormode)
             break;
         }
         case 6:
-            /* Food/waste environment (chem milestone 2): green = F_food,
-             * red = waste field W (clipped to [0,1]; 0 when N_chem == 1),
-             * blue = 255 on alive cells. Shows the two environmental fields
-             * everywhere, so a refractory (waste-loaded) zone reads red. */
-        {
-            /* The waste compound is the metabolic product, or compound 1
-             * when metabolism is off but the field exists (seeded waste). */
+        case 7: {
+            /* Chem milestone 2 views, built like colormode 1 (env-food):
+             * a dead cell shows the environmental field(s), an alive cell
+             * shows its private store(s), and red = 180 marks "alive".
+             *   6 food-waste: green = food (F_food | f_priv),
+             *                 blue  = waste (env W | private w);
+             *   7 env-waste:  blue  = waste only (the waste analog of 1).
+             * The waste compound is the metabolic product, or compound 1
+             * when metabolism is off but the field exists (seeded waste);
+             * with N_chem == 1 there is none and blue stays 0. All values
+             * are clipped to [0, 1]. */
             int wc = g_metab_product > 0 ? g_metab_product : (g_n_chem > 1 ? 1 : -1);
+            int show_food = (colormode == 6);
             for (size_t i = 0; i < cells; i++) {
-                float fv = F_food[i];
-                float wv = wc > 0 ? chem_env[wc][i] : 0.0f;
+                float fv = 0.0f, wv = 0.0f;
+                if (alive[i]) {
+                    fv = f_priv[i];
+                    if (wc > 0) {
+                        float *a = chem_slot((int)i, wc, 0);
+                        wv = a ? *a : 0.0f;
+                    }
+                } else {
+                    fv = F_food[i];
+                    wv = wc > 0 ? chem_env[wc][i] : 0.0f;
+                }
                 if (fv > 1.0f) fv = 1.0f;
                 if (fv < 0.0f) fv = 0.0f;
                 if (wv > 1.0f) wv = 1.0f;
                 if (wv < 0.0f) wv = 0.0f;
-                uint32_t r = (uint32_t)(wv * 255.0f), g = (uint32_t)(fv * 255.0f);
-                uint32_t b = alive[i] ? 255u : 0u;
+                uint32_t r = alive[i] ? 180u : 0u;
+                uint32_t g = show_food ? (uint32_t)(fv * 255.0f) : 0u;
+                uint32_t b = (uint32_t)(wv * 255.0f);
                 pixels[i] = (int32_t)(0xFF000000u | (r << 16) | (g << 8) | b);
             }
             break;
@@ -4695,7 +4710,7 @@ void evoca_colorize(int32_t *pixels, int colormode)
     }
 }
 
-int evoca_colormode_count(void) { return 7; }
+int evoca_colormode_count(void) { return 8; }
 
 /* ── Accessors ──────────────────────────────────────────────────── */
 

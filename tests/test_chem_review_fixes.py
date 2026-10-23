@@ -289,8 +289,9 @@ def test_food_waste_colormode_shows_seeded_waste_without_metabolism(make_sim):
     W = s.get_W()
     assert W.max() > 0
     px = s.colorize(np.zeros(64, np.int32), 6).view(np.uint32).reshape(8, 8)
-    red = (px >> 16) & 0xFF
-    assert np.all(red[W > 0] > 0) and np.all(red[W == 0] == 0)
+    dead = s.get_alive() == 0
+    blue = px & 0xFF                     # colormode 6: env waste is blue on dead cells
+    assert np.all(blue[dead & (W > 0)] > 0) and np.all(blue[dead & (W == 0)] == 0)
 
 
 # ── params_from_row with NaN cells (local 9) ──────────────────────────

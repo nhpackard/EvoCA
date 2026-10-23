@@ -409,7 +409,11 @@ int   evoca_get_pat_act_ymax(void);
    colormode 1: env food F as green; alive cells tinted red
    colormode 2: private food f as blue; alive cells tinted red
    colormode 3: birth events (yellow=birth, magenta=mutant birth, dim=alive, black=dead)
-   colormode 4: cell age (cool→hot log gradient; black=dead) */
+   colormode 4: cell age (cool→hot log gradient; black=dead)
+   colormode 5: 3x3 Moore pattern of v (512 hashed colors)
+   colormode 6: food-waste: dead cells green = env food F, blue = env waste W;
+                alive cells red 180, green = private food f, blue = private waste w
+   colormode 7: env-waste: as 6 with waste only (the waste analog of colormode 1) */
 void evoca_colorize(int32_t *pixels, int colormode);
 int  evoca_colormode_count(void);   /* number of modes evoca_colorize handles */
 

@@ -10,5 +10,7 @@ COLOR_MODES = [
     "births",        # 3
     "age",           # 4
     "neighborhood",  # 5: 3x3 Moore pattern of v (9 bits, 512 colors; all-zero black)
-    "food-waste",    # 6: green = env food F, red = env waste W (chem n_chem=2), blue = alive
+    "food-waste",    # 6: like env-food, plus waste in blue: dead = env F (green) + env W (blue);
+                     #    alive = red 180 + private f (green) + private w (blue)
+    "env-waste",     # 7: the waste analog of env-food: dead = env W (blue); alive = red 180 + private w
 ]

@@ -1263,6 +1263,13 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         def on_value(change):
             if not _alive[0]:
                 return
+            old, new = change['old'], change['new']
+            if abs(new - old) <= 1e-9 * max(1.0, abs(old)):
+                # The front end snapping the value to the slider's step and
+                # echoing it back (3.5 -> 3.5000000000000004): not a move.
+                # Ignore it: pausing here left the button reading "Run"
+                # while the timer silently resumed the sim.
+                return
             if not st['paused']:
                 _was_paused[0] = False
                 _set_paused(True)
@@ -1276,9 +1283,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                 if not _alive[0]:
                     return
                 if not _was_paused[0]:
-                    st['paused']  = False
-                    ctrl[_PAUSED] = 0
-                    # btn_pause visual won't sync from this thread — acceptable
+                    _set_paused(False)    # keeps the button label in step
 
             _timer[0] = threading.Timer(_SLIDER_RESUME_S, _resume)
             _timer[0].start()
