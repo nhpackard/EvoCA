@@ -26,4 +26,9 @@
 
 Survival peaks at a lag of one period: the defect pattern repeats each cycle.
 
-**Results.** Pending (torque).
+**Results** (113 runs, 0 errors, 0 extinctions; seed-to-seed std of the 4-period excess about 0.01).
+
+- **Two-way exchange gives traveling waves with stationary sources across a broad region.** Space-time plots (`kymo_montage.png`; seed 0) show coherent bands and many chevrons whose tips stay at fixed positions for the whole 600-step window. Wave speed about 1.5 cells/step and period 110-130, so the wavelength is about 200 cells. Kuramoto R mostly 0.04-0.13 (one-way control 0.39-0.44): not bulk pulsing.
+- **Where.** The longest-lived defects (excess at 4 periods 0.15-0.21, against 0.095-0.11 for the one-way control) are at `waste_tox` 1.0 with `waste_sink` 0.015-0.017, and at `waste_tox` 0.6 with `waste_sink` 0.017-0.019, mostly at `wdiff` 0.03-0.08. `waste_sink` 0.013 is the pile-up side (excess about 0). `waste_tox` 0.4 kills structure: toxicity causes 90-98% of deaths and the excess is about 0. At high sink with high tox and `wdiff` 0.08 the regime ends (no toxic deaths, few defects).
+- **No spirals resolved in 2D.** At N=1024 (`phase_N1024.png`, `phase_N1024.py`; 16x16 blocks, time-mean center) the phase field breaks into domains of 2-4 blocks (32-64 cells) with about 650 defects per frame, and colormode-6 frames show a mottled texture, not arms. The coherence seen along a row does not organize into resolvable rotating cores. The likely reason: colonies are a scattered speckle at about 33% density, so the local cycle phase is noisy at scales well below the ~200-cell wavelength.
+- **Excess survival is 1.5-2x the one-way control at best, but most defects still do not survive 4 periods.** It measures more persistent wave sources, not spiral cores as such; a 1D slice cannot separate pacemakers from cores.

@@ -351,3 +351,18 @@ experimenter injection). Only the waste mass is balanced across it.
 - **Python.** `waste_exchange` in `EvoCA.WASTE_DEFAULTS` (0), validated to {0, 1}, set by `_configure_food_waste`; `update_waste_exchange`; recorded in `params()`, recipes, `_PARAM_KEYS`, `_PARAM_COLS`. The recipe and init-snapshot dicts now loop over `WASTE_DEFAULTS` (one fewer hand-kept list). Controls: a "two-way waste" checkbox when `n_chem == 2`.
 - **Tests.** `tests/test_waste_exchange.py` (11): constructed one-way and two-way steps (both directions, the one-way room cutoff, uptake to toxicity, uptake into a cell with no store, dead cells inert), explicit one-way bit-identical to the default, recipe round trip including a recipe without the flag, Restart, validation. Two-way cases added to the per-step waste-mass identity (also with `wdiff` 0) and the energy identity. A C build that ignores the flag fails the three two-way behavior tests. Controls checkbox test.
 - **Fidelity.** After 800 steps at N=128: `waste_exchange=1` gives the experiment patch's state hash, and `waste_exchange=0` the previous `main`'s.
+
+**CHEM-N1** (113 runs, torque, 0 errors).
+- Two-way exchange gives traveling waves with stationary sources across a broad region:
+  - `waste_tox` 0.6-1.0;
+  - `waste_sink` 0.015-0.019;
+  - all `wdiff`.
+- R is about 0.1, against 0.4 one-way. The wavelength is about 200 cells.
+- No spirals are resolved in 2D. The phase is noisy at 32-64 cells because the colonies are speckle (CHEM-Q4).
+- The detector module `python/evoca_waves.py` has:
+  - a time-mean-centered phase (a spatial-mean center hides a synchronized oscillation);
+  - Kuramoto R;
+  - defect survival against chance.
+
+  It is tested on constructed fields. A large-loop winding filter was tried and does not thin noise defects at realistic density.
+- Results: `Research/Chem/Scans/2026-10-23_N1_twoway_waves/notes.md`, and `Chem.ipynb` "Two-way exchange: traveling waves, no spirals resolved".

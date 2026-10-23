@@ -156,3 +156,17 @@ def test_two_way_checkbox(monkeypatch):
         assert sim._lib.evoca_get_chem_exchange_mode(EvoCA.WASTE) == 1
     finally:
         controls._active_stop()
+
+
+def test_no_display_env_skips_the_window(monkeypatch):
+    """EVOCA_NO_DISPLAY: headless notebook execution with uncommented show()."""
+    def boom(*a, **k):
+        raise AssertionError("no subprocess may start")
+    monkeypatch.setattr(controls.subprocess, "Popen", boom)
+    monkeypatch.setattr(controls, "ipy_display", boom)
+    monkeypatch.setenv("EVOCA_NO_DISPLAY", "1")
+    sim = EvoCA(); sim.init(16)
+    try:
+        assert controls.run_with_controls(sim) is None
+    finally:
+        sim.free()

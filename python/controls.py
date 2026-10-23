@@ -147,8 +147,17 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
 
     Returns
     -------
-    threading.Thread — the simulation thread (can be .join()-ed if desired)
+    threading.Thread — the simulation thread (can be .join()-ed if desired),
+    or None when EVOCA_NO_DISPLAY is set.
+
+    Headless execution (nbconvert, CI): with the environment variable
+    EVOCA_NO_DISPLAY set to a non-empty value, no window or widgets are
+    opened and None is returned, so a notebook whose interactive cells are
+    uncommented can still be executed end to end.
     """
+    if os.environ.get('EVOCA_NO_DISPLAY'):
+        print("EVOCA_NO_DISPLAY is set: interactive window skipped")
+        return None
     # ── Tear down any previous session ────────────────────────────
     global _active_stop
     if _active_stop is not None:
