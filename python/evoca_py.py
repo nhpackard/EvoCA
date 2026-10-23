@@ -884,10 +884,15 @@ class EvoCA:
               lut_uniform=False, lut_seed=None, lut_to_dead=False,
               egenome='uniform', egenome_value=0,
               v_density=0.5, f_init=0.0, F='uniform', F_init=0.0, F_range=None,
-              alive='all', alive_fraction=0.5, alive_radius=64, alive_axis=0):
+              alive='all', alive_fraction=0.5, alive_radius=64, alive_axis=0,
+              v_seed=None):
         """Initialize lattice state from parameters.
 
-        See available_state_init() for parameter descriptions.
+        See available_state_init() for parameter descriptions. v_seed seeds
+        the numpy draw of the initial v(x) field; None (default) draws it
+        unseeded, so the run is not reproducible even after set_seed (the C
+        PRNG does not touch v). Pass an int for a reproducible run; it is
+        recorded in the recipe.
         """
         self._state_params = {}
 
@@ -907,8 +912,11 @@ class EvoCA:
             self.set_egenome_all(egenome_value)
 
         # v(x) — random binary with given density
-        self.set_v(np.random.default_rng().integers(
-            0, 2, (self._N, self._N), dtype=np.uint8), density=v_density)
+        rng = np.random.default_rng(v_seed)
+        self.set_v((rng.random((self._N, self._N)) < v_density).astype(np.uint8),
+                   density=v_density)
+        if v_seed is not None:
+            self._state_params['v_seed'] = int(v_seed)
 
         # Private food
         self.set_f_all(f_init)

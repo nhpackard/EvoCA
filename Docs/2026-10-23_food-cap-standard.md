@@ -93,3 +93,62 @@ On 40 push_edges rows where the cap cannot bind, today's code gave a lower corre
   - a 3-seed run of the capped boom-bust recipe (evolution damping the waves);
   - RXD-N2 re-scoring with a filled-lattice exclusion;
   - whether to rescan the other workstreams' pre-A9 scans.
+
+---
+
+# Part 2: every research workstream on the standard model (2026-10-23, later)
+
+N asked for every research notebook to be rescanned where necessary, with results that use `food_cap=0` sequestered as in Reaction-diffusion. Scans ran on torque.
+
+## Why every notebook had to change
+
+- **Stored outputs predate the fix.** All research notebooks were last executed on 2026-10-15 around 16:30 UTC, before the A9 fix (19:28 UTC). So every stored example run with `m_scale > 1` was a legacy-rule result.
+- **Scans with `m_scale > 1` rows and no `food_cap` column:**
+  - Activity-metrics: `evo_focus`, `pure_evo_joint`, `pure_evo_lut_only`, `causal_control` v1/v2.
+  - Lineage: `pure_evo_egene_on_winners`, `3c_coevolution_substrate`.
+  - Resource-driving: `R1_mscale_bracket`.
+
+## Rescans (`Research/*/Scans/2026-10-23_*_standard`, torque, about 36 minutes in all)
+
+- **How they were made.** Each is a copy of the source driver plus a shim forcing `food_cap=1`. The April `evo_focus` driver additionally maps its pre-rename `mu_egenome` to `mu_egene`. The launcher is `tools/rescan_standard_2026-10-23.sh`, and each directory has a `notes.md`.
+- **Checks.**
+  - The same configs as the source, column by column.
+  - 0 errors.
+  - 3c `determinism_ok` on every row.
+- **Not rescanned:**
+  - `rd_under_pure_evo` (`m_scale` ≤ 0.6);
+  - `food_cap_impact` (a deliberate both-rules study);
+  - `8_lineage_coevolution` (never run).
+
+## Notebooks (one agent per workstream; I reviewed each report)
+
+| Workstream | What changed under the standard model |
+|---|---|
+| Resource-driving | **R1 reverses:** extinction 36% → 10%, no U; productive `m_scale` moves from interior (2.5–3.5) to the 5.0 grid edge; `mu_lut` optimum high → low. `food_cap_impact` shows A9 built R1's headline at both ends. New RES-Q8. |
+| Criticality-bifurcation | **Extinction edge** `food_inc` ~0.012 → ~0.005 (a legacy artifact). New candidate transition: amplitude collapse between 0.015 and 0.017. Still no period-doubling. Its figures were never saved before (an `Agg` backend line); fixed. |
+| Lineage-co-evolution | **#3 "3a ≫ 3b" → 3a ≈ 3b** (3b extinction 46% → 1%). **#3c:** GoL-substrate death gone (arm B 10/10 → 0/10 extinct); `dyn_excess_pc` artifact gone (21/30 → 0/30 runs > 50). C > A survives (27/30). A legacy-rule rerun on today's code reproduces the recorded outcomes, so the change is the rule, not code drift. Reducer tax gap 20–23% → 0.5% (LIN-D3 no longer blocks). |
+| Activity-metrics | **pure-evo headlines hold**; "egene freeze reduces dyn" is unsupported under either rule. **Causal controls:** nulls exact; eg synergy 2.1x → 1.4x. **`evo_focus`:** winner moves from `mu_lut` 0.06 to 0.003–0.01, 16 → 0 extinct (model change plus rule). The `dyn_report` verdict on the winner flips silent-churn → functional. Section-2 example runs passed `mu_egenome` meaning Negene growth; fixed. |
+| Ring-complexity | **No finding depends on the rule** (no legacy section); counts move a few percent. Found that `state()` drew `v` unseeded (below). |
+
+## Library fix found on the way: `EvoCA.state()` initial `v`
+
+- **The defects.**
+  - `state()` drew `v(x)` from an unseeded numpy generator, so `make_sim` + `set_seed` + `state()` runs were never reproducible (the C PRNG does not touch `v`).
+  - `v_density` was only recorded; the draw was always 50/50.
+- **Who was affected.** Scans (`build_sim`/`run_sim`) and galleries (`load_recipe(seed_v=True)`) were not: they overwrite `v` from a seeded generator.
+- **The fix.**
+  - New `state(..., v_seed=None)`, recorded in recipes.
+  - `v_density` now sets the density.
+  - Default behavior is otherwise unchanged, so the C RNG stream and the golden fingerprints are untouched.
+- **Tests.** `tests/test_state_v_seed.py` (5). They fail without the change; the density cases fail with the old 50/50 draw.
+
+## Tests
+
+- `tests/notebooks/food-cap-standard-test.ipynb`, 47 PASS. It now also checks every rescan against its source, and every research notebook and digest: no errors, no main-thread `food_cap=0` (AST), and no stale intro.
+- Full suite: 167 passed.
+
+## Open
+
+- The project memory note on the `dyn_excess_pc` artifact is updated: it was a legacy-rule result in #3c, and the guard is kept.
+- Historical devlog entries (`Docs/devlog/2026-05-17_research-campaigns.md`, `research_board_archival.md`) still state the legacy headlines as recorded. They are left as history; add a pointer if N wants one.
+- Lineage added `Scans/2026-10-23_legacy_now_subset` (legacy rule, today's code) as its control.
