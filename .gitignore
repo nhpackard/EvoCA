@@ -10,3 +10,4 @@ jupyter.out
 .DS_Store
 ProbeLogs/
 .cache/
+Research/*/Scans/**/frames/
