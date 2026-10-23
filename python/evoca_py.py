@@ -209,6 +209,10 @@ class EvoCA:
         L.evoca_set_chem_env.restype       = None
         L.evoca_set_chem_exchange.argtypes = [ctypes.c_int, ctypes.c_float, ctypes.c_float]
         L.evoca_set_chem_exchange.restype  = None
+        L.evoca_set_chem_exchange_mode.argtypes = [ctypes.c_int, ctypes.c_int]
+        L.evoca_set_chem_exchange_mode.restype  = None
+        L.evoca_get_chem_exchange_mode.argtypes = [ctypes.c_int]
+        L.evoca_get_chem_exchange_mode.restype  = ctypes.c_int
         L.evoca_set_metab_product.argtypes = [ctypes.c_int]
         L.evoca_set_metab_product.restype  = None
         L.evoca_get_metab_product.argtypes = []
@@ -620,11 +624,13 @@ class EvoCA:
              tax=0.0, tax_per_egene=0.0, tax_lut=0.0, tax_ring=0.0,
              restricted_mu=0, food_per=1, n_ent=2,
              N_log_interval=1, lineage=False, n_chem=1, food_cap=1,
-             wdiff=0.0, waste_sink=0.0, waste_disp=0.0, waste_tox=1.0):
+             wdiff=0.0, waste_sink=0.0, waste_disp=0.0, waste_tox=1.0,
+             waste_exchange=0):
         # Refuse a bad chemistry before any side effect, so a rejected call
         # leaves a live instance (its N, metaparams and C lattice) untouched.
         waste = self._check_chem(n_chem, wdiff=wdiff, waste_sink=waste_sink,
-                                 waste_disp=waste_disp, waste_tox=waste_tox)
+                                 waste_disp=waste_disp, waste_tox=waste_tox,
+                                 waste_exchange=waste_exchange)
         stop = getattr(self, '_stop_display', None)
         if stop is not None:
             stop()
@@ -711,17 +717,18 @@ class EvoCA:
             'food_per': self.food_per,
             'n_chem': self.n_chem,
             'food_cap': self.food_cap,
-            'wdiff': self.wdiff,
-            'waste_sink': self.waste_sink,
-            'waste_disp': self.waste_disp,
-            'waste_tox': self.waste_tox,
+            **{k: getattr(self, k) for k in self.WASTE_DEFAULTS},
         }
 
     # The food/waste metaparameters and their defaults: the one list that
     # init(), set_n_chem(), params() and recipes are built from. At the
     # defaults n_chem=1 is the single-food model; any other value needs
     # n_chem=2. waste_tox is the private waste at which a cell dies (> 0).
-    WASTE_DEFAULTS = dict(wdiff=0.0, waste_sink=0.0, waste_disp=0.0, waste_tox=1.0)
+    # waste_exchange: 0 = one-way excretion d = disp * w * max(0, 1 - W)
+    # (the original rule), 1 = two-way passive membrane transport
+    # d = disp * (w - W) (CHEM-D4).
+    WASTE_DEFAULTS = dict(wdiff=0.0, waste_sink=0.0, waste_disp=0.0, waste_tox=1.0,
+                          waste_exchange=0)
 
     @classmethod
     def _check_chem(cls, n_chem, **waste):
@@ -739,6 +746,9 @@ class EvoCA:
                              f"are configured; larger universes are chem milestone 3")
         if w['waste_tox'] <= 0:
             raise ValueError(f"waste_tox must be > 0, got {w['waste_tox']}")
+        if w['waste_exchange'] not in (0.0, 1.0):
+            raise ValueError(f"waste_exchange must be 0 (one-way) or 1 (two-way), got {w['waste_exchange']}")
+        w['waste_exchange'] = int(w['waste_exchange'])
         if int(n_chem) == 1 and w != cls.WASTE_DEFAULTS:
             raise ValueError(f"{sorted(k for k in w if w[k] != cls.WASTE_DEFAULTS[k])} "
                              f"need n_chem=2 (food/waste)")
@@ -760,7 +770,8 @@ class EvoCA:
     def _configure_food_waste(self):
         """The food/waste special case of the general chemistry: compound 1
         (waste) carries no energy, kills at a private amount waste_tox, is what the
-        tax converts food into, is excreted at rate waste_disp * w * (1 - W),
+        tax converts food into, is exchanged with the site one-way at rate
+        waste_disp * w * (1 - W) or two-way at waste_disp * (w - W) (waste_exchange),
         and in the environment has no source, a uniform sink waste_sink and
         diffusion wdiff (the counterparts of food_inc and gdiff)."""
         W = self.WASTE
@@ -770,6 +781,7 @@ class EvoCA:
         self._lib.evoca_set_chem_env(W, ctypes.c_float(0.0), ctypes.c_float(self.waste_sink),
                                      ctypes.c_float(self.wdiff))
         self._lib.evoca_set_metab_product(W)
+        self._lib.evoca_set_chem_exchange_mode(W, int(self.waste_exchange))
 
     def _require_waste(self, what):
         if self.n_chem != 2:
@@ -789,6 +801,15 @@ class EvoCA:
         """Waste excretion rate: d = waste_disp * w * max(0, 1 - W) per step."""
         self._require_waste('waste_disp')
         self.waste_disp = max(0.0, float(r)); self._configure_food_waste()
+
+    def update_waste_exchange(self, mode):
+        """Waste exchange rule: 0 one-way excretion, 1 two-way passive
+        membrane transport d = waste_disp * (w - W)."""
+        self._require_waste('waste_exchange')
+        mode = int(mode)
+        if mode not in (0, 1):
+            raise ValueError(f"waste_exchange must be 0 or 1, got {mode}")
+        self.waste_exchange = mode; self._configure_food_waste()
 
     def update_waste_tox(self, x):
         """Toxicity: a cell dies when its private waste reaches waste_tox (> 0)."""
@@ -2182,10 +2203,7 @@ class EvoCA:
                 'food_per': self.food_per,
                 'n_chem': self.n_chem,
                 'food_cap': self.food_cap,
-                'wdiff': self.wdiff,
-                'waste_sink': self.waste_sink,
-                'waste_disp': self.waste_disp,
-                'waste_tox': self.waste_tox,
+                **{k: getattr(self, k) for k in self.WASTE_DEFAULTS},
             },
             'initialization': dict(self._state_params),
             'display': {

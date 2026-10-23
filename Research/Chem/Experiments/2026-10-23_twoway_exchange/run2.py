@@ -7,10 +7,12 @@ sys.path.insert(0, os.path.join(ROOT, 'python'))
 from evoca_py import EvoCA
 from evoca_explore import init_kwargs
 X = os.path.dirname(os.path.abspath(__file__))
-LIB = os.path.join(X, 'libevoca_2way.dylib')   # built from twoway.patch, see notes.md   # build: see notes.md
+MAIN = os.path.join(ROOT, 'C', 'libevoca.dylib')
+# The two-way rule is on main as waste_exchange=1 (bit-identical to twoway.patch).
+TWO_WAY = dict(waste_exchange=1)
 P0 = json.load(open(os.path.join(ROOT, 'Research', 'Chem', 'Runs', '2026-10-23_chem_fw_spiralpoint.evoca')))['metaparams_init']
 
-def build(p, N, seed, lib=LIB):
+def build(p, N, seed, lib=MAIN):
     """build_sim's initialization, with the library path chosen."""
     rng = np.random.default_rng(seed)
     s = EvoCA(lib_path=lib); s.init(N, **init_kwargs(p)); s.set_seed(seed)
@@ -24,7 +26,7 @@ def img6(s, N):
     return np.dstack([(c >> 16) & 255, (c >> 8) & 255, c & 255]).astype(np.uint8)
 
 def mass_check():
-    s = build(dict(P0, waste_sink=0.015, wdiff=0.01), 64, 0)
+    s = build(dict(P0, waste_sink=0.015, wdiff=0.01, **TWO_WAY), 64, 0)
     m = lambda: s.get_W().astype(np.float64).sum() + s.get_w().astype(np.float64).sum()
     m0 = m(); f0 = s.get_chem_flux(1); worst = 0
     for _ in range(500):
@@ -34,7 +36,7 @@ def mass_check():
 
 def run(arg):
     ws, wd = arg
-    s = build(dict(P0, waste_sink=ws, wdiff=wd), 256, 0)
+    s = build(dict(P0, waste_sink=ws, wdiff=wd, **TWO_WAY), 256, 0)
     al = []; td = dd = 0
     for t in range(3000):
         s.step()

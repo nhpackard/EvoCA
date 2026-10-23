@@ -1,16 +1,15 @@
 import sys, os, importlib.util, numpy as np, matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
 from multiprocessing import Pool
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from run2 import build, P0, LIB, X, ROOT
+from run2 import build, P0, X, ROOT
 spec = importlib.util.spec_from_file_location('n5', os.path.join(ROOT, 'Research', 'Chem', 'Scans', '2026-10-23_N5_global_chem', 'scan.py'))
 n5 = importlib.util.module_from_spec(spec); spec.loader.exec_module(n5)
-MAIN = os.path.join(ROOT, 'C', 'libevoca.dylib')
-CASES = [('one-way', MAIN, 0.015, 0.01), ('two-way', LIB, 0.017, 0.01), ('two-way', LIB, 0.015, 0.08)]
+CASES = [('one-way', 0, 0.015, 0.01), ('two-way', 1, 0.017, 0.01), ('two-way', 1, 0.015, 0.08)]
 N = 512; B = 8   # finer blocks than the scan, to resolve pinwheels
 
 def run(case):
-    name, lib, ws, wd = case
-    s = build(dict(P0, waste_sink=ws, wdiff=wd), N, 0, lib=lib)
+    name, ex, ws, wd = case
+    s = build(dict(P0, waste_sink=ws, wdiff=wd, waste_exchange=ex), N, 0)
     for _ in range(3000): s.step()
     out = []; snaps = []; prev = None
     for t in range(3000, 4501):

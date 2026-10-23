@@ -46,7 +46,7 @@ import evoca_paths
 
 CACHE_DIR = os.path.join(evoca_paths.REPO_ROOT, '.cache', 'gallery_runs')
 _PARAM_COLS = ('food_inc', 'm_scale', 'gdiff', 'tax', 'mu_lut', 'mu_egene',
-               'restricted_mu', 'food_cap', 'n_chem', 'wdiff', 'waste_sink', 'waste_disp', 'waste_tox')
+               'restricted_mu', 'food_cap', 'n_chem', 'wdiff', 'waste_sink', 'waste_disp', 'waste_tox', 'waste_exchange')
 
 
 def galleries_dir(workstream):

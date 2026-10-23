@@ -152,7 +152,8 @@ def test_reproduction_splits_waste_50_50(make_sim):
 
 # ── 3. conservation on evolving runs ──────────────────────────────────
 
-@pytest.mark.parametrize('extra', [dict(), dict(wdiff=0.0), dict(waste_disp=0.0)])
+@pytest.mark.parametrize('extra', [dict(), dict(wdiff=0.0), dict(waste_disp=0.0),
+                                   dict(waste_exchange=1), dict(waste_exchange=1, wdiff=0.0)])
 def test_waste_mass_identity_every_step(make_sim, extra):
     """sum W + sum w changes by exactly (in - out) each step: nothing is
     created or lost by eviction, tax death, toxic death, the split or diffusion."""
@@ -173,10 +174,11 @@ def test_waste_mass_identity_every_step(make_sim, extra):
         assert s.get_alive().mean() > 0.02, "fixture went extinct; identity is vacuous"
 
 
-def test_energy_identity_holds_with_waste(make_sim):
+@pytest.mark.parametrize('extra', [dict(), dict(waste_exchange=1)])
+def test_energy_identity_holds_with_waste(make_sim, extra):
     """Waste carries no energy, and a toxic death returns food to F (a transfer,
     not a sink), so the single-food dissipation identity is unchanged."""
-    s = _evolving(make_sim, **WASTE)
+    s = _evolving(make_sim, **{**WASTE, **extra})
     d0 = s.get_dissipation(); prev = d0['storage_env'] + d0['storage_priv']
     tox = 0
     for _ in range(300):

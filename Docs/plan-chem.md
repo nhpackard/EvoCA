@@ -341,3 +341,13 @@ experimenter injection). Only the waste mass is balanced across it.
   - spirals are not established.
 - **Chem.ipynb**, new section "No spirals yet" with the N5 figure and table, the toxicity sweep, and the space-time plot and phase maps of the two-way experiment.
 - **Decision open:** CHEM-D4 (adopt two-way exchange, as an option).
+
+## 11. Two-way waste exchange as an option (CHEM-D4, 2026-10-23)
+
+**Plan (N).** Add two-way exchange as an option, an exchange-mode flag defaulting to one-way so every recipe is unchanged, with a waste-mass test; then run the wave and spiral survey CHEM-N1 under it on torque.
+
+**Done.**
+- **C.** Per-compound `chem_exch_mode[c]` (0 one-way, 1 two-way), reset to 0 with the chemistry; `evoca_set_chem_exchange_mode` / `evoca_get_chem_exchange_mode`. The two-way branch is the experiment patch verbatim: `d = disp * (a - E)`, capped by the source, and uptake creates the store slot.
+- **Python.** `waste_exchange` in `EvoCA.WASTE_DEFAULTS` (0), validated to {0, 1}, set by `_configure_food_waste`; `update_waste_exchange`; recorded in `params()`, recipes, `_PARAM_KEYS`, `_PARAM_COLS`. The recipe and init-snapshot dicts now loop over `WASTE_DEFAULTS` (one fewer hand-kept list). Controls: a "two-way waste" checkbox when `n_chem == 2`.
+- **Tests.** `tests/test_waste_exchange.py` (11): constructed one-way and two-way steps (both directions, the one-way room cutoff, uptake to toxicity, uptake into a cell with no store, dead cells inert), explicit one-way bit-identical to the default, recipe round trip including a recipe without the flag, Restart, validation. Two-way cases added to the per-step waste-mass identity (also with `wdiff` 0) and the energy identity. A C build that ignores the flag fails the three two-way behavior tests. Controls checkbox test.
+- **Fidelity.** After 800 steps at N=128: `waste_exchange=1` gives the experiment patch's state hash, and `waste_exchange=0` the previous `main`'s.

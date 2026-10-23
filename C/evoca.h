@@ -84,6 +84,8 @@ int  evoca_set_n_chem(int n);
  * energy 0, toxic at 1, the tax's metabolic product. */
 void   evoca_set_chem_env(int c, float inc, float sink, float diff);
 void   evoca_set_chem_exchange(int c, float disp, float tox);
+void   evoca_set_chem_exchange_mode(int c, int mode);   /* 0 one-way (default), 1 two-way */
+int    evoca_get_chem_exchange_mode(int c);              /* -1 if compound c is absent */
 void   evoca_set_metab_product(int c);
 int    evoca_get_metab_product(void);
 void   evoca_get_chem_params(int c, float *out);

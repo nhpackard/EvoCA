@@ -1,6 +1,6 @@
 # Experiment: two-way (passive membrane) waste exchange (2026-10-23)
 
-**Status.** An experiment outside the model. `main` still runs the one-way rule. Whether to adopt the two-way rule is CHEM-D4 (N).
+**Status.** Adopted as an option (CHEM-D4, N, 2026-10-23): `waste_exchange=1` on `main`, bit-identical to `twoway.patch` (checked: same state hash after 800 steps at N=128). The one-way rule stays the default. The scripts below now run on `main` with the flag; the patch is kept as the record of what was tested.
 
 ## Why
 
@@ -20,7 +20,7 @@ Passive diffusion across the membrane, in both directions:
 
 ## Reproduce
 
-From the repo root:
+The scripts run on `main` (`waste_exchange=1`): `python3 run2.py && python3 kymo.py && python3 phase.py`. The original patch build, for the record (it applies to `C/evoca.c` at `0e2ee2a` and needs the Python layer of `709c39e`):
 
 ```
 patch -o Research/Chem/Experiments/2026-10-23_twoway_exchange/evoca_patched.c C/evoca.c Research/Chem/Experiments/2026-10-23_twoway_exchange/twoway.patch

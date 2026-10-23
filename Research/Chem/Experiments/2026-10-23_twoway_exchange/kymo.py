@@ -1,15 +1,14 @@
 import sys, os, numpy as np, matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
 from multiprocessing import Pool
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from run2 import build, img6, P0, LIB, X, ROOT
-MAIN = os.path.join(ROOT, 'C', 'libevoca.dylib')
-CASES = [('one-way', MAIN, 0.015, 0.01), ('two-way', LIB, 0.017, 0.01),
-         ('two-way', LIB, 0.015, 0.08), ('two-way', LIB, 0.019, 0.01)]
+from run2 import build, img6, P0, X, ROOT
+CASES = [('one-way', 0, 0.015, 0.01), ('two-way', 1, 0.017, 0.01),
+         ('two-way', 1, 0.015, 0.08), ('two-way', 1, 0.019, 0.01)]
 N = 512
 
 def run(case):
-    name, lib, ws, wd = case
-    s = build(dict(P0, waste_sink=ws, wdiff=wd), N, 0, lib=lib)
+    name, ex, ws, wd = case
+    s = build(dict(P0, waste_sink=ws, wdiff=wd, waste_exchange=ex), N, 0)
     for _ in range(3000): s.step()
     rows = []; frames = []
     for t in range(600):

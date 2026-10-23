@@ -415,16 +415,8 @@ _Updated 2026-10-23_
 #### Decisions needed (N)
 - **CHEM-D2**: Should environmental waste saturate? — Currently `W` is unbounded and mass-conserving: excretion stops at `W >= 1`, but deaths still return waste, so where the sink is slower than production (`waste_sink` < tax x density) `W` piles up to 5-12, cells can never excrete, and waste acts as uniform aging (lifespan ~ 1/tax). Option: cap `W` at 1 with the excess discarded and booked as an overflow sink, the counterpart of the food `F <= 1` regeneration cap (N's "parallel to food" principle). Recommendation: keep unbounded for now (conserving, and the balance regime is where structure appears); revisit if the aging regime matters.
 
-- **CHEM-D4**: Adopt two-way (passive membrane) waste exchange, `d = disp * (a - E)`, in place of, or as an option beside, the one-way `d = disp * a * max(0, 1 - E)`?
-  - **Why.** The one-way rule's refractory zone is soft: waste ground never empties of life, and nothing propagates (CHEM-N5).
-  - **The experiment** (outside the model; seed 0; `Experiments/2026-10-23_twoway_exchange`):
-    - the structured band widens from 1-2 `waste_sink` steps to 0.013-0.019;
-    - W stays bounded;
-    - space-time plots show coherent oscillation with traveling phase waves and sources (chevrons).
-  - **Not yet shown:** spirals.
-  - **Recommendation.** Adopt it as an option (an exchange-mode flag, default one-way, so every recipe is unchanged), with a waste-mass test, then run CHEM-N1 under it.
-
 #### Decided
+- **CHEM-D4** (N, 2026-10-23): two-way (passive membrane) waste exchange is adopted **as an option**: metaparameter `waste_exchange` (0 = one-way excretion, the default, so every recipe is unchanged; 1 = two-way `d = waste_disp * (w - W)`), a checkbox in the controls. Bit-identical to the experiment patch; `waste_exchange=0` is bit-identical to the previous `main`. Tests `tests/test_waste_exchange.py` and the two-way cases of the waste-mass and energy identities. The wave/spiral survey under it is CHEM-N1.
 - **CHEM-D1** (2026-10-23): merged to `main` (`1a41c5d`, fast-forward) after a local review and the cloud `/code-review ultra`; findings fixed (CHEM-F1), shared `diffuse()` parked (CHEM-P1).
 - **CHEM-D3** (N, 2026-10-23): yes to wgenes, after a short look at global chem (CHEM-N5, done). Hereditary local chemistries are the longer-term goal; wgenes are the first step: the chemistry stays global and one exchange becomes heritable. Design (to confirm in the dev plan): wgenes use the egene representation (ternary D4 patterns, max signed match `wscore` clamped at 0); excretion `d = disp * (b + (1-b) * wscore/25) * a * (1-E)`, with a floor `b` so that `b = 1` reproduces today's uniform excretion bit-for-bit (the first parity test); `tax_per_wgene` and `mu_wgene` by symmetry with eating; wgenes enter the genome hash and the neutral shadow mutates them (see the egene shadow mismatch). Built as per-compound exchange genes (egenes = uptake of compound 0, wgenes = excretion of compound 1), separate sets from egenes at first. Motivation: eating and excreting then demand different local CA patterns, which can select for temporal alternation, a visible dynamics change driven by heritable function (the activity-to-visual link, `Docs/activity-thoughts.md`).
 

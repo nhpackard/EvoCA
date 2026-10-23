@@ -137,3 +137,22 @@ def test_waste_sliders_reach_the_sim(monkeypatch):
         assert (sink, diff, disp, tox) == pytest.approx((0.02, 0.05, 0.3, 0.4), rel=1e-6)
     finally:
         controls._active_stop()
+
+
+def test_two_way_checkbox(monkeypatch):
+    shown = []
+    monkeypatch.setattr(controls.subprocess, "Popen", lambda *a, **k: _FakeProc())
+    monkeypatch.setattr(controls, "ipy_display", lambda w: shown.append(w))
+    sim = EvoCA()
+    sim.init(32, food_inc=0.016, m_scale=1.0, tax=0.035, n_chem=2, waste_disp=0.5)
+    sim.state(lut="gol")
+    controls.run_with_controls(sim, cell_px=1, paused=True)
+    try:
+        cb = [w for x in shown for w in _walk(x)
+              if type(w).__name__ == "Checkbox" and w.description == "two-way waste"]
+        assert len(cb) == 1 and cb[0].value is False
+        cb[0].value = True
+        assert sim.waste_exchange == 1
+        assert sim._lib.evoca_get_chem_exchange_mode(EvoCA.WASTE) == 1
+    finally:
+        controls._active_stop()

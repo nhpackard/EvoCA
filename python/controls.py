@@ -932,6 +932,11 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         value=bool(sim.restricted_mu),
         description="restricted_mu",
         layout=widgets.Layout(width="200px"))
+    # Waste exchange rule (n_chem=2): unchecked one-way excretion, checked
+    # two-way passive membrane transport (CHEM-D4).
+    cb_two_way = (widgets.Checkbox(value=bool(sim.waste_exchange), description="two-way waste",
+                                   layout=widgets.Layout(width="200px"))
+                  if sim.n_chem == 2 else None)
     color_dd   = widgets.Dropdown(
         options=COLOR_MODES, value=COLOR_MODES[colormode],
         description="Color:",
@@ -948,7 +953,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     ]
     if _ymax_btns:
         _rows.append(widgets.HBox(_ymax_btns))
-    _rows.append(widgets.HBox([color_dd, cb_restricted_mu, status_lbl]))
+    _rows.append(widgets.HBox([color_dd, cb_restricted_mu,
+                               *([cb_two_way] if cb_two_way else []), status_lbl]))
     ipy_display(widgets.VBox(_rows))
 
     # ── Widget callbacks ──────────────────────────────────────────
@@ -1181,6 +1187,11 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
             return
         sim.update_restricted_mu(int(change['new']))
 
+    def on_two_way(change):
+        if not _alive[0]:
+            return
+        sim.update_waste_exchange(int(change['new']))
+
     def on_restart(_):
         if not _alive[0]:
             return
@@ -1265,6 +1276,8 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
     btn_save.on_click(on_save)
     btn_export.on_click(on_export)
     cb_restricted_mu.observe(on_restricted_mu, names='value')
+    if cb_two_way is not None:
+        cb_two_way.observe(on_two_way, names='value')
     color_dd.observe(on_color, names='value')
 
     # Slider drag: pause on first touch, auto-resume after 200 ms idle

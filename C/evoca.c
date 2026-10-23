@@ -307,8 +307,12 @@ static float   *chem_amt = NULL;   /* [N*N*CHEM_MAX]  amount per slot */
  * each compound c >= 1 has its own field chem_env[c] with a uniform source
  * chem_env_inc[c], a uniform sink chem_env_sink[c] (removal floored at 0)
  * and its own diffusion chem_env_diff[c] (same box-blur rule as gdiff).
- * Agent exchange for c >= 1: excretion d = chem_disp[c] * a * max(0, 1 - E)
- * from private amount a into the cell's own site E, and toxicity: a private
+ * Agent exchange for c >= 1, between private amount a and the cell's own
+ * site E, in one of two modes (chem_exch_mode[c]):
+ *   0 one-way (default): excretion d = chem_disp[c] * a * max(0, 1 - E);
+ *   1 two-way (passive membrane transport): d = chem_disp[c] * (a - E),
+ *     d > 0 excretes, d < 0 takes up from the site; capped by the source.
+ * Toxicity: a private
  * amount >= chem_tox[c] (> 0) kills the cell. Metabolism is the one
  * reaction: the tax converts energy compound 0 into compound
  * g_metab_product (-1 = into nothing, i.e. dissipated, the single-food
@@ -323,6 +327,7 @@ static float    chem_env_inc [CHEM_MAX_N];     /* uniform source per step (c >= 
 static float    chem_env_sink[CHEM_MAX_N];     /* uniform sink per step (c >= 1) */
 static float    chem_env_diff[CHEM_MAX_N];     /* diffusion strength (c >= 1) */
 static float    chem_disp[CHEM_MAX_N];         /* excretion rate (c >= 1) */
+static int      chem_exch_mode[CHEM_MAX_N];    /* 0 one-way, 1 two-way (c >= 1) */
 static float    chem_tox [CHEM_MAX_N];         /* toxic private amount, 0 = none (c >= 1) */
 static int      g_metab_product = -1;          /* tax converts compound 0 into this */
 static double   chem_src_cum [CHEM_MAX_N];     /* mass in: env source + metabolic production */
@@ -1259,6 +1264,7 @@ static void chem_env_reset(void)
         free(chem_env[c]); chem_env[c] = NULL;
         chem_env_inc[c] = chem_env_sink[c] = chem_env_diff[c] = 0.0f;
         chem_disp[c] = chem_tox[c] = 0.0f;
+        chem_exch_mode[c] = 0;
         chem_src_cum[c] = chem_sink_cum[c] = 0.0;
         if (c >= 1) chem_energy[c] = 0.0f;      /* inert: energy-free */
     }
@@ -1552,6 +1558,17 @@ void evoca_set_metab_product(int c)
 }
 int evoca_get_metab_product(void) { return g_metab_product; }
 /* out[5] = {inc, sink, diff, disp, tox} for compound c (zeros if c is out of range). */
+/* Exchange mode of compound c >= 1: 0 one-way excretion (default),
+ * 1 two-way passive membrane transport. Other values are ignored. */
+void evoca_set_chem_exchange_mode(int c, int mode)
+{
+    if (c < 1 || c >= g_n_chem || (mode != 0 && mode != 1)) return;
+    chem_exch_mode[c] = mode;
+}
+int evoca_get_chem_exchange_mode(int c)
+{
+    return (c >= 1 && c < g_n_chem) ? chem_exch_mode[c] : -1;
+}
 void evoca_get_chem_params(int c, float *out)
 {
     int ok = c >= 1 && c < g_n_chem;
@@ -2154,14 +2171,27 @@ void evoca_step(void)
             int toxic = 0;
             for (int c = 1; c < g_n_chem; c++) {
                 float *a = chem_slot((int)i, c, 0);
-                if (!a) continue;
-                if (chem_disp[c] > 0.0f && *a > 0.0f) {
-                    float room = 1.0f - chem_env[c][i];
-                    if (room > 0.0f) {
-                        float d = chem_disp[c] * *a * room;
-                        if (d > *a) d = *a;
-                        *a -= d;
-                        chem_env[c][i] += d;
+                if (chem_exch_mode[c] == 1) {
+                    /* two-way: d = disp * (a - E); uptake may create the slot */
+                    float av = a ? *a : 0.0f, E = chem_env[c][i];
+                    if (chem_disp[c] > 0.0f && av != E) {
+                        float d = chem_disp[c] * (av - E);
+                        if (d > av) d = av;
+                        if (-d > E) d = -E;
+                        if (d < 0.0f && !a) a = chem_slot((int)i, c, 1);
+                        if (a) { *a -= d; chem_env[c][i] += d; }
+                    }
+                    if (!a) continue;
+                } else {
+                    if (!a) continue;
+                    if (chem_disp[c] > 0.0f && *a > 0.0f) {
+                        float room = 1.0f - chem_env[c][i];
+                        if (room > 0.0f) {
+                            float d = chem_disp[c] * *a * room;
+                            if (d > *a) d = *a;
+                            *a -= d;
+                            chem_env[c][i] += d;
+                        }
                     }
                 }
                 if (chem_tox[c] > 0.0f && *a >= chem_tox[c]) toxic = 1;
