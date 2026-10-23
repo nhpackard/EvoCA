@@ -242,6 +242,17 @@ static int    gfood_cap     = 1;  /* 1 (default) = cap the Phase-3 mouthful at
                                    * only by headroom, which overdraws F when
                                    * m_scale*score > 25. At m_scale <= 1 the
                                    * two are bit-for-bit identical. */
+static float  gfood_min     = 0.0f; /* refractory gate on the site: no
+                                   * eating while F(x) < food_min (food has
+                                   * to regrow to this level before the site
+                                   * can be eaten again). 0 (default) = off,
+                                   * bit-for-bit the ungated rule. */
+static float  gmouthful_min = 0.0f; /* minimum mouthful: a mouthful (after the
+                                   * caps) below mouthful_min is not taken.
+                                   * A site relights at F >= mouthful_min
+                                   * for strong eaters (m*score >= 25), at
+                                   * F >= mouthful_min*25/(m*score) for
+                                   * weaker ones. 0 = off. */
 static int    g_diag        = 0; /* diagnostic prints */
 
 /* Restricted mutation: tracks which LUT bit indices are queried each step */
@@ -1422,6 +1433,10 @@ void  evoca_set_food_per(int p)  { gfood_per  = (p < 1) ? 1 : p; }
 int   evoca_get_food_per(void)   { return gfood_per; }
 void  evoca_set_food_cap(int c)  { gfood_cap  = c ? 1 : 0; }
 int   evoca_get_food_cap(void)   { return gfood_cap; }
+void  evoca_set_food_min(float v)     { gfood_min     = v > 0.0f ? v : 0.0f; }
+float evoca_get_food_min(void)        { return gfood_min; }
+void  evoca_set_mouthful_min(float v) { gmouthful_min = v > 0.0f ? v : 0.0f; }
+float evoca_get_mouthful_min(void)    { return gmouthful_min; }
 void  evoca_set_diag(int d)      { g_diag     = d; }
 int   evoca_get_diag(void)       { return g_diag;    }
 
@@ -1880,6 +1895,13 @@ void evoca_step(void)
                  * pre-fix runs bit-for-bit. */
                 if (mouthful > headroom) mouthful = headroom;
             }
+            /* Refractory gates (both off at 0, the default, so the rule
+             * above is unchanged): no eating at a site whose food is
+             * below food_min, and no mouthful smaller than mouthful_min.
+             * Each acts only when its threshold is > 0. */
+            if ((gfood_min     > 0.0f && F_food[idx] < gfood_min) ||
+                (gmouthful_min > 0.0f && mouthful    < gmouthful_min))
+                mouthful = 0.0f;
             F_food[idx] -= mouthful;
             /* Intake deposits into the agent's energy compound (compound 0 at
              * N_chem==1); chem_cell_add refreshes the f_priv cache. */

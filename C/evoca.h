@@ -97,6 +97,10 @@ void evoca_set_food_per(int p);    /* env food-regen period (>=1); default 1 */
 int  evoca_get_food_per(void);
 void evoca_set_food_cap(int c);    /* 1 (default) = cap mouthful at max(F,0); 0 = legacy */
 int  evoca_get_food_cap(void);
+void  evoca_set_food_min(float v);     /* no eating while F(x) < food_min (0 = off) */
+float evoca_get_food_min(void);
+void  evoca_set_mouthful_min(float v); /* no mouthful smaller than mouthful_min (0 = off) */
+float evoca_get_mouthful_min(void);
 void evoca_set_diag(int d);
 int  evoca_get_diag(void);
 

@@ -127,7 +127,8 @@ def _spatial_metrics(alive_2d, F_2d):
 _PARAM_KEYS = ('food_inc', 'm_scale', 'gdiff',
                'mu_lut', 'mu_egene', 'mu_egenome', 'p_dup_egene',
                'tax', 'tax_per_egene', 'tax_lut', 'tax_ring',
-               'restricted_mu', 'food_per', 'n_chem', 'food_cap')
+               'restricted_mu', 'food_per', 'n_chem', 'food_cap',
+               'food_min', 'mouthful_min')
 
 
 def init_kwargs(params):
@@ -327,6 +328,8 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
     # read back from the sim so it cannot disagree with what ran. Scan rows
     # from before the fix lack this column (they ran uncapped).
     out['param_food_cap'] = int(sim.food_cap)
+    out['param_food_min'] = float(sim.food_min)
+    out['param_mouthful_min'] = float(sim.mouthful_min)
     out['N'] = N
     out['n_steps'] = n_steps
     out['seed'] = seed

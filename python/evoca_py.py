@@ -251,6 +251,14 @@ class EvoCA:
         L.evoca_set_food_cap.restype       = None
         L.evoca_get_food_cap.argtypes      = []
         L.evoca_get_food_cap.restype       = ctypes.c_int
+        L.evoca_set_food_min.argtypes      = [ctypes.c_float]
+        L.evoca_set_food_min.restype       = None
+        L.evoca_get_food_min.argtypes      = []
+        L.evoca_get_food_min.restype       = ctypes.c_float
+        L.evoca_set_mouthful_min.argtypes  = [ctypes.c_float]
+        L.evoca_set_mouthful_min.restype   = None
+        L.evoca_get_mouthful_min.argtypes  = []
+        L.evoca_get_mouthful_min.restype   = ctypes.c_float
         L.evoca_set_diag.argtypes          = [ctypes.c_int]
         L.evoca_set_diag.restype           = None
         L.evoca_get_diag.argtypes          = []
@@ -595,7 +603,8 @@ class EvoCA:
              p_dup_egene=1.0,
              tax=0.0, tax_per_egene=0.0, tax_lut=0.0, tax_ring=0.0,
              restricted_mu=0, food_per=1, n_ent=2,
-             N_log_interval=1, lineage=False, n_chem=1, food_cap=1):
+             N_log_interval=1, lineage=False, n_chem=1, food_cap=1,
+             food_min=0.0, mouthful_min=0.0):
         # Opt-in lineage record (research-directions §1). The C flag must
         # be set before evoca_init so the arrays get allocated. Default
         # OFF -> zero added work in the Phase-1/Phase-4 hot path.
@@ -619,6 +628,8 @@ class EvoCA:
         self.restricted_mu = int(restricted_mu)
         self.food_per   = max(1, int(food_per))
         self.food_cap   = 1 if int(food_cap) else 0
+        self.food_min     = max(0.0, float(food_min))
+        self.mouthful_min = max(0.0, float(mouthful_min))
         self._n_ent     = int(n_ent)
         self.N_log_interval = max(1, int(N_log_interval))
         self._lib.evoca_init(N, self.food_inc, self.m_scale)
@@ -641,6 +652,10 @@ class EvoCA:
         # Mouthful cap (A9 fix). 1 = capped at available food (default,
         # corrected); 0 = legacy uncapped rule, for reproducing pre-fix runs.
         self._lib.evoca_set_food_cap(self.food_cap)
+        # Refractory gates (0 = off): no eating while F < food_min; no
+        # mouthful smaller than mouthful_min.
+        self._lib.evoca_set_food_min(self.food_min)
+        self._lib.evoca_set_mouthful_min(self.mouthful_min)
         # Seed the per-cell mutation-rate gene (mutation-of-mutation Wave-1
         # storage scaffold) to this run's mu_lut. The C library also seeds
         # it at evoca_init, but from the *previous* global gmu_lut (set_mu_lut
@@ -666,6 +681,8 @@ class EvoCA:
             'food_per': self.food_per,
             'n_chem': self.n_chem,
             'food_cap': self.food_cap,
+            'food_min': self.food_min,
+            'mouthful_min': self.mouthful_min,
         }
 
     def free(self):
@@ -766,6 +783,20 @@ class EvoCA:
         self.food_cap = 1 if int(c) else 0
         self._lib.evoca_set_food_cap(self.food_cap)
 
+    def update_food_min(self, v):
+        """Refractory gate on the site: no eating while F(x) < food_min.
+        After a front eats a site bare, it cannot be eaten again until food
+        regrows to food_min (about food_min/food_inc steps). 0 = off."""
+        self.food_min = max(0.0, float(v))
+        self._lib.evoca_set_food_min(self.food_min)
+
+    def update_mouthful_min(self, v):
+        """Minimum mouthful: a mouthful (after the caps) below mouthful_min
+        is not taken, so the food level at which a site can be eaten again
+        depends on the eater's score. 0 = off."""
+        self.mouthful_min = max(0.0, float(v))
+        self._lib.evoca_set_mouthful_min(self.mouthful_min)
+
     def update_act_ymax(self, y):
         self._lib.evoca_set_act_ymax(int(y))
 
@@ -787,7 +818,8 @@ class EvoCA:
                       gdiff=0, mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
                       p_dup_egene=1.0, tax=0.0, tax_per_egene=0.0,
                       tax_lut=0.0, tax_ring=0.0,
-                      restricted_mu=0, food_per=1, n_chem=1, food_cap=1)
+                      restricted_mu=0, food_per=1, n_chem=1, food_cap=1,
+                      food_min=0.0, mouthful_min=0.0)
 
     def params(self):
         """Return current metaparameters as a dict suitable for init(**d)."""
@@ -798,7 +830,8 @@ class EvoCA:
                     tax_per_egene=self.tax_per_egene,
                     tax_lut=self.tax_lut, tax_ring=self.tax_ring,
                     restricted_mu=self.restricted_mu, food_per=self.food_per,
-                    n_chem=self.n_chem, food_cap=self.food_cap)
+                    n_chem=self.n_chem, food_cap=self.food_cap,
+                    food_min=self.food_min, mouthful_min=self.mouthful_min)
 
     def params_str(self):
         """Return a copy-pasteable sim.init(...) call with defaults annotated."""
@@ -1057,6 +1090,14 @@ class EvoCA:
     def get_food_cap(self):
         """Effective Phase-3 mouthful-cap flag from the C library."""
         return int(self._lib.evoca_get_food_cap())
+
+    def get_food_min(self):
+        """Effective refractory site threshold from the C library."""
+        return float(self._lib.evoca_get_food_min())
+
+    def get_mouthful_min(self):
+        """Effective minimum mouthful from the C library."""
+        return float(self._lib.evoca_get_mouthful_min())
 
     def get_n_chem(self):
         return int(self._lib.evoca_get_n_chem())
@@ -1979,6 +2020,8 @@ class EvoCA:
                 'food_per': self.food_per,
                 'n_chem': self.n_chem,
                 'food_cap': self.food_cap,
+                'food_min': self.food_min,
+                'mouthful_min': self.mouthful_min,
             },
             'initialization': dict(self._state_params),
             'display': {

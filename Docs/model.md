@@ -54,6 +54,8 @@ and noted in the table below.
 | `gdiff`         | int   | 0       | [0, 10]        | Food diffusion passes (3x3 box blur) per step         |
 | `food_per`      | int   | 1       | [1, 64]        | Environmental food-regen period. Regen fires every `food_per`-th step, adding `food_inc * food_per` (mean input rate unchanged; lengthens depletion-structure lifetime). 1 = bit-for-bit no-op |
 | `food_cap`      | int   | 1       | non-GUI        | Mouthful cap (A9 fix, 2026-10-15). 1 = mouthful capped at the food present, `min(…, F(x), 1 − f(x))`; 0 = legacy uncapped rule (overdraws `F` when `m_scale·score > 25`), for reproducing pre-fix runs. Identical at `m_scale ≤ 1`. Set via `init(food_cap=…)` or `sim.update_food_cap(c)` |
+| `food_min`      | float | 0.0     | non-GUI        | Refractory gate on the site (2026-10-22): no eating while `F(x) < food_min`. A site eaten bare cannot be eaten again until food regrows to `food_min` (about `food_min/food_inc` steps). 0 = off, bit-for-bit the ungated rule |
+| `mouthful_min`  | float | 0.0     | non-GUI        | Minimum mouthful (2026-10-22): a mouthful below `mouthful_min` (after the caps) is not taken, so a site becomes edible again at `F ≥ mouthful_min` for cells with `m_scale·score ≥ 25` and at `F ≥ mouthful_min·25/(m_scale·score)` for weaker eaters; a cell with headroom `1 − f < mouthful_min` does not eat. 0 = off |
 | `mu_lut`        | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction      |
 | `mu_egene`      | float | 0.0     | [0, 0.05]      | Per-egene-bit flip probability on reproduction (across all 8×12 = 96 bits per cell — 6 value bits + 6 mask bits per slot — including inactive slots, which drift as pseudogenes) |
 | `mu_egenome`    | float | 0.0     | [0, 0.05]      | Per-active-bit flip probability on reproduction (across the 8 presence bits). Flips that would take Negene to 0 are rejected |
@@ -259,6 +261,25 @@ the food present or the private headroom:
 > key imports capped, with a one-line notice when its `m_scale > 1`).
 > At `m_scale ≤ 1` the two rules are identical.
 
+**Refractory gates (2026-10-22).** Two optional thresholds, both 0 (off) by
+default, set the mouthful to 0 when
+
+    F(x) < food_min        or        M(x) < mouthful_min
+
+and otherwise leave `M(x)` unchanged. Behind a front that eats a site bare
+(`m_scale·score ≥ 25`), `food_min` keeps the site uneaten until regrowth
+brings it back to `food_min`: a refractory period of about
+`food_min/food_inc` steps, with `F(x) ≥ 0` throughout. With `mouthful_min`
+the site relights for a given cell when its mouthful
+`min((m_scale/25)·score·F, F, 1 − f) ≥ mouthful_min`: at `F ≥ mouthful_min`
+for strong eaters (`m_scale·score ≥ 25`), later for weaker ones, so the
+refractory period depends on the eater's score (and a nearly full cell
+pauses until tax opens enough headroom). They
+were added to get refractory dynamics without the legacy overdraw, whose
+negative-food trough was what made the legacy spirals (RD notebook,
+"Spiral waves"). Each gate acts only when its threshold is > 0, under
+either `food_cap` rule.
+
 The +1/−1 scoring puts evolutionary pressure on **confident, accurate
 specificity**: declaring "the corner orbit must be 1" is now risky
 unless it's actually correct most of the time. A cell with no useful
@@ -370,6 +391,9 @@ For each alive cell:
    With `food_cap=0` (legacy, pre-2026-10-15) only the headroom clamp
    applies, which overdraws `F(x)` when `m_scale·score > 25` (A9; see the
    eating-score section above).
+   If `food_min > 0` and `F(x) < food_min`, or `mouthful_min > 0` and the
+   clamped mouthful is `< mouthful_min`, the mouthful is 0 (refractory
+   gates, eating-score section above).
 4. Transfer: `F(x) -= mouthful`,  `f(x) += mouthful`
 
 Private food f(x) is hard-capped at 1.0; with `food_cap=1`, eating
@@ -582,6 +606,8 @@ sim.update_tax_per_egene(t)  # float, additional decrement per active egene
 sim.update_tax_lut(t)        # float, additional decrement per LUT '1' bit
 sim.update_food_per(p)       # int >=1, env food-regen period (1 = no-op)
 sim.update_food_cap(c)       # 1 = mouthful capped at F (default); 0 = legacy (A9)
+sim.update_food_min(v)       # float >=0, no eating while F(x) < v (0 = off)
+sim.update_mouthful_min(v)   # float >=0, no mouthful smaller than v (0 = off)
 sim.update_N_log_interval(n) # int, ProbeLogs sample interval (Python-side)
 sim.update_restricted_mu(r)  # int (0 or 1)
 sim.update_act_ymax(y)       # int, Y-scale for LUT activity chart
