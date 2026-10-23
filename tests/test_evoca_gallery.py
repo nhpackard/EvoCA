@@ -94,7 +94,7 @@ def test_sub_galleries():
 def test_load_scan_entry_applies_scan_row_corrections():
     sim, _ = Entry(scan=PUSH, cfg=246).load(N=16)
     try:
-        assert sim.food_cap == 0                          # pre-A9 scan ran uncapped
+        assert sim.food_cap == 1                          # pre-A9 row loads the standard rule
         assert sim.mu_egene == pytest.approx(0.01)        # pre-rename column read as mu_egene
         assert sim.mu_egenome == 0.0
     finally:
@@ -125,7 +125,7 @@ def test_show_forwards_to_run_with_controls(monkeypatch):
 
 def test_table_shows_effective_food_cap():
     t = Gallery('t', [Entry(recipe=R236), Entry(scan=PUSH, cfg=236, label='row')]).table()
-    assert list(t.food_cap) == [1, 0]                     # the two doors differ until RXD-D4 is decided
+    assert list(t.food_cap) == [1, 1]                     # both doors load the standard rule (RXD-D4)
 
 
 # ── run: parallel, cached ────────────────────────────────────────────

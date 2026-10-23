@@ -1,0 +1,32 @@
+{
+  "source_scans": [
+    "2026-04-27_initial",
+    "2026-04-27_refined",
+    "2026-04-27_push_edges"
+  ],
+  "specs": {
+    "initial": {
+      "N": 256,
+      "n_steps": 5000,
+      "sample_every": 100,
+      "seed": 0,
+      "shadow": true
+    },
+    "refined": {
+      "N": 256,
+      "n_steps": 5000,
+      "sample_every": 100,
+      "seed": 0,
+      "shadow": true
+    },
+    "push_edges": {
+      "N": 256,
+      "n_steps": 5000,
+      "sample_every": 25,
+      "seed": 0,
+      "shadow": true
+    }
+  },
+  "food_cap": 1,
+  "created": "2026-10-23T08:45:38"
+}

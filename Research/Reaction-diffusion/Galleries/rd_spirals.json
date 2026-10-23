@@ -1,8 +1,8 @@
 {
  "name": "rd_spirals",
- "description": "the spiral-wave recipe (Resource-driving R1 row 208), capped variant, and the target-wave recipe",
+ "description": "the spiral-wave recipe (Resource-driving R1 row 208, legacy rule), its standard-rule contrast, and the target-wave recipe",
  "workstream": "Reaction-diffusion",
- "owner": "Spiral waves",
+ "owner": "Legacy rule",
  "entries": [
   {
    "label": "R1cfg208",
@@ -14,7 +14,7 @@
    "label": "R1cfg208_cap1",
    "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
    "params": "final",
-   "title": "same, capped mouthful",
+   "title": "same, standard rule",
    "overrides": {
     "food_cap": 1
    }
@@ -29,5 +29,5 @@
    }
   }
  ],
- "saved": "2026-10-21T22:42:24"
+ "saved": "2026-10-23T08:45:06"
 }

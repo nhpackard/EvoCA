@@ -254,10 +254,11 @@ def test_run_sim_always_records_effective_food_cap():
     assert r['param_food_cap'] == 1
 
 
-def test_evoca_from_scan_pre_fix_rows_reproduce_uncapped(tmp_path):
-    """A scan row with no param_food_cap ran uncapped; its recipe must
-    carry food_cap=0 so import_run reproduces it. Rows that recorded
-    the column keep their value."""
+def test_evoca_from_scan_pre_fix_rows_load_standard_rule(tmp_path, capsys):
+    """A scan row with no param_food_cap ran uncapped, but the capped rule
+    is the standard model (2026-10-23): its recipe carries food_cap=1
+    explicitly, with a notice when the cap can bind (m_scale > 1). Rows
+    that recorded the column keep their value, including the legacy 0."""
     import csv, json
     from evoca_explore import evoca_from_scan
     scan = tmp_path / '2026-01-01_old'
@@ -268,14 +269,20 @@ def test_evoca_from_scan_pre_fix_rows_reproduce_uncapped(tmp_path):
     shutil.copy(os.path.join(real, 'scan_config.json'), scan / 'scan_config.json')
     base = {'config_idx': 0, 'param_food_inc': '0.01', 'param_m_scale': '3.0',
             'param_tax': '0.03'}
-    rows = [base, dict(base, config_idx=1, param_food_cap='1')]
+    rows = [base, dict(base, config_idx=1, param_food_cap='1'),
+            dict(base, config_idx=2, param_food_cap='0')]
     with open(scan / 'results.csv', 'w', newline='') as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[1]))
         w.writeheader()
         w.writerow(dict(rows[0], param_food_cap=''))
-        w.writerow(rows[1])
+        w.writerows(rows[1:])
     out = tmp_path / 'runs'
+    capsys.readouterr()
     r0 = json.load(open(evoca_from_scan(str(scan), 0, runs_dir=str(out))))
+    assert 'measured under the legacy rule' in capsys.readouterr().out
     r1 = json.load(open(evoca_from_scan(str(scan), 1, runs_dir=str(out))))
-    assert r0['metaparams_init']['food_cap'] == 0
+    r2 = json.load(open(evoca_from_scan(str(scan), 2, runs_dir=str(out))))
+    assert capsys.readouterr().out == ''               # recorded rows: no notice
+    assert r0['metaparams_init']['food_cap'] == 1
     assert r1['metaparams_init']['food_cap'] == 1
+    assert r2['metaparams_init']['food_cap'] == 0

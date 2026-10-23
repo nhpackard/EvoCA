@@ -53,7 +53,7 @@ and noted in the table below.
 | `m_scale`       | float | 1.0     | [0, 10]        | Mouthful scale factor for eating                      |
 | `gdiff`         | int   | 0       | [0, 10]        | Food diffusion passes (3x3 box blur) per step         |
 | `food_per`      | int   | 1       | [1, 64]        | Environmental food-regen period. Regen fires every `food_per`-th step, adding `food_inc * food_per` (mean input rate unchanged; lengthens depletion-structure lifetime). 1 = bit-for-bit no-op |
-| `food_cap`      | int   | 1       | non-GUI        | Mouthful cap (A9 fix, 2026-10-15). 1 = mouthful capped at the food present, `min(…, F(x), 1 − f(x))`; 0 = legacy uncapped rule (overdraws `F` when `m_scale·score > 25`), for reproducing pre-fix runs. Identical at `m_scale ≤ 1`. Set via `init(food_cap=…)` or `sim.update_food_cap(c)` |
+| `food_cap`      | int   | 1       | non-GUI        | Mouthful cap (A9 fix, 2026-10-15). 1 = mouthful capped at the food present, `min(…, F(x), 1 − f(x))`; 0 = legacy uncapped rule (overdraws `F` when `m_scale·score > 25`), not part of the model, only for reproducing pre-fix runs. Identical at `m_scale ≤ 1`. Set via `init(food_cap=…)` or `sim.update_food_cap(c)` |
 | `mu_lut`        | float | 0.0     | [0, 0.001]     | Per-bit LUT mutation probability on reproduction      |
 | `mu_egene`      | float | 0.0     | [0, 0.05]      | Per-egene-bit flip probability on reproduction (across all 8×12 = 96 bits per cell — 6 value bits + 6 mask bits per slot — including inactive slots, which drift as pseudogenes) |
 | `mu_egenome`    | float | 0.0     | [0, 0.05]      | Per-active-bit flip probability on reproduction (across the 8 presence bits). Flips that would take Negene to 0 are rejected |
@@ -258,6 +258,16 @@ the food present or the private headroom:
 > reproducing pre-fix runs and recipes (a recipe without a `food_cap`
 > key imports capped, with a one-line notice when its `m_scale > 1`).
 > At `m_scale ≤ 1` the two rules are identical.
+>
+> **2026-10-23 — the capped rule is the standard model** (N). The legacy
+> rule is unphysical and not part of the model; it is kept only to
+> reproduce or study pre-fix results. Scan rows recorded before the fix
+> (no `param_food_cap` column) now also load capped
+> (`evoca_explore.correct_scan_row_params`, with a notice when
+> `m_scale > 1`, since their recorded metrics come from the legacy rule);
+> pass `food_cap=0` explicitly for the legacy rule. One consequence for
+> pattern formation: the standard model has no refractory mechanism, so
+> no spiral waves (`Docs/2026-10-23_food-cap-standard.md`).
 
 The +1/−1 scoring puts evolutionary pressure on **confident, accurate
 specificity**: declaring "the corner orbit must be 1" is now risky

@@ -542,13 +542,26 @@ def correct_scan_row_params(params):
     place; returns params. The one place these corrections live (used by
     evoca_from_scan and evoca_nb.params_from_row).
       - food_cap: scans recorded before the A9 fix have no param_food_cap
-        column; they ran the legacy uncapped mouthful, so set food_cap=0.
+        column. They ran the legacy uncapped mouthful, but the capped rule
+        is the standard model (N, 2026-10-23), so they load with food_cap=1
+        (written explicitly). Where the cap can bind (m_scale > 1) the row's
+        recorded metrics describe the legacy run, not the one loaded, and a
+        notice says so. A row that recorded param_food_cap keeps its value;
+        pass food_cap=0 explicitly for the legacy rule.
       - mu_egenome: scans recorded before the 2026-04-28 rename store the
         egene mutation rate as param_mu_egenome (evoca_py.correct_legacy_mu_egenome)."""
     from evoca_py import correct_legacy_mu_egenome
     correct_legacy_mu_egenome(params)
     if 'food_cap' not in params:
-        params['food_cap'] = 0
+        params['food_cap'] = 1
+        try:
+            m = float(params.get('m_scale', 1.0))
+        except (TypeError, ValueError):
+            m = 1.0
+        if m > 1.0:
+            print(f"[food_cap] scan row with m_scale={m:g} > 1 and no food_cap "
+                  f"column: loading the standard (capped) rule; the row's "
+                  f"metrics were measured under the legacy rule (food_cap=0).")
     return params
 
 

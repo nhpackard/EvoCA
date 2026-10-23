@@ -1,9 +1,22 @@
 {
  "name": "rd_pareto_layers",
- "description": "04-27 candidates on the first Pareto layers (spatial vs evolution score); scan rows (food_cap=0)",
+ "description": "04-27 candidates on the first Pareto layers (spatial vs evolution score); scan rows, standard rule",
  "workstream": "Reaction-diffusion",
  "owner": "Two objectives",
  "entries": [
+  {
+   "label": "initial.cfg36",
+   "scan": "2026-04-27_initial",
+   "cfg": 36,
+   "params": "init",
+   "meta": {
+    "layer": 1,
+    "spatial": 0.84,
+    "evo": 0.44,
+    "methods": "CB.",
+    "recipe": "-"
+   }
+  },
   {
    "label": "push_edges.cfg102",
    "scan": "2026-04-27_push_edges",
@@ -11,101 +24,23 @@
    "params": "init",
    "meta": {
     "layer": 1,
-    "spatial": 0.89,
-    "evo": 0.53,
+    "spatial": 0.81,
+    "evo": 0.51,
     "methods": "CB.",
     "recipe": "2026-04-27_top_16_cfg102_score0.73.evoca"
    }
   },
   {
-   "label": "push_edges.cfg236",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 236,
+   "label": "initial.cfg56",
+   "scan": "2026-04-27_initial",
+   "cfg": 56,
    "params": "init",
    "meta": {
     "layer": 1,
-    "spatial": 0.88,
-    "evo": 0.88,
-    "methods": "CBW",
-    "recipe": "2026-04-27_top_1_cfg236_score0.90.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg247",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 247,
-   "params": "init",
-   "meta": {
-    "layer": 1,
-    "spatial": 0.7,
-    "evo": 0.91,
+    "spatial": 0.76,
+    "evo": 0.58,
     "methods": "CB.",
-    "recipe": "2026-04-27_top_4_cfg247_score0.82.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg246",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 246,
-   "params": "init",
-   "meta": {
-    "layer": 2,
-    "spatial": 0.88,
-    "evo": 0.85,
-    "methods": "CBW",
-    "recipe": "2026-04-27_top_2_cfg246_score0.88.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg30",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 30,
-   "params": "init",
-   "meta": {
-    "layer": 2,
-    "spatial": 0.79,
-    "evo": 0.87,
-    "methods": "CBW",
-    "recipe": "2026-04-27_top_3_cfg30_score0.85.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg178",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 178,
-   "params": "init",
-   "meta": {
-    "layer": 2,
-    "spatial": 0.68,
-    "evo": 0.88,
-    "methods": "CB.",
-    "recipe": "2026-04-27_top_5_cfg178_score0.80.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg36",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 36,
-   "params": "init",
-   "meta": {
-    "layer": 2,
-    "spatial": 0.67,
-    "evo": 0.9,
-    "methods": "CB.",
-    "recipe": "2026-04-27_top_6_cfg36_score0.80.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg148",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 148,
-   "params": "init",
-   "meta": {
-    "layer": 3,
-    "spatial": 0.81,
-    "evo": 0.57,
-    "methods": "CB.",
-    "recipe": "2026-04-27_top_19_cfg148_score0.70.evoca"
+    "recipe": "-"
    }
   },
   {
@@ -114,11 +49,193 @@
    "cfg": 106,
    "params": "init",
    "meta": {
-    "layer": 3,
-    "spatial": 0.75,
-    "evo": 0.67,
+    "layer": 1,
+    "spatial": 0.61,
+    "evo": 0.7,
     "methods": "CBW",
     "recipe": "2026-04-27_top_17_cfg106_score0.73.evoca"
+   }
+  },
+  {
+   "label": "initial.cfg72",
+   "scan": "2026-04-27_initial",
+   "cfg": 72,
+   "params": "init",
+   "meta": {
+    "layer": 2,
+    "spatial": 0.83,
+    "evo": 0.44,
+    "methods": "CB.",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg8",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 8,
+   "params": "init",
+   "meta": {
+    "layer": 2,
+    "spatial": 0.67,
+    "evo": 0.51,
+    "methods": "CB.",
+    "recipe": "2026-10-23_pareto_box_push_edges_cfg8.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg148",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 148,
+   "params": "init",
+   "meta": {
+    "layer": 2,
+    "spatial": 0.65,
+    "evo": 0.53,
+    "methods": "CBW",
+    "recipe": "2026-04-27_top_19_cfg148_score0.70.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg41",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 41,
+   "params": "init",
+   "meta": {
+    "layer": 2,
+    "spatial": 0.64,
+    "evo": 0.53,
+    "methods": "CBW",
+    "recipe": "2026-10-21_pareto_box_push_edges_cfg41.evoca"
+   }
+  },
+  {
+   "label": "initial.cfg112",
+   "scan": "2026-04-27_initial",
+   "cfg": 112,
+   "params": "init",
+   "meta": {
+    "layer": 2,
+    "spatial": 0.54,
+    "evo": 0.56,
+    "methods": "CBW",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "initial.cfg53",
+   "scan": "2026-04-27_initial",
+   "cfg": 53,
+   "params": "init",
+   "meta": {
+    "layer": 2,
+    "spatial": 0.53,
+    "evo": 0.59,
+    "methods": "CBW",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg216",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 216,
+   "params": "init",
+   "meta": {
+    "layer": 2,
+    "spatial": 0.47,
+    "evo": 0.61,
+    "methods": "CBW",
+    "recipe": "2026-10-21_pareto_wedge_push_edges_cfg216.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg94",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 94,
+   "params": "init",
+   "meta": {
+    "layer": 2,
+    "spatial": 0.36,
+    "evo": 0.62,
+    "methods": "C..",
+    "recipe": "2026-10-23_pareto_wedge_push_edges_cfg94.evoca"
+   }
+  },
+  {
+   "label": "initial.cfg97",
+   "scan": "2026-04-27_initial",
+   "cfg": 97,
+   "params": "init",
+   "meta": {
+    "layer": 3,
+    "spatial": 0.75,
+    "evo": 0.37,
+    "methods": "C..",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "initial.cfg8",
+   "scan": "2026-04-27_initial",
+   "cfg": 8,
+   "params": "init",
+   "meta": {
+    "layer": 3,
+    "spatial": 0.72,
+    "evo": 0.43,
+    "methods": "CB.",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "initial.cfg32",
+   "scan": "2026-04-27_initial",
+   "cfg": 32,
+   "params": "init",
+   "meta": {
+    "layer": 3,
+    "spatial": 0.52,
+    "evo": 0.55,
+    "methods": "CBW",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg122",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 122,
+   "params": "init",
+   "meta": {
+    "layer": 3,
+    "spatial": 0.51,
+    "evo": 0.55,
+    "methods": "CBW",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "initial.cfg62",
+   "scan": "2026-04-27_initial",
+   "cfg": 62,
+   "params": "init",
+   "meta": {
+    "layer": 3,
+    "spatial": 0.46,
+    "evo": 0.57,
+    "methods": "CBW",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg246",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 246,
+   "params": "init",
+   "meta": {
+    "layer": 3,
+    "spatial": 0.45,
+    "evo": 0.61,
+    "methods": "CB.",
+    "recipe": "2026-04-27_top_2_cfg246_score0.88.evoca"
    }
   },
   {
@@ -128,61 +245,22 @@
    "params": "init",
    "meta": {
     "layer": 3,
-    "spatial": 0.73,
-    "evo": 0.79,
-    "methods": "CBW",
+    "spatial": 0.3,
+    "evo": 0.62,
+    "methods": "...",
     "recipe": "2026-04-27_top_9_cfg98_score0.78.evoca"
    }
   },
   {
-   "label": "push_edges.cfg211",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 211,
-   "params": "init",
-   "meta": {
-    "layer": 3,
-    "spatial": 0.72,
-    "evo": 0.82,
-    "methods": "CBW",
-    "recipe": "2026-04-27_top_8_cfg211_score0.79.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg107",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 107,
-   "params": "init",
-   "meta": {
-    "layer": 3,
-    "spatial": 0.72,
-    "evo": 0.84,
-    "methods": "CBW",
-    "recipe": "2026-04-27_top_7_cfg107_score0.80.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg221",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 221,
-   "params": "init",
-   "meta": {
-    "layer": 3,
-    "spatial": 0.67,
-    "evo": 0.85,
-    "methods": "CB.",
-    "recipe": "2026-04-27_top_10_cfg221_score0.77.evoca"
-   }
-  },
-  {
-   "label": "refined.cfg198",
+   "label": "refined.cfg92",
    "scan": "2026-04-27_refined",
-   "cfg": 198,
+   "cfg": 92,
    "params": "init",
    "meta": {
     "layer": 4,
-    "spatial": 0.8,
-    "evo": 0.27,
-    "methods": "...",
+    "spatial": 0.66,
+    "evo": 0.31,
+    "methods": "C..",
     "recipe": "-"
    }
   },
@@ -193,231 +271,36 @@
    "params": "init",
    "meta": {
     "layer": 4,
-    "spatial": 0.75,
-    "evo": 0.48,
-    "methods": "...",
-    "recipe": "-"
-   }
-  },
-  {
-   "label": "push_edges.cfg201",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 201,
-   "params": "init",
-   "meta": {
-    "layer": 4,
-    "spatial": 0.73,
-    "evo": 0.72,
-    "methods": "CBW",
-    "recipe": "2026-04-27_top_13_cfg201_score0.74.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg196",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 196,
-   "params": "init",
-   "meta": {
-    "layer": 4,
-    "spatial": 0.7,
-    "evo": 0.74,
-    "methods": "CBW",
-    "recipe": "2026-04-27_top_15_cfg196_score0.73.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg115",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 115,
-   "params": "init",
-   "meta": {
-    "layer": 4,
-    "spatial": 0.67,
-    "evo": 0.81,
-    "methods": "CBW",
-    "recipe": "2026-04-27_top_11_cfg115_score0.76.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg184",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 184,
-   "params": "init",
-   "meta": {
-    "layer": 4,
-    "spatial": 0.63,
-    "evo": 0.84,
-    "methods": "CB.",
-    "recipe": "2026-04-27_top_12_cfg184_score0.75.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg122",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 122,
-   "params": "init",
-   "meta": {
-    "layer": 5,
-    "spatial": 0.74,
-    "evo": 0.47,
-    "methods": "...",
-    "recipe": "-"
-   }
-  },
-  {
-   "label": "push_edges.cfg41",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 41,
-   "params": "init",
-   "meta": {
-    "layer": 5,
-    "spatial": 0.7,
-    "evo": 0.52,
-    "methods": ".B.",
-    "recipe": "2026-10-21_pareto_box_push_edges_cfg41.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg204",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 204,
-   "params": "init",
-   "meta": {
-    "layer": 5,
-    "spatial": 0.69,
-    "evo": 0.67,
+    "spatial": 0.5,
+    "evo": 0.42,
     "methods": ".BW",
-    "recipe": "2026-10-21_pareto_boxwedge_push_edges_cfg204.evoca"
+    "recipe": "2026-10-23_pareto_boxwedge_push_edges_cfg159.evoca"
    }
   },
   {
-   "label": "push_edges.cfg202",
+   "label": "push_edges.cfg218",
    "scan": "2026-04-27_push_edges",
-   "cfg": 202,
+   "cfg": 218,
    "params": "init",
    "meta": {
-    "layer": 5,
-    "spatial": 0.68,
-    "evo": 0.71,
-    "methods": "CBW",
-    "recipe": "2026-04-27_top_18_cfg202_score0.71.evoca"
+    "layer": 4,
+    "spatial": 0.42,
+    "evo": 0.55,
+    "methods": ".B.",
+    "recipe": "2026-10-23_pareto_boxwedge_push_edges_cfg218.evoca"
    }
   },
   {
-   "label": "push_edges.cfg43",
+   "label": "push_edges.cfg52",
    "scan": "2026-04-27_push_edges",
-   "cfg": 43,
+   "cfg": 52,
    "params": "init",
    "meta": {
-    "layer": 5,
-    "spatial": 0.62,
-    "evo": 0.81,
-    "methods": "C..",
-    "recipe": "2026-04-27_top_14_cfg43_score0.73.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg8",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 8,
-   "params": "init",
-   "meta": {
-    "layer": 6,
-    "spatial": 0.69,
-    "evo": 0.51,
-    "methods": "...",
-    "recipe": "-"
-   }
-  },
-  {
-   "label": "refined.cfg149",
-   "scan": "2026-04-27_refined",
-   "cfg": 149,
-   "params": "init",
-   "meta": {
-    "layer": 6,
-    "spatial": 0.67,
-    "evo": 0.61,
-    "methods": "..W",
-    "recipe": "2026-10-21_pareto_wedge_refined_cfg149.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg193",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 193,
-   "params": "init",
-   "meta": {
-    "layer": 6,
-    "spatial": 0.67,
-    "evo": 0.7,
-    "methods": "..W",
-    "recipe": "2026-10-21_pareto_wedge_push_edges_cfg193.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg49",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 49,
-   "params": "init",
-   "meta": {
-    "layer": 6,
-    "spatial": 0.65,
-    "evo": 0.71,
-    "methods": "..W",
-    "recipe": "2026-10-21_pareto_wedge_push_edges_cfg49.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg64",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 64,
-   "params": "init",
-   "meta": {
-    "layer": 6,
-    "spatial": 0.61,
-    "evo": 0.76,
-    "methods": "C.W",
-    "recipe": "2026-04-27_top_20_cfg64_score0.70.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg144",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 144,
-   "params": "init",
-   "meta": {
-    "layer": 6,
-    "spatial": 0.53,
-    "evo": 0.77,
-    "methods": "...",
-    "recipe": "-"
-   }
-  },
-  {
-   "label": "push_edges.cfg205",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 205,
-   "params": "init",
-   "meta": {
-    "layer": 6,
-    "spatial": 0.52,
-    "evo": 0.81,
-    "methods": "...",
-    "recipe": "2026-04-27_top_evo_13_cfg205_score0.54.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg190",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 190,
-   "params": "init",
-   "meta": {
-    "layer": 7,
-    "spatial": 0.63,
-    "evo": 0.7,
-    "methods": "..W",
-    "recipe": "2026-10-21_pareto_wedge_push_edges_cfg190.evoca"
+    "layer": 4,
+    "spatial": 0.41,
+    "evo": 0.6,
+    "methods": "CB.",
+    "recipe": "2026-10-23_pareto_wedge_push_edges_cfg52.evoca"
    }
   },
   {
@@ -426,91 +309,741 @@
    "cfg": 183,
    "params": "init",
    "meta": {
-    "layer": 7,
-    "spatial": 0.62,
-    "evo": 0.7,
-    "methods": "..W",
+    "layer": 4,
+    "spatial": 0.25,
+    "evo": 0.61,
+    "methods": "...",
     "recipe": "2026-10-21_pareto_wedge_push_edges_cfg183.evoca"
    }
   },
   {
-   "label": "push_edges.cfg164",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 164,
+   "label": "refined.cfg42",
+   "scan": "2026-04-27_refined",
+   "cfg": 42,
    "params": "init",
    "meta": {
-    "layer": 7,
-    "spatial": 0.54,
-    "evo": 0.75,
+    "layer": 5,
+    "spatial": 0.63,
+    "evo": 0.16,
     "methods": "...",
     "recipe": "-"
    }
   },
   {
-   "label": "push_edges.cfg2",
+   "label": "refined.cfg9",
+   "scan": "2026-04-27_refined",
+   "cfg": 9,
+   "params": "init",
+   "meta": {
+    "layer": 5,
+    "spatial": 0.62,
+    "evo": 0.26,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg17",
+   "scan": "2026-04-27_refined",
+   "cfg": 17,
+   "params": "init",
+   "meta": {
+    "layer": 5,
+    "spatial": 0.56,
+    "evo": 0.27,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg83",
+   "scan": "2026-04-27_refined",
+   "cfg": 83,
+   "params": "init",
+   "meta": {
+    "layer": 5,
+    "spatial": 0.47,
+    "evo": 0.35,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg84",
+   "scan": "2026-04-27_refined",
+   "cfg": 84,
+   "params": "init",
+   "meta": {
+    "layer": 5,
+    "spatial": 0.43,
+    "evo": 0.36,
+    "methods": "..W",
+    "recipe": "2026-10-23_pareto_wedge_refined_cfg84.evoca"
+   }
+  },
+  {
+   "label": "initial.cfg70",
+   "scan": "2026-04-27_initial",
+   "cfg": 70,
+   "params": "init",
+   "meta": {
+    "layer": 5,
+    "spatial": 0.4,
+    "evo": 0.43,
+    "methods": ".BW",
+    "recipe": "2026-04-27_top_3_cfg70_score0.68.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg249",
    "scan": "2026-04-27_push_edges",
-   "cfg": 2,
+   "cfg": 249,
+   "params": "init",
+   "meta": {
+    "layer": 5,
+    "spatial": 0.39,
+    "evo": 0.47,
+    "methods": "..W",
+    "recipe": "2026-10-23_pareto_wedge_push_edges_cfg249.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg134",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 134,
+   "params": "init",
+   "meta": {
+    "layer": 5,
+    "spatial": 0.39,
+    "evo": 0.58,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg49",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 49,
+   "params": "init",
+   "meta": {
+    "layer": 5,
+    "spatial": 0.33,
+    "evo": 0.59,
+    "methods": "...",
+    "recipe": "2026-10-21_pareto_wedge_push_edges_cfg49.evoca"
+   }
+  },
+  {
+   "label": "refined.cfg179",
+   "scan": "2026-04-27_refined",
+   "cfg": 179,
+   "params": "init",
+   "meta": {
+    "layer": 6,
+    "spatial": 0.61,
+    "evo": 0.24,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg51",
+   "scan": "2026-04-27_refined",
+   "cfg": 51,
+   "params": "init",
+   "meta": {
+    "layer": 6,
+    "spatial": 0.51,
+    "evo": 0.24,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg128",
+   "scan": "2026-04-27_refined",
+   "cfg": 128,
+   "params": "init",
+   "meta": {
+    "layer": 6,
+    "spatial": 0.45,
+    "evo": 0.33,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg103",
+   "scan": "2026-04-27_refined",
+   "cfg": 103,
+   "params": "init",
+   "meta": {
+    "layer": 6,
+    "spatial": 0.4,
+    "evo": 0.33,
+    "methods": "..W",
+    "recipe": "2026-10-23_pareto_wedge_refined_cfg103.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg236",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 236,
+   "params": "init",
+   "meta": {
+    "layer": 6,
+    "spatial": 0.38,
+    "evo": 0.52,
+    "methods": "...",
+    "recipe": "2026-04-27_top_1_cfg236_score0.90.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg235",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 235,
+   "params": "init",
+   "meta": {
+    "layer": 6,
+    "spatial": 0.37,
+    "evo": 0.56,
+    "methods": "...",
+    "recipe": "2026-10-23_pareto_wedge_push_edges_cfg235.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg58",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 58,
+   "params": "init",
+   "meta": {
+    "layer": 6,
+    "spatial": 0.29,
+    "evo": 0.57,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg141",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 141,
+   "params": "init",
+   "meta": {
+    "layer": 6,
+    "spatial": 0.19,
+    "evo": 0.58,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg87",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 87,
+   "params": "init",
+   "meta": {
+    "layer": 6,
+    "spatial": 0.17,
+    "evo": 0.59,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg217",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 217,
+   "params": "init",
+   "meta": {
+    "layer": 6,
+    "spatial": 0.15,
+    "evo": 0.59,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg95",
+   "scan": "2026-04-27_refined",
+   "cfg": 95,
    "params": "init",
    "meta": {
     "layer": 7,
-    "spatial": 0.52,
-    "evo": 0.78,
+    "spatial": 0.56,
+    "evo": 0.18,
     "methods": "...",
-    "recipe": "2026-04-27_top_evo_18_cfg2_score0.52.evoca"
+    "recipe": "-"
    }
   },
   {
-   "label": "push_edges.cfg216",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 216,
+   "label": "initial.cfg57",
+   "scan": "2026-04-27_initial",
+   "cfg": 57,
    "params": "init",
    "meta": {
-    "layer": 8,
-    "spatial": 0.63,
-    "evo": 0.51,
-    "methods": "..W",
-    "recipe": "2026-10-21_pareto_wedge_push_edges_cfg216.evoca"
+    "layer": 7,
+    "spatial": 0.45,
+    "evo": 0.18,
+    "methods": "...",
+    "recipe": "-"
    }
   },
   {
-   "label": "push_edges.cfg137",
+   "label": "refined.cfg198",
+   "scan": "2026-04-27_refined",
+   "cfg": 198,
+   "params": "init",
+   "meta": {
+    "layer": 7,
+    "spatial": 0.45,
+    "evo": 0.27,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "initial.cfg3",
+   "scan": "2026-04-27_initial",
+   "cfg": 3,
+   "params": "init",
+   "meta": {
+    "layer": 7,
+    "spatial": 0.44,
+    "evo": 0.32,
+    "methods": "...",
+    "recipe": "2026-04-27_top_6_cfg3_score0.61.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg123",
    "scan": "2026-04-27_push_edges",
+   "cfg": 123,
+   "params": "init",
+   "meta": {
+    "layer": 7,
+    "spatial": 0.38,
+    "evo": 0.5,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg247",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 247,
+   "params": "init",
+   "meta": {
+    "layer": 7,
+    "spatial": 0.32,
+    "evo": 0.54,
+    "methods": "...",
+    "recipe": "2026-04-27_top_4_cfg247_score0.82.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg151",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 151,
+   "params": "init",
+   "meta": {
+    "layer": 7,
+    "spatial": 0.31,
+    "evo": 0.54,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg125",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 125,
+   "params": "init",
+   "meta": {
+    "layer": 7,
+    "spatial": 0.27,
+    "evo": 0.55,
+    "methods": "...",
+    "recipe": "2026-10-23_pareto_wedge_push_edges_cfg125.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg88",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 88,
+   "params": "init",
+   "meta": {
+    "layer": 7,
+    "spatial": 0.21,
+    "evo": 0.56,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg196",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 196,
+   "params": "init",
+   "meta": {
+    "layer": 7,
+    "spatial": 0.2,
+    "evo": 0.56,
+    "methods": "...",
+    "recipe": "2026-04-27_top_15_cfg196_score0.73.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg59",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 59,
+   "params": "init",
+   "meta": {
+    "layer": 7,
+    "spatial": 0.18,
+    "evo": 0.57,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "initial.cfg137",
+   "scan": "2026-04-27_initial",
    "cfg": 137,
    "params": "init",
    "meta": {
     "layer": 8,
-    "spatial": 0.61,
-    "evo": 0.7,
-    "methods": "..W",
-    "recipe": "2026-10-21_pareto_wedge_push_edges_cfg137.evoca"
-   }
-  },
-  {
-   "label": "push_edges.cfg118",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 118,
-   "params": "init",
-   "meta": {
-    "layer": 8,
-    "spatial": 0.51,
-    "evo": 0.72,
+    "spatial": 0.44,
+    "evo": 0.22,
     "methods": "...",
     "recipe": "-"
    }
   },
   {
-   "label": "push_edges.cfg154",
-   "scan": "2026-04-27_push_edges",
-   "cfg": 154,
+   "label": "refined.cfg91",
+   "scan": "2026-04-27_refined",
+   "cfg": 91,
    "params": "init",
    "meta": {
     "layer": 8,
-    "spatial": 0.5,
-    "evo": 0.72,
+    "spatial": 0.41,
+    "evo": 0.32,
+    "methods": "..W",
+    "recipe": "2026-10-23_pareto_wedge_refined_cfg91.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg108",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 108,
+   "params": "init",
+   "meta": {
+    "layer": 8,
+    "spatial": 0.36,
+    "evo": 0.39,
+    "methods": "..W",
+    "recipe": "2026-10-23_pareto_wedge_push_edges_cfg108.evoca"
+   }
+  },
+  {
+   "label": "refined.cfg57",
+   "scan": "2026-04-27_refined",
+   "cfg": 57,
+   "params": "init",
+   "meta": {
+    "layer": 8,
+    "spatial": 0.33,
+    "evo": 0.47,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg111",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 111,
+   "params": "init",
+   "meta": {
+    "layer": 8,
+    "spatial": 0.31,
+    "evo": 0.52,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg25",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 25,
+   "params": "init",
+   "meta": {
+    "layer": 8,
+    "spatial": 0.28,
+    "evo": 0.54,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg233",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 233,
+   "params": "init",
+   "meta": {
+    "layer": 8,
+    "spatial": 0.22,
+    "evo": 0.54,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg27",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 27,
+   "params": "init",
+   "meta": {
+    "layer": 8,
+    "spatial": 0.19,
+    "evo": 0.55,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg198",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 198,
+   "params": "init",
+   "meta": {
+    "layer": 8,
+    "spatial": 0.17,
+    "evo": 0.56,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg190",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 190,
+   "params": "init",
+   "meta": {
+    "layer": 8,
+    "spatial": 0.17,
+    "evo": 0.57,
+    "methods": "...",
+    "recipe": "2026-10-21_pareto_wedge_push_edges_cfg190.evoca"
+   }
+  },
+  {
+   "label": "refined.cfg96",
+   "scan": "2026-04-27_refined",
+   "cfg": 96,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.4,
+    "evo": 0.16,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg32",
+   "scan": "2026-04-27_refined",
+   "cfg": 32,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.39,
+    "evo": 0.22,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg125",
+   "scan": "2026-04-27_refined",
+   "cfg": 125,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.38,
+    "evo": 0.27,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg68",
+   "scan": "2026-04-27_refined",
+   "cfg": 68,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.38,
+    "evo": 0.31,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "refined.cfg78",
+   "scan": "2026-04-27_refined",
+   "cfg": 78,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.34,
+    "evo": 0.33,
+    "methods": "..W",
+    "recipe": "2026-10-23_pareto_wedge_refined_cfg78.evoca"
+   }
+  },
+  {
+   "label": "refined.cfg18",
+   "scan": "2026-04-27_refined",
+   "cfg": 18,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.34,
+    "evo": 0.34,
+    "methods": "..W",
+    "recipe": "2026-10-23_pareto_wedge_refined_cfg18.evoca"
+   }
+  },
+  {
+   "label": "refined.cfg142",
+   "scan": "2026-04-27_refined",
+   "cfg": 142,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.34,
+    "evo": 0.36,
+    "methods": "..W",
+    "recipe": "2026-10-23_pareto_wedge_refined_cfg142.evoca"
+   }
+  },
+  {
+   "label": "refined.cfg188",
+   "scan": "2026-04-27_refined",
+   "cfg": 188,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.32,
+    "evo": 0.38,
+    "methods": "..W",
+    "recipe": "2026-10-23_pareto_wedge_refined_cfg188.evoca"
+   }
+  },
+  {
+   "label": "refined.cfg113",
+   "scan": "2026-04-27_refined",
+   "cfg": 113,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.31,
+    "evo": 0.4,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg30",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 30,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.3,
+    "evo": 0.46,
+    "methods": "...",
+    "recipe": "2026-04-27_top_3_cfg30_score0.85.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg7",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 7,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.29,
+    "evo": 0.5,
+    "methods": "...",
+    "recipe": "2026-10-23_pareto_wedge_push_edges_cfg7.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg184",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 184,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.23,
+    "evo": 0.53,
+    "methods": "...",
+    "recipe": "2026-04-27_top_12_cfg184_score0.75.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg219",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 219,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.2,
+    "evo": 0.53,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg204",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 204,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.19,
+    "evo": 0.53,
+    "methods": "...",
+    "recipe": "2026-10-21_pareto_boxwedge_push_edges_cfg204.evoca"
+   }
+  },
+  {
+   "label": "push_edges.cfg165",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 165,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.17,
+    "evo": 0.54,
+    "methods": "...",
+    "recipe": "-"
+   }
+  },
+  {
+   "label": "push_edges.cfg212",
+   "scan": "2026-04-27_push_edges",
+   "cfg": 212,
+   "params": "init",
+   "meta": {
+    "layer": 9,
+    "spatial": 0.17,
+    "evo": 0.56,
     "methods": "...",
     "recipe": "-"
    }
   }
  ],
- "saved": "2026-10-21T16:54:42"
+ "saved": "2026-10-23T09:06:29"
 }

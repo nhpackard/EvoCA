@@ -1,0 +1,35 @@
+{
+ "name": "rd_boom_variants_legacy",
+ "description": "boom-bust recipe under the legacy rule: mutation on/off",
+ "workstream": "Reaction-diffusion",
+ "owner": "Legacy rule",
+ "entries": [
+  {
+   "label": "cap0_mu_on",
+   "recipe": "2026-10-21_rd_waves_boom_bust.evoca",
+   "params": "init",
+   "overrides": {
+    "food_cap": 0
+   },
+   "meta": {
+    "food_cap": 0,
+    "mutation": true
+   }
+  },
+  {
+   "label": "cap0_mu_off",
+   "recipe": "2026-10-21_rd_waves_boom_bust.evoca",
+   "params": "init",
+   "overrides": {
+    "food_cap": 0,
+    "mu_lut": 0.0,
+    "mu_egene": 0.0
+   },
+   "meta": {
+    "food_cap": 0,
+    "mutation": false
+   }
+  }
+ ],
+ "saved": "2026-10-23T08:44:33"
+}

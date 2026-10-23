@@ -2281,7 +2281,7 @@ def correct_legacy_mu_egenome(mp):
 
 def _food_cap_legacy_notice(mp, filepath):
     """Recipes written before the A9 fix (2026-10-15) carry no `food_cap`
-    key. They are imported with the default (capped) rule; when m_scale > 1
+    key. They are imported with the standard (capped) rule; when m_scale > 1
     the dynamics can differ from the run that produced the recipe, so say
     how to get the legacy behavior back. Returns True if it printed."""
     if 'food_cap' in mp:
@@ -2292,8 +2292,8 @@ def _food_cap_legacy_notice(mp, filepath):
         return False
     if m > 1.0:
         print(f"[food_cap] {os.path.basename(str(filepath))}: no food_cap key "
-              f"and m_scale={m:g} > 1; running capped (default). The legacy "
-              f"uncapped behavior (pre-A9 fix) is food_cap=0.")
+              f"and m_scale={m:g} > 1; running the standard capped rule. The "
+              f"legacy uncapped rule (pre-A9 fix) is food_cap=0.")
         return True
     return False
 

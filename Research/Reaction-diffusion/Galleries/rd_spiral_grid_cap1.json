@@ -1,0 +1,359 @@
+{
+ "name": "rd_spiral_grid_cap1",
+ "description": "m_scale x food_inc around the legacy spiral recipe, standard (capped) rule",
+ "workstream": "Reaction-diffusion",
+ "owner": "Spiral waves: not in the standard model",
+ "entries": [
+  {
+   "label": "m1.2_fi0.01",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 1.2,
+    "food_inc": 0.01,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 1.2,
+    "food_inc": 0.01
+   }
+  },
+  {
+   "label": "m1.2_fi0.013",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 1.2,
+    "food_inc": 0.013,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 1.2,
+    "food_inc": 0.013
+   }
+  },
+  {
+   "label": "m1.2_fi0.016",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 1.2,
+    "food_inc": 0.016,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 1.2,
+    "food_inc": 0.016
+   }
+  },
+  {
+   "label": "m1.2_fi0.02",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 1.2,
+    "food_inc": 0.02,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 1.2,
+    "food_inc": 0.02
+   }
+  },
+  {
+   "label": "m1.2_fi0.025",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 1.2,
+    "food_inc": 0.025,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 1.2,
+    "food_inc": 0.025
+   }
+  },
+  {
+   "label": "m2.0_fi0.01",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 2.0,
+    "food_inc": 0.01,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 2.0,
+    "food_inc": 0.01
+   }
+  },
+  {
+   "label": "m2.0_fi0.013",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 2.0,
+    "food_inc": 0.013,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 2.0,
+    "food_inc": 0.013
+   }
+  },
+  {
+   "label": "m2.0_fi0.016",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 2.0,
+    "food_inc": 0.016,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 2.0,
+    "food_inc": 0.016
+   }
+  },
+  {
+   "label": "m2.0_fi0.02",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 2.0,
+    "food_inc": 0.02,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 2.0,
+    "food_inc": 0.02
+   }
+  },
+  {
+   "label": "m2.0_fi0.025",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 2.0,
+    "food_inc": 0.025,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 2.0,
+    "food_inc": 0.025
+   }
+  },
+  {
+   "label": "m2.5_fi0.01",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 2.5,
+    "food_inc": 0.01,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 2.5,
+    "food_inc": 0.01
+   }
+  },
+  {
+   "label": "m2.5_fi0.013",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 2.5,
+    "food_inc": 0.013,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 2.5,
+    "food_inc": 0.013
+   }
+  },
+  {
+   "label": "m2.5_fi0.016",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 2.5,
+    "food_inc": 0.016,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 2.5,
+    "food_inc": 0.016
+   }
+  },
+  {
+   "label": "m2.5_fi0.02",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 2.5,
+    "food_inc": 0.02,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 2.5,
+    "food_inc": 0.02
+   }
+  },
+  {
+   "label": "m2.5_fi0.025",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 2.5,
+    "food_inc": 0.025,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 2.5,
+    "food_inc": 0.025
+   }
+  },
+  {
+   "label": "m3.5_fi0.01",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 3.5,
+    "food_inc": 0.01,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 3.5,
+    "food_inc": 0.01
+   }
+  },
+  {
+   "label": "m3.5_fi0.013",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 3.5,
+    "food_inc": 0.013,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 3.5,
+    "food_inc": 0.013
+   }
+  },
+  {
+   "label": "m3.5_fi0.016",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 3.5,
+    "food_inc": 0.016,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 3.5,
+    "food_inc": 0.016
+   }
+  },
+  {
+   "label": "m3.5_fi0.02",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 3.5,
+    "food_inc": 0.02,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 3.5,
+    "food_inc": 0.02
+   }
+  },
+  {
+   "label": "m3.5_fi0.025",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 3.5,
+    "food_inc": 0.025,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 3.5,
+    "food_inc": 0.025
+   }
+  },
+  {
+   "label": "m5.0_fi0.01",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 5.0,
+    "food_inc": 0.01,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 5.0,
+    "food_inc": 0.01
+   }
+  },
+  {
+   "label": "m5.0_fi0.013",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 5.0,
+    "food_inc": 0.013,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 5.0,
+    "food_inc": 0.013
+   }
+  },
+  {
+   "label": "m5.0_fi0.016",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 5.0,
+    "food_inc": 0.016,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 5.0,
+    "food_inc": 0.016
+   }
+  },
+  {
+   "label": "m5.0_fi0.02",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 5.0,
+    "food_inc": 0.02,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 5.0,
+    "food_inc": 0.02
+   }
+  },
+  {
+   "label": "m5.0_fi0.025",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "overrides": {
+    "m_scale": 5.0,
+    "food_inc": 0.025,
+    "food_cap": 1
+   },
+   "meta": {
+    "m_scale": 5.0,
+    "food_inc": 0.025
+   }
+  }
+ ],
+ "saved": "2026-10-23T08:42:41"
+}
