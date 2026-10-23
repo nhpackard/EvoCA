@@ -46,7 +46,7 @@ import evoca_paths
 
 CACHE_DIR = os.path.join(evoca_paths.REPO_ROOT, '.cache', 'gallery_runs')
 _PARAM_COLS = ('food_inc', 'm_scale', 'gdiff', 'tax', 'mu_lut', 'mu_egene',
-               'restricted_mu', 'food_cap')
+               'restricted_mu', 'food_cap', 'n_chem', 'wdiff', 'waste_sink', 'waste_disp')
 
 
 def galleries_dir(workstream):
@@ -389,6 +389,8 @@ def _run_job(job):
                     rows.append(_spatial_metrics(al.copy(), sim.get_F().reshape(N, N).copy()))
                 else:
                     rows.append({'alive_density': float(al.mean())})
+                if sim.n_chem == 2:                     # food/waste chemistry: mean env waste
+                    rows[-1]['W_mean'] = float(sim.get_W().mean())
                 ts.append(t)
             if t in snaps:
                 shots[t] = {cm: rgb(sim, cm) for cm in spec['cms']}

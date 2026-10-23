@@ -298,6 +298,36 @@ static float    chem_energy[CHEM_MAX_N];      /* per-compound reduction weight *
 static uint8_t *chem_ns  = NULL;   /* [N*N]           live slot count per cell */
 static uint8_t *chem_id  = NULL;   /* [N*N*CHEM_MAX]  compound id per slot */
 static float   *chem_amt = NULL;   /* [N*N*CHEM_MAX]  amount per slot */
+
+/* ── Chem milestone 2: environment fields, exchange and metabolism ──────
+ * The general mechanism that food/waste is one configuration of
+ * (Docs/plan-chem.md §7). Every compound c has an environmental field:
+ * compound 0 ("food", the energy compound) uses F_food with its existing
+ * source food_inc (on env_mask), diffusion gdiff and the F <= 1 regen cap;
+ * each compound c >= 1 has its own field chem_env[c] with a uniform source
+ * chem_env_inc[c], a uniform sink chem_env_sink[c] (removal floored at 0)
+ * and its own diffusion chem_env_diff[c] (same box-blur rule as gdiff).
+ * Agent exchange for c >= 1: excretion d = chem_disp[c] * a * max(0, 1 - E)
+ * from private amount a into the cell's own site E, and toxicity: a private
+ * amount >= chem_tox[c] (> 0) kills the cell. Metabolism is the one
+ * reaction: the tax converts energy compound 0 into compound
+ * g_metab_product (-1 = into nothing, i.e. dissipated, the single-food
+ * model). On any death a cell's private compounds return to its site
+ * (energy to F_food only on a toxic death, where f > 0; on a tax death
+ * f <= 0); on eviction the non-energy compounds return to the site and
+ * the energy is discarded as before (dissipation sink (b)).
+ * All of this is inert at N_chem == 1: those code paths are untouched. */
+static float   *chem_env[CHEM_MAX_N];          /* [N*N] env field per c >= 1 ([0] unused) */
+static float   *chem_env_tmp = NULL;           /* [N*N] diffusion scratch for c >= 1 */
+static float    chem_env_inc [CHEM_MAX_N];     /* uniform source per step (c >= 1) */
+static float    chem_env_sink[CHEM_MAX_N];     /* uniform sink per step (c >= 1) */
+static float    chem_env_diff[CHEM_MAX_N];     /* diffusion strength (c >= 1) */
+static float    chem_disp[CHEM_MAX_N];         /* excretion rate (c >= 1) */
+static float    chem_tox [CHEM_MAX_N];         /* toxic private amount, 0 = none (c >= 1) */
+static int      g_metab_product = -1;          /* tax converts compound 0 into this */
+static double   chem_src_cum [CHEM_MAX_N];     /* mass in: env source + metabolic production */
+static double   chem_sink_cum[CHEM_MAX_N];     /* mass out: env sink */
+static long     g_tox_deaths_last = 0;         /* toxic deaths this step */
 static float   *F_temp = NULL;   /* [N*N] scratch for diffusion */
 static uint8_t  *births    = NULL;   /* [N*N] birth events this step */
 static uint32_t *lut_color = NULL;   /* [N*N] cached ARGB per cell */
@@ -1154,6 +1184,58 @@ static inline void chem_cell_clear(int idx)
     chem_amt[(size_t)idx * CHEM_MAX] = 0.0f;
 }
 
+/* Milestone-2 slot access (N_chem > 1 paths only). Compound 0 always sits in
+ * slot 0 of a non-empty store; other compounds are appended when first
+ * created. Returns NULL when absent and create == 0. */
+static inline float *chem_slot(int idx, int c, int create)
+{
+    uint8_t  ns  = chem_ns[idx];
+    uint8_t *id  = chem_id  + (size_t)idx * CHEM_MAX;
+    float   *amt = chem_amt + (size_t)idx * CHEM_MAX;
+    for (uint8_t s = 0; s < ns; s++) if (id[s] == c) return &amt[s];
+    if (!create) return NULL;
+    if (ns == 0) { id[0] = 0; amt[0] = 0.0f; ns = 1; }
+    if (c == 0) { chem_ns[idx] = ns; return &amt[0]; }
+    if (ns >= CHEM_MAX) return NULL;            /* unreachable: N_chem <= CHEM_MAX */
+    id[ns] = (uint8_t)c; amt[ns] = 0.0f; chem_ns[idx] = (uint8_t)(ns + 1);
+    return &amt[ns];
+}
+
+static inline float chem_amount(int idx, int c)
+{
+    float *a = chem_slot(idx, c, 0);
+    return a ? *a : 0.0f;
+}
+
+/* Return a dying cell's private compounds to its site's environment fields:
+ * compounds c >= 1 always; the energy compound only if with_energy (toxic
+ * death). Amounts <= 0 return nothing. */
+static void chem_return_to_env(int idx, int with_energy)
+{
+    uint8_t  ns  = chem_ns[idx];
+    uint8_t *id  = chem_id  + (size_t)idx * CHEM_MAX;
+    float   *amt = chem_amt + (size_t)idx * CHEM_MAX;
+    for (uint8_t s = 0; s < ns; s++) {
+        if (amt[s] <= 0.0f) continue;
+        if (id[s] == 0) { if (with_energy) F_food[idx] += amt[s]; }
+        else chem_env[id[s]][idx] += amt[s];
+    }
+}
+
+/* Free the milestone-2 environment fields and reset the per-compound
+ * parameters to inert defaults. */
+static void chem_env_reset(void)
+{
+    for (int c = 0; c < CHEM_MAX_N; c++) {
+        free(chem_env[c]); chem_env[c] = NULL;
+        chem_env_inc[c] = chem_env_sink[c] = chem_env_diff[c] = 0.0f;
+        chem_disp[c] = chem_tox[c] = 0.0f;
+        chem_src_cum[c] = chem_sink_cum[c] = 0.0;
+    }
+    free(chem_env_tmp); chem_env_tmp = NULL;
+    g_metab_product = -1;
+}
+
 /* ── Lifecycle ──────────────────────────────────────────────────── */
 
 /* ── Per-lineage net-return reducer: table helpers ─────────────────
@@ -1254,6 +1336,8 @@ void evoca_init(int N, float food_inc, float m_scale)
     chem_id  = calloc(cells * CHEM_MAX,    sizeof(uint8_t));
     chem_amt = calloc(cells * CHEM_MAX,    sizeof(float));
     for (int c = 0; c < CHEM_MAX_N; c++) chem_energy[c] = 1.0f;
+    chem_env_reset();
+    g_n_chem = 1;
     births    = calloc(cells,               sizeof(uint8_t));
     lut_color = calloc(cells,               sizeof(uint32_t));
     lut_hash_cache = calloc(cells,          sizeof(uint32_t));
@@ -1326,6 +1410,8 @@ void evoca_free(void)
     free(chem_ns);  chem_ns  = NULL;
     free(chem_id);  chem_id  = NULL;
     free(chem_amt); chem_amt = NULL;
+    chem_env_reset();
+    g_n_chem = 1;
     free(births);    births    = NULL;
     free(lut_color); lut_color = NULL;
     free(lut_hash_cache); lut_hash_cache = NULL;
@@ -1369,29 +1455,113 @@ void evoca_set_m_scale(float m)    { gm_scale    = m; }
  * than silently pretend: unsupported values are clamped to 1 and reported. */
 int evoca_set_n_chem(int n)
 {
-    if (n == 1) { g_n_chem = 1; return 1; }
-    fprintf(stderr,
-        "evoca_set_n_chem: N_chem=%d unsupported at milestone 1 "
-        "(only single-food N_chem=1 implemented); clamping to 1.\n", n);
-    g_n_chem = 1;
-    return 0;
+    /* Milestone 2: 1 <= N_chem <= CHEM_MAX_N. Allocates one environment
+     * field per compound c >= 1 (zero), resets every per-compound parameter
+     * to inert, and empties every non-energy private slot, so a fresh
+     * N_chem > 1 run starts with no compound other than food anywhere.
+     * Call after evoca_init (needs the grid size). */
+    int requested = n;
+    if (n < 1 || n > CHEM_MAX_N || gN <= 0) {
+        fprintf(stderr, "evoca_set_n_chem: N_chem=%d unsupported (1..%d, after "
+                "evoca_init); clamping to 1.\n", n, CHEM_MAX_N);
+        n = 1;
+    }
+    chem_env_reset();
+    g_n_chem = n;
+    size_t cells = (size_t)gN * gN;
+    if (n > 1) {
+        for (int c = 1; c < n; c++) chem_env[c] = calloc(cells, sizeof(float));
+        chem_env_tmp = calloc(cells, sizeof(float));
+    }
+    for (size_t i = 0; i < cells; i++)
+        if (chem_ns[i] > 1) chem_ns[i] = 1;     /* keep only the compound-0 slot */
+    return g_n_chem == requested;
 }
 int evoca_get_n_chem(void) { return g_n_chem; }
 
 void evoca_set_chem_energy(int compound, float energy)
 {
     if (compound < 0 || compound >= CHEM_MAX_N) return;
-    /* Milestone 1: weights other than 1 are not supported. Intake, tax,
-     * the 50/50 split, the eating headroom (1 - f) and the dissipation
-     * accountant all move AMOUNTS, so a weight != 1 on compound 0 lets
-     * f exceed 1 and breaks the energy identity (measured residual ~2e3
-     * over 50 steps at weight 2). Surface and clamp, as evoca_set_n_chem
-     * does, until milestones 2-3 define energy-weighted intake. */
-    if (energy != 1.0f)
-        fprintf(stderr,
-            "evoca_set_chem_energy: weight %g unsupported at milestone 1 "
-            "(only 1.0); keeping 1.0.\n", (double)energy);
-    chem_energy[compound] = 1.0f;
+    /* Intake, tax, the 50/50 split, the eating headroom (1 - f) and the
+     * dissipation accountant all move AMOUNTS of compound 0, so its weight
+     * must stay 1 (a weight of 2 broke the energy identity by ~2e3 over 50
+     * steps). A compound c >= 1 may be energy-free (0, e.g. waste) or carry
+     * unit energy (1); other weights wait for milestone 3's energy-weighted
+     * intake. Unsupported requests are surfaced and clamped. */
+    float w = energy;
+    if (compound == 0 && energy != 1.0f) w = 1.0f;
+    if (compound >= 1 && energy != 0.0f && energy != 1.0f) w = 1.0f;
+    if (w != energy)
+        fprintf(stderr, "evoca_set_chem_energy: weight %g unsupported for compound %d "
+                "(compound 0: 1 only; others: 0 or 1); using %g.\n",
+                (double)energy, compound, (double)w);
+    chem_energy[compound] = w;
+}
+
+/* Environment dynamics of compound c >= 1: uniform source and sink per
+ * step, and diffusion strength (same semantics as gdiff). */
+void evoca_set_chem_env(int c, float inc, float sink, float diff)
+{
+    if (c < 1 || c >= g_n_chem) return;
+    chem_env_inc[c]  = inc  > 0.0f ? inc  : 0.0f;
+    chem_env_sink[c] = sink > 0.0f ? sink : 0.0f;
+    chem_env_diff[c] = diff > 0.0f ? diff : 0.0f;
+}
+/* Agent exchange of compound c >= 1: excretion rate and toxic amount (0 = none). */
+void evoca_set_chem_exchange(int c, float disp, float tox)
+{
+    if (c < 1 || c >= g_n_chem) return;
+    chem_disp[c] = disp > 0.0f ? disp : 0.0f;
+    chem_tox[c]  = tox  > 0.0f ? tox  : 0.0f;
+}
+/* Metabolism: the tax converts compound 0 into compound c (1..N_chem-1),
+ * or into nothing (c = -1, the single-food model). */
+void evoca_set_metab_product(int c)
+{
+    g_metab_product = (c >= 1 && c < g_n_chem) ? c : -1;
+}
+int evoca_get_metab_product(void) { return g_metab_product; }
+/* out[5] = {inc, sink, diff, disp, tox} for compound c (zeros if c is out of range). */
+void evoca_get_chem_params(int c, float *out)
+{
+    int ok = c >= 1 && c < g_n_chem;
+    out[0] = ok ? chem_env_inc[c]  : 0.0f;
+    out[1] = ok ? chem_env_sink[c] : 0.0f;
+    out[2] = ok ? chem_env_diff[c] : 0.0f;
+    out[3] = ok ? chem_disp[c]     : 0.0f;
+    out[4] = ok ? chem_tox[c]      : 0.0f;
+}
+/* Environment field of compound c (c = 0: F_food); NULL if absent. */
+float *evoca_get_chem_env(int c)
+{
+    if (c == 0) return F_food;
+    return (c >= 1 && c < g_n_chem) ? chem_env[c] : NULL;
+}
+/* Private amount of compound c in every cell (row-major N*N). */
+void evoca_get_chem_priv(int c, float *out)
+{
+    for (size_t i = 0; i < (size_t)gN * gN; i++)
+        out[i] = (g_n_chem == 1) ? (c == 0 ? f_priv[i] : 0.0f) : chem_amount((int)i, c);
+}
+/* Cumulative mass balance of compound c >= 1: out[0] = in (env source +
+ * metabolic production), out[1] = out (env sink). */
+void evoca_get_chem_flux(int c, double *out)
+{
+    int ok = c >= 1 && c < g_n_chem;
+    out[0] = ok ? chem_src_cum[c]  : 0.0;
+    out[1] = ok ? chem_sink_cum[c] : 0.0;
+}
+long evoca_get_tox_deaths_last(void) { return g_tox_deaths_last; }
+/* Seed the private amount of compound c >= 1 in every ALIVE cell from an
+ * N*N array (dead cells keep an empty store). For experiments and fixtures. */
+void evoca_set_chem_priv(int c, const float *amt)
+{
+    if (c < 1 || c >= g_n_chem) return;
+    for (size_t i = 0; i < (size_t)gN * gN; i++) {
+        if (!alive[i]) continue;
+        *chem_slot((int)i, c, 1) = amt[i] > 0.0f ? amt[i] : 0.0f;
+        f_priv[i] = chem_reduce_to_f((int)i);
+    }
 }
 float evoca_get_chem_energy(int compound)
 {
@@ -1511,8 +1681,17 @@ void evoca_set_f_all(float f)
  * evoca_set_f_all, the operation is exact at N_chem == 1. */
 void evoca_chem_sync_from_f(void)
 {
-    for (size_t i = 0; i < (size_t)gN * gN; i++)
-        chem_cell_set((int)i, f_priv[i]);
+    if (g_n_chem == 1) {
+        for (size_t i = 0; i < (size_t)gN * gN; i++)
+            chem_cell_set((int)i, f_priv[i]);
+        return;
+    }
+    /* N_chem > 1: rewrite only the energy compound, keep the others. */
+    for (size_t i = 0; i < (size_t)gN * gN; i++) {
+        float f = f_priv[i];
+        *chem_slot((int)i, 0, 1) = f;
+        f_priv[i] = chem_reduce_to_f((int)i);
+    }
 }
 
 /* Seed every cell's mutation-rate gene to a single scalar. Used to reset the
@@ -1677,6 +1856,51 @@ static void diffuse_food_partial(float s)
     float *tmp = F_food; F_food = F_temp; F_temp = tmp;
 }
 
+/* Diffusion of a milestone-2 environment field, the same rule as gdiff:
+ * floor(d) full 3x3 box-blur passes, then one partial pass of strength
+ * d - floor(d). Swaps *fld with chem_env_tmp. */
+static void diffuse_field(float **fld, float d)
+{
+    int N = gN;
+    int n_full = (int)d;
+    float frac = d - (float)n_full;
+    for (int pass = 0; pass <= n_full; pass++) {
+        float s = (pass < n_full) ? 1.0f : frac;
+        if (s <= 0.0f) break;
+        float t = 1.0f - s, w9 = s * (1.0f / 9.0f);
+        float *src = *fld, *dst = chem_env_tmp;
+        for (int row = 0; row < N; row++) {
+            for (int col = 0; col < N; col++) {
+                float sum = 0.0f;
+                for (int di = -1; di <= 1; di++) {
+                    int r = ((row + di) % N + N) % N;
+                    for (int dj = -1; dj <= 1; dj++) {
+                        int c = ((col + dj) % N + N) % N;
+                        sum += src[r * N + c];
+                    }
+                }
+                dst[row * N + col] = t * src[row * N + col] + w9 * sum;
+            }
+        }
+        chem_env_tmp = src; *fld = dst;
+    }
+}
+
+/* Death bookkeeping shared by the tax death and the toxic death: flush the
+ * lineage accumulators, mark dead, zero the genome and rehash. The caller
+ * has already settled the cell's compounds (returned or dissipated). */
+static void kill_cell(size_t i)
+{
+    if (g_lineage_on) lret_flush_cell(i);
+    alive[i] = 0;
+    g_deaths_last++;
+    /* Death: zero out LUT and clear active mask so the
+     * dead cell hashes into a known "no genome" bucket. */
+    memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
+    active[i] = 0;
+    cell_rehash((int)i);
+}
+
 /* ── Time step ──────────────────────────────────────────────────── */
 
 void evoca_step(void)
@@ -1695,6 +1919,7 @@ void evoca_step(void)
     g_diss_tax_step      = 0.0;
     g_diss_death_step    = 0.0;
     g_diss_overflow_step = 0.0;
+    g_tox_deaths_last    = 0;
 
     /* Phase 1: CA state update (double-buffered).
      *
@@ -1766,6 +1991,24 @@ void evoca_step(void)
         if (frac > 0.0f) diffuse_food_partial(frac);
     }
 
+    /* Phase 2' (N_chem > 1): environment fields of compounds c >= 1,
+     * mirroring food: uniform source, then uniform sink (removal floored
+     * at 0), then diffusion with the compound's own strength. */
+    for (int c = 1; c < g_n_chem; c++) {
+        float *E = chem_env[c], inc = chem_env_inc[c], sink = chem_env_sink[c];
+        if (inc > 0.0f || sink > 0.0f) {
+            for (size_t i = 0; i < cells; i++) {
+                E[i] += inc;
+                chem_src_cum[c] += (double)inc;
+                if (sink > 0.0f) {
+                    float r = E[i] < sink ? E[i] : sink;
+                    if (r > 0.0f) { E[i] -= r; chem_sink_cum[c] += (double)r; }
+                }
+            }
+        }
+        if (chem_env_diff[c] > 0.0f) diffuse_field(&chem_env[c], chem_env_diff[c]);
+    }
+
     /* Phase 2c: Tax — decrement private food; death if depleted.
      * Differentiated tax: tax = gtax + gtax_per_egene × Negene
      *                          + gtax_lut × popcount(LUT bytes)
@@ -1826,22 +2069,59 @@ void evoca_step(void)
             /* Tax debits the energy compound (compound 0 at N_chem==1); the
              * f_priv cache is refreshed by chem_cell_add. */
             chem_cell_add((int)i, -t);
+            if (g_metab_product > 0) {
+                /* Metabolism: the energy actually consumed (t, or the
+                 * whole remaining store if that is less) becomes the
+                 * product compound; its energy is still dissipated. */
+                float conv = f_before >= t ? t : (f_before > 0.0f ? f_before : 0.0f);
+                *chem_slot((int)i, g_metab_product, 1) += conv;
+                chem_src_cum[g_metab_product] += (double)conv;
+            }
             if (f_priv[i] <= 0.0f) {
+                /* N_chem > 1: the dying cell's other compounds (its waste)
+                 * go back to its site; its energy store is <= 0. */
+                if (g_n_chem > 1) chem_return_to_env((int)i, 0);
                 chem_cell_clear((int)i);
                 g_diss_tax_step += (double)f_before;
                 f_priv[i] = 0.0f;
                 /* Tax death: flush this cell's life accumulators into its
                  * genome bucket before the LUT is zeroed and rehashed. */
-                if (g_lineage_on) lret_flush_cell(i);
-                alive[i] = 0;
-                g_deaths_last++;
-                /* Death: zero out LUT and clear active mask so the
-                 * dead cell hashes into a known "no genome" bucket. */
-                memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
-                active[i] = 0;
-                cell_rehash((int)i);
+                kill_cell(i);
             } else {
                 g_diss_tax_step += (double)t;   /* survivor pays full t */
+            }
+        }
+    }
+
+    /* Phase 2d (N_chem > 1): excretion of compounds c >= 1 into the cell's
+     * own site, d = disp * a * max(0, 1 - E), then toxicity: a private
+     * amount >= tox kills the cell and returns all its compounds, energy
+     * included, to its site (an internal transfer, not a dissipation sink). */
+    if (g_n_chem > 1) {
+        for (size_t i = 0; i < cells; i++) {
+            if (!alive[i]) continue;
+            int toxic = 0;
+            for (int c = 1; c < g_n_chem; c++) {
+                float *a = chem_slot((int)i, c, 0);
+                if (!a) continue;
+                if (chem_disp[c] > 0.0f && *a > 0.0f) {
+                    float room = 1.0f - chem_env[c][i];
+                    if (room > 0.0f) {
+                        float d = chem_disp[c] * *a * room;
+                        if (d > *a) d = *a;
+                        *a -= d;
+                        chem_env[c][i] += d;
+                    }
+                }
+                if (chem_tox[c] > 0.0f && *a >= chem_tox[c]) toxic = 1;
+            }
+            f_priv[i] = chem_reduce_to_f((int)i);
+            if (toxic) {
+                chem_return_to_env((int)i, 1);
+                chem_cell_clear((int)i);
+                f_priv[i] = 0.0f;
+                g_tox_deaths_last++;
+                kill_cell(i);
             }
         }
     }
@@ -1955,6 +2235,8 @@ void evoca_step(void)
                 /* Flush the evicted occupant's life accumulators into its
                  * (old) genome bucket before its slot is overwritten. */
                 if (g_lineage_on) lret_flush_cell((size_t)child);
+                /* N_chem > 1: its other compounds return to the site. */
+                if (g_n_chem > 1) chem_return_to_env(child, 0);
             }
             alive[child] = 1;
             g_births_last++;
@@ -2110,9 +2392,21 @@ void evoca_step(void)
              * Food (not genome) splits 50/50: halve the parent's store and
              * give the child an equal single-compound store. At N_chem==1
              * `half == f_priv[idx]*0.5f`, identical to the pre-change split. */
-            float half = f_priv[idx] * 0.5f;
-            chem_cell_set(idx,   half);
-            chem_cell_set(child, half);
+            if (g_n_chem == 1) {
+                float half = f_priv[idx] * 0.5f;
+                chem_cell_set(idx,   half);
+                chem_cell_set(child, half);
+            } else {
+                /* N_chem > 1: every compound splits 50/50. */
+                uint8_t ns = chem_ns[idx];
+                float *pa = chem_amt + (size_t)idx * CHEM_MAX;
+                for (uint8_t q = 0; q < ns; q++) pa[q] *= 0.5f;
+                chem_ns[child] = ns;
+                memcpy(chem_id  + (size_t)child * CHEM_MAX, chem_id + (size_t)idx * CHEM_MAX, ns);
+                memcpy(chem_amt + (size_t)child * CHEM_MAX, pa, ns * sizeof(float));
+                f_priv[idx]   = chem_reduce_to_f(idx);
+                f_priv[child] = chem_reduce_to_f(child);
+            }
         }
     }
 
@@ -4322,13 +4616,31 @@ void evoca_colorize(int32_t *pixels, int colormode)
             }
             break;
         }
+        case 6:
+            /* Food/waste environment (chem milestone 2): green = F_food,
+             * red = waste field W (clipped to [0,1]; 0 when N_chem == 1),
+             * blue = 255 on alive cells. Shows the two environmental fields
+             * everywhere, so a refractory (waste-loaded) zone reads red. */
+            for (size_t i = 0; i < cells; i++) {
+                float fv = F_food[i];
+                float wv = (g_n_chem > 1 && g_metab_product > 0)
+                           ? chem_env[g_metab_product][i] : 0.0f;
+                if (fv > 1.0f) fv = 1.0f;
+                if (fv < 0.0f) fv = 0.0f;
+                if (wv > 1.0f) wv = 1.0f;
+                if (wv < 0.0f) wv = 0.0f;
+                uint32_t r = (uint32_t)(wv * 255.0f), g = (uint32_t)(fv * 255.0f);
+                uint32_t b = alive[i] ? 255u : 0u;
+                pixels[i] = (int32_t)(0xFF000000u | (r << 16) | (g << 8) | b);
+            }
+            break;
         default:
             for (size_t i = 0; i < cells; i++)
                 pixels[i] = (int32_t)0xFF000000;
     }
 }
 
-int evoca_colormode_count(void) { return 6; }
+int evoca_colormode_count(void) { return 7; }
 
 /* ── Accessors ──────────────────────────────────────────────────── */
 

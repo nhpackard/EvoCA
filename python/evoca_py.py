@@ -203,6 +203,27 @@ class EvoCA:
         L.evoca_set_chem_energy.restype  = None
         L.evoca_get_chem_energy.argtypes = [ctypes.c_int]
         L.evoca_get_chem_energy.restype  = ctypes.c_float
+        # Chem milestone 2: environment fields, exchange, metabolism.
+        L.evoca_set_chem_env.argtypes      = [ctypes.c_int, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+        L.evoca_set_chem_env.restype       = None
+        L.evoca_set_chem_exchange.argtypes = [ctypes.c_int, ctypes.c_float, ctypes.c_float]
+        L.evoca_set_chem_exchange.restype  = None
+        L.evoca_set_metab_product.argtypes = [ctypes.c_int]
+        L.evoca_set_metab_product.restype  = None
+        L.evoca_get_metab_product.argtypes = []
+        L.evoca_get_metab_product.restype  = ctypes.c_int
+        L.evoca_get_chem_params.argtypes   = [ctypes.c_int, ctypes.POINTER(ctypes.c_float)]
+        L.evoca_get_chem_params.restype    = None
+        L.evoca_get_chem_env.argtypes      = [ctypes.c_int]
+        L.evoca_get_chem_env.restype       = ctypes.POINTER(ctypes.c_float)
+        L.evoca_get_chem_priv.argtypes     = [ctypes.c_int, ctypes.POINTER(ctypes.c_float)]
+        L.evoca_get_chem_priv.restype      = None
+        L.evoca_get_chem_flux.argtypes     = [ctypes.c_int, ctypes.POINTER(ctypes.c_double)]
+        L.evoca_get_chem_flux.restype      = None
+        L.evoca_get_tox_deaths_last.argtypes = []
+        L.evoca_get_tox_deaths_last.restype  = ctypes.c_long
+        L.evoca_set_chem_priv.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_float)]
+        L.evoca_set_chem_priv.restype  = None
         L.evoca_set_gdiff.argtypes      = [ctypes.c_float]
         L.evoca_set_gdiff.restype       = None
         L.evoca_get_gdiff.argtypes      = []
@@ -595,7 +616,8 @@ class EvoCA:
              p_dup_egene=1.0,
              tax=0.0, tax_per_egene=0.0, tax_lut=0.0, tax_ring=0.0,
              restricted_mu=0, food_per=1, n_ent=2,
-             N_log_interval=1, lineage=False, n_chem=1, food_cap=1):
+             N_log_interval=1, lineage=False, n_chem=1, food_cap=1,
+             wdiff=0.0, waste_sink=0.0, waste_disp=0.0):
         # Opt-in lineage record (research-directions §1). The C flag must
         # be set before evoca_init so the arrays get allocated. Default
         # OFF -> zero added work in the Phase-1/Phase-4 hot path.
@@ -619,14 +641,26 @@ class EvoCA:
         self.restricted_mu = int(restricted_mu)
         self.food_per   = max(1, int(food_per))
         self.food_cap   = 1 if int(food_cap) else 0
+        # Food/waste chemistry (chem milestone 2; Docs/plan-chem.md §7).
+        # n_chem=2 is the food/waste preset; the waste metaparams need it.
+        self.wdiff      = float(wdiff)
+        self.waste_sink = float(waste_sink)
+        self.waste_disp = float(waste_disp)
+        if int(n_chem) not in (1, 2):
+            raise ValueError(f"n_chem={n_chem}: only 1 (single food) and 2 (food/waste) "
+                             f"are configured; larger universes are chem milestone 3")
+        if int(n_chem) == 1 and (self.wdiff or self.waste_sink or self.waste_disp):
+            raise ValueError("wdiff / waste_sink / waste_disp need n_chem=2 (food/waste)")
         self._n_ent     = int(n_ent)
         self.N_log_interval = max(1, int(N_log_interval))
         self._lib.evoca_init(N, self.food_inc, self.m_scale)
-        # Chem compound-universe size. Milestone 1 supports only N_chem=1
-        # (single-food parity); the C setter clamps + warns otherwise.
+        # Chem compound-universe size: 1 = single food (the standard model),
+        # 2 = food/waste, configured through the general chem API.
         self.n_chem = int(n_chem)
         self._lib.evoca_set_n_chem(self.n_chem)
         self.n_chem = int(self._lib.evoca_get_n_chem())  # reflect any clamp
+        if self.n_chem == 2:
+            self._configure_food_waste()
         self._lib.evoca_set_gdiff(self.gdiff)
         self._lib.evoca_set_mu_lut(self.mu_lut)
         self._lib.evoca_set_mu_egene(self.mu_egene)
@@ -666,7 +700,87 @@ class EvoCA:
             'food_per': self.food_per,
             'n_chem': self.n_chem,
             'food_cap': self.food_cap,
+            'wdiff': self.wdiff,
+            'waste_sink': self.waste_sink,
+            'waste_disp': self.waste_disp,
         }
+
+    # ── Food/waste chemistry (chem milestone 2) ───────────────────────
+
+    WASTE = 1   # compound id of waste in the food/waste preset
+
+    def _configure_food_waste(self):
+        """The food/waste special case of the general chemistry: compound 1
+        (waste) carries no energy, kills at a private amount of 1, is what the
+        tax converts food into, is excreted at rate waste_disp * w * (1 - W),
+        and in the environment has no source, a uniform sink waste_sink and
+        diffusion wdiff (the counterparts of food_inc and gdiff)."""
+        W = self.WASTE
+        self._lib.evoca_set_chem_energy(W, ctypes.c_float(0.0))
+        self._lib.evoca_set_chem_exchange(W, ctypes.c_float(self.waste_disp), ctypes.c_float(1.0))
+        self._lib.evoca_set_chem_env(W, ctypes.c_float(0.0), ctypes.c_float(self.waste_sink),
+                                     ctypes.c_float(self.wdiff))
+        self._lib.evoca_set_metab_product(W)
+
+    def _require_waste(self, what):
+        if self.n_chem != 2:
+            raise ValueError(f"{what} needs the food/waste chemistry (init with n_chem=2)")
+
+    def update_wdiff(self, d):
+        """Waste diffusion (same rule as gdiff)."""
+        self._require_waste('wdiff')
+        self.wdiff = max(0.0, float(d)); self._configure_food_waste()
+
+    def update_waste_sink(self, r):
+        """Uniform removal of environmental waste per step (floored at 0)."""
+        self._require_waste('waste_sink')
+        self.waste_sink = max(0.0, float(r)); self._configure_food_waste()
+
+    def update_waste_disp(self, r):
+        """Waste excretion rate: d = waste_disp * w * max(0, 1 - W) per step."""
+        self._require_waste('waste_disp')
+        self.waste_disp = max(0.0, float(r)); self._configure_food_waste()
+
+    def get_W(self):
+        """Environmental waste field W (N x N copy); zeros when n_chem == 1."""
+        if self.n_chem != 2:
+            return np.zeros((self._N, self._N), dtype=np.float32)
+        ptr = self._lib.evoca_get_chem_env(self.WASTE)
+        return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)).copy().reshape(self._N, self._N)
+
+    def get_w(self):
+        """Private waste of every cell (N x N); zeros when n_chem == 1."""
+        out = np.zeros(self._N * self._N, dtype=np.float32)
+        if self.n_chem == 2:
+            self._lib.evoca_get_chem_priv(self.WASTE, out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+        return out.reshape(self._N, self._N)
+
+    def set_w(self, w):
+        """Seed the private waste of every alive cell (scalar or N x N)."""
+        self._require_waste('set_w')
+        a = np.ascontiguousarray(np.broadcast_to(np.float32(w) if np.isscalar(w) else np.asarray(w, np.float32),
+                                                 (self._N, self._N)), dtype=np.float32).ravel()
+        self._lib.evoca_set_chem_priv(self.WASTE, a.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+
+    def get_chem_params(self, c):
+        """(inc, sink, diff, disp, tox) of compound c >= 1 as set in C."""
+        out = (ctypes.c_float * 5)()
+        self._lib.evoca_get_chem_params(int(c), out)
+        return tuple(float(x) for x in out)
+
+    def get_metab_product(self):
+        return int(self._lib.evoca_get_metab_product())
+
+    def get_chem_flux(self, c):
+        """Cumulative (in, out) mass of compound c >= 1: in = environmental
+        source + metabolic production, out = environmental sink."""
+        out = (ctypes.c_double * 2)()
+        self._lib.evoca_get_chem_flux(int(c), out)
+        return float(out[0]), float(out[1])
+
+    def get_tox_deaths_last(self):
+        """Cells killed by a toxic compound (waste) in the last step."""
+        return int(self._lib.evoca_get_tox_deaths_last())
 
     def free(self):
         stop = getattr(self, '_stop_display', None)
@@ -787,7 +901,8 @@ class EvoCA:
                       gdiff=0, mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0,
                       p_dup_egene=1.0, tax=0.0, tax_per_egene=0.0,
                       tax_lut=0.0, tax_ring=0.0,
-                      restricted_mu=0, food_per=1, n_chem=1, food_cap=1)
+                      restricted_mu=0, food_per=1, n_chem=1, food_cap=1,
+                      wdiff=0.0, waste_sink=0.0, waste_disp=0.0)
 
     def params(self):
         """Return current metaparameters as a dict suitable for init(**d)."""
@@ -798,7 +913,8 @@ class EvoCA:
                     tax_per_egene=self.tax_per_egene,
                     tax_lut=self.tax_lut, tax_ring=self.tax_ring,
                     restricted_mu=self.restricted_mu, food_per=self.food_per,
-                    n_chem=self.n_chem, food_cap=self.food_cap)
+                    n_chem=self.n_chem, food_cap=self.food_cap,
+                    wdiff=self.wdiff, waste_sink=self.waste_sink, waste_disp=self.waste_disp)
 
     def params_str(self):
         """Return a copy-pasteable sim.init(...) call with defaults annotated."""
@@ -1056,8 +1172,9 @@ class EvoCA:
 
     # ── Chem machinery (milestone 1: single-food parity) ───────────────
     def set_n_chem(self, n):
-        """Set the compound-universe size. Milestone 1 supports only N_chem=1;
-        the C side clamps + warns otherwise. Returns the effective value."""
+        """Set the compound-universe size (C: 1..8; resets every compound
+        c >= 1 to inert and empties their stores). Low-level: init(n_chem=2)
+        also applies the food/waste preset. Returns the effective value."""
         self._lib.evoca_set_n_chem(int(n))
         self.n_chem = int(self._lib.evoca_get_n_chem())
         return self.n_chem
@@ -1987,6 +2104,9 @@ class EvoCA:
                 'food_per': self.food_per,
                 'n_chem': self.n_chem,
                 'food_cap': self.food_cap,
+                'wdiff': self.wdiff,
+                'waste_sink': self.waste_sink,
+                'waste_disp': self.waste_disp,
             },
             'initialization': dict(self._state_params),
             'display': {

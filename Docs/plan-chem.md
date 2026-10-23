@@ -25,7 +25,7 @@ Milestone roadmap (from checkpoint §K′ / §E′ note, N's call 2026-07-19):
 | Milestone | Content | Status |
 |---|---|---|
 | **1 — parity** | `N_chem` machinery + sparse store + vector→`f`; N_chem=1 == single-food bit-for-bit | **this commit** |
-| 2 — food/waste | `N_chem=2`; minimal reaction-execution engine (food→waste); waste `W_env` field, disposal ∝ (1−W_env); §B structured-gradient experiment | deferred |
+| 2 — food/waste | `N_chem=2`; minimal reaction-execution engine (food→waste); waste `W_env` field, disposal ∝ (1−W_env); §B structured-gradient experiment | **implemented 2026-10-23 (branch `chem`; §7)** |
 | 3 — larger spaces | autocatalytic reaction-network design (FKP-style); egene→compound-profile eating | deferred |
 
 Each milestone gates the next (deliberately serial — checkpoint §K″).
@@ -184,3 +184,87 @@ every checkpoint.
   `tests/data/chem_parity_golden.npz` — the parity gate.
 - `chem-test.ipynb` — PASS/FAIL parity demo.
 - `Docs/plan-chem.md` — this document.
+
+---
+
+## 7. Milestone 2 — food/waste as a special case of the general chemistry (2026-10-23)
+
+N's spec (checkpoint, LB6) with the `W_env` refinement and N's decisions of
+2026-10-23: environmental waste mirrors environmental food, as a **sink**
+instead of a source, with its own diffusion; on death a cell's food and waste
+return to its site.
+
+### General mechanism (C, every compound c)
+
+| | compound 0 (energy, "food") | compound c >= 1 |
+|---|---|---|
+| environment field | `F_food` | `chem_env[c]` (allocated by `evoca_set_n_chem`) |
+| source per step | `food_inc` on `env_mask`, `F <= 1` cap | `chem_env_inc[c]`, uniform |
+| sink per step | none | `chem_env_sink[c]`, uniform, removal floored at 0 |
+| diffusion | `gdiff` | `chem_env_diff[c]` (same box-blur rule) |
+| intake | eating (egene match, capped mouthful) | none (milestone 3) |
+| excretion | none | `d = chem_disp[c] * a * max(0, 1 - E)` into the cell's own site |
+| toxicity | none | private amount `>= chem_tox[c]` (> 0) kills |
+| energy weight in `f` | 1 (fixed) | 0 or 1 |
+
+**Metabolism, the one reaction:** the tax converts compound 0 into
+`g_metab_product` (the energy actually consumed: `t`, or the whole store if
+smaller). `-1` = into nothing, which is the single-food model.
+
+**Death:**
+- *Tax death:* the cell's compounds `c >= 1` return to its site; its energy is `<= 0`.
+- *Toxic death:* everything returns, energy into `F_food`. This is a transfer, not a dissipation sink.
+- *Eviction:* the `c >= 1` compounds return; the energy is discarded as before (sink (b)).
+
+**Reproduction** splits every compound 50/50.
+
+**Step order:**
+
+1. CA.
+2. Food regeneration and diffusion.
+3. Environment fields `c >= 1`: source, then sink, then diffusion.
+4. Tax and metabolism (tax death).
+5. Excretion and toxicity (toxic death).
+6. Eating.
+7. Reproduction.
+
+`N_chem` may be 1..`CHEM_MAX_N` (8) in C. At `N_chem == 1` none of the new code runs: the single-food paths are textually unchanged.
+
+### Food/waste preset (Python, `EvoCA.init(n_chem=2, wdiff, waste_sink, waste_disp)`)
+
+| waste (compound 1) | value |
+|---|---|
+| energy weight | 0 |
+| toxic at | 1 (N's spec: "penalty for waste reaching max (1.0): agent dies") |
+| metabolic product of the tax | yes (N's spec: tax changes food to waste) |
+| environment: source, sink, diffusion | 0, `waste_sink`, `wdiff` |
+| excretion rate | `waste_disp` |
+
+The three waste metaparameters go through recipes, `run_sim` (`_PARAM_KEYS`) and
+gallery overrides like any other; they require `n_chem=2`. Getters: `get_W()`
+(environment), `get_w()` (private), `get_chem_flux(1)`, `get_tox_deaths_last()`;
+`set_w()` seeds private waste. Colormode 6 "food-waste" shows F (green), W (red)
+and alive (blue).
+
+### Tests (`tests/test_chem_waste.py`, 17)
+
+- **Inert path.** `N_chem=2` with every compound inert is bit-for-bit the single-food run, which exercises the general split, excretion and eviction paths.
+- **Constructed one-step fixtures.** Metabolism and excretion, excretion stopping at saturation, the sink, toxic death returning food and waste, and the 50/50 split.
+- **Conservation every step on evolving runs.** The waste mass identity `d(ΣW + Σw) = in − out`, and the unchanged energy identity.
+- **Public doors.** Init (and misuse), `run_sim`, recipe round trip, gallery override and table, and the colormode channels.
+
+Each guard was shown to fail with the corresponding piece removed:
+
+- no eviction return → 3 identity tests fail;
+- toxic death losing food → 2 tests fail;
+- waste keys missing from `_PARAM_KEYS` → the `run_sim` test fails.
+
+The milestone-1 parity golden and all earlier goldens still pass.
+
+### Not in milestone 2
+
+- intake of compounds other than food;
+- wgenes (egene-like disposal genes);
+- source/sink masks for waste;
+- a reaction network (milestone 3);
+- energy weights other than 0/1.

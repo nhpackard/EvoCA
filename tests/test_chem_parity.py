@@ -12,6 +12,7 @@ If this fails, the N_chem=1 code path has diverged from single-food behaviour
 (most likely: an extra PRNG draw in the hot path, or a non-identity
 vector->f reduction).
 """
+import pytest
 import os
 import sys
 
@@ -36,8 +37,9 @@ def test_n_chem_defaults_to_one_and_clamps():
     sim = EvoCA()
     sim.init(N=8, food_inc=0.01, m_scale=1.0)
     assert sim.get_n_chem() == 1
-    # Unsupported universe sizes clamp to 1 at milestone 1 (surfaced, not silent).
-    eff = sim.set_n_chem(4)
+    # Milestone 2: 1..CHEM_MAX_N (8) are accepted; larger sizes clamp to 1 (surfaced).
+    assert sim.set_n_chem(2) == 2
+    eff = sim.set_n_chem(9)
     assert eff == 1
     assert sim.get_n_chem() == 1
 
@@ -82,17 +84,16 @@ def test_stamp_patch_overwrite_keeps_chem_store_in_sync():
 
 
 def test_n_chem_reaches_sim_via_run_sim(capfd):
-    """run_sim must forward n_chem (filtered through _PARAM_KEYS). At
-    milestone 1 a value != 1 reaches evoca_set_n_chem, which clamps and
-    prints a notice on stderr; a dropped key would warn instead and the
-    C setter would never see the value."""
+    """run_sim must forward n_chem (filtered through _PARAM_KEYS): an
+    unconfigured value reaches EvoCA.init, which refuses it; a dropped key
+    would warn instead and the value would never arrive."""
     import warnings
     from evoca_explore import run_sim
     with warnings.catch_warnings():
         warnings.simplefilter('error')        # a dropped key would raise
-        run_sim(dict(food_inc=0.01, m_scale=1.5, tax=0.03, n_chem=4),
-                n_steps=20, sample_every=10, N=16, seed=1)
-    assert 'N_chem=4 unsupported' in capfd.readouterr().err
+        with pytest.raises(ValueError, match='n_chem=4'):
+            run_sim(dict(food_inc=0.01, m_scale=1.5, tax=0.03, n_chem=4),
+                    n_steps=20, sample_every=10, N=16, seed=1)
 
 
 def test_n_chem_recipe_roundtrip():
@@ -107,11 +108,12 @@ def test_n_chem_recipe_roundtrip():
 def test_chem_energy_non_unit_rejected_at_milestone_1(capfd):
     """Regression: a weight != 1 on compound 0 let f exceed 1 and broke
     the dissipation energy identity (intake/tax/headroom move amounts,
-    not weighted energy). Milestone 1 must keep the weight at 1."""
+    not weighted energy). Compound 0 must keep weight 1 (milestone 2 lets
+    other compounds be 0 or 1)."""
     from evoca_py import EvoCA
     sim = EvoCA()
     sim.init(N=8, food_inc=0.01, m_scale=1.0)
     sim.set_chem_energy(0, 2.0)
     assert sim.get_chem_energy(0) == 1.0
-    assert 'unsupported at milestone 1' in capfd.readouterr().err
+    assert 'unsupported for compound 0' in capfd.readouterr().err
     sim.free()

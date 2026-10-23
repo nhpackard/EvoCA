@@ -22,7 +22,7 @@ One **subdirectory per workstream**, `Research/<Workstream>/`, holding
 everything for that line of work: its lab notebook, its open questions,
 its finished digests, and the raw recipes and scans. Workstreams:
 `Activity-metrics`, `Resource-driving`, `Lineage-co-evolution`,
-`Reaction-diffusion`, `Criticality-bifurcation`, `Ring-complexity`
+`Reaction-diffusion`, `Criticality-bifurcation`, `Ring-complexity`, `Chem`
 (the list is defined once, in `WORKSTREAMS` in
 [`../python/evoca_paths.py`](../python/evoca_paths.py)).
 
@@ -120,3 +120,4 @@ most-publication-defensible first.
 | RD-robustness (#4) | Is reaction-diffusion spatial structure robust under pure-evo optimization? | No — corrL washes out; static-colony cases are lowest-`dyn_excess` | ⏳ (draft at `Reaction-diffusion/digests/RD-robustness.ipynb`) |
 | viability-brackets (R1) | Where are the productive optima in (`m_scale`, `food_inc`)? | Standard model (2026-10-23 rescan): extinction 10% (legacy 36%), no U; productive `m_scale` at the 5.0 grid edge (legacy: interior 2.5–3.5); low `mu_lut` wins (legacy: high) | ⏳ (draft at `Resource-driving/digests/viability-brackets.ipynb`) |
 | reaction-diffusion-gallery | What do EvoCA's photogenic reaction-diffusion regimes look like, and which recipes produce them? | _gallery topic — curating example `.evoca` recipes; the most photogenic sims to date (distinct from #4's robustness result)_ | ⏳ |
+| chem-food-waste | Does a food/waste chemistry (waste field, excretion, toxicity) give the standard model a refractory medium, and keep selection alive at abundance? | _in progress (workstream `Chem`, 2026-10-23)_ | ⏳ (lab notebook `Chem/Chem.ipynb`) |

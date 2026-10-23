@@ -22,6 +22,7 @@ WORKSTREAMS = (
     'Reaction-diffusion',
     'Criticality-bifurcation',
     'Ring-complexity',
+    'Chem',
 )
 UNSORTED = '_unsorted'
 

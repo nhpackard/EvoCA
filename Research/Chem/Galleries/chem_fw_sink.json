@@ -1,0 +1,105 @@
+{
+ "name": "chem_fw_sink",
+ "description": "legacy-spiral point under the cap: no waste, and food/waste swept over waste_sink",
+ "workstream": "Chem",
+ "owner": "First look",
+ "entries": [
+  {
+   "label": "no_waste",
+   "recipe": "2026-10-15_R1cfg208_intermediate_fi0p016.evoca",
+   "params": "final",
+   "title": "standard model, no waste",
+   "overrides": {
+    "food_cap": 1
+   },
+   "meta": {
+    "waste_sink": null
+   }
+  },
+  {
+   "label": "sink0.005",
+   "recipe": "2026-10-23_chem_fw_spiralpoint.evoca",
+   "params": "init",
+   "title": "food/waste, waste_sink 0.005",
+   "overrides": {
+    "waste_sink": 0.005
+   },
+   "meta": {
+    "waste_sink": 0.005
+   }
+  },
+  {
+   "label": "sink0.01",
+   "recipe": "2026-10-23_chem_fw_spiralpoint.evoca",
+   "params": "init",
+   "title": "food/waste, waste_sink 0.01",
+   "overrides": {
+    "waste_sink": 0.01
+   },
+   "meta": {
+    "waste_sink": 0.01
+   }
+  },
+  {
+   "label": "sink0.013",
+   "recipe": "2026-10-23_chem_fw_spiralpoint.evoca",
+   "params": "init",
+   "title": "food/waste, waste_sink 0.013",
+   "overrides": {
+    "waste_sink": 0.013
+   },
+   "meta": {
+    "waste_sink": 0.013
+   }
+  },
+  {
+   "label": "sink0.014",
+   "recipe": "2026-10-23_chem_fw_spiralpoint.evoca",
+   "params": "init",
+   "title": "food/waste, waste_sink 0.014",
+   "overrides": {
+    "waste_sink": 0.014
+   },
+   "meta": {
+    "waste_sink": 0.014
+   }
+  },
+  {
+   "label": "sink0.015",
+   "recipe": "2026-10-23_chem_fw_spiralpoint.evoca",
+   "params": "init",
+   "title": "food/waste, waste_sink 0.015",
+   "overrides": {
+    "waste_sink": 0.015
+   },
+   "meta": {
+    "waste_sink": 0.015
+   }
+  },
+  {
+   "label": "sink0.016",
+   "recipe": "2026-10-23_chem_fw_spiralpoint.evoca",
+   "params": "init",
+   "title": "food/waste, waste_sink 0.016",
+   "overrides": {
+    "waste_sink": 0.016
+   },
+   "meta": {
+    "waste_sink": 0.016
+   }
+  },
+  {
+   "label": "sink0.02",
+   "recipe": "2026-10-23_chem_fw_spiralpoint.evoca",
+   "params": "init",
+   "title": "food/waste, waste_sink 0.02",
+   "overrides": {
+    "waste_sink": 0.02
+   },
+   "meta": {
+    "waste_sink": 0.02
+   }
+  }
+ ],
+ "saved": "2026-10-23T10:07:01"
+}

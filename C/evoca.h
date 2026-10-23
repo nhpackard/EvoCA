@@ -77,6 +77,19 @@ void evoca_set_m_scale(float m);
  * 1 on success, 0 if the requested value is unsupported (value is clamped to
  * the supported range and a one-line notice is emitted). */
 int  evoca_set_n_chem(int n);
+/* Milestone 2 (Docs/plan-chem.md §7): environment fields, exchange and
+ * metabolism for compounds c >= 1; food/waste is N_chem=2 with waste
+ * energy 0, toxic at 1, the tax's metabolic product. */
+void   evoca_set_chem_env(int c, float inc, float sink, float diff);
+void   evoca_set_chem_exchange(int c, float disp, float tox);
+void   evoca_set_metab_product(int c);
+int    evoca_get_metab_product(void);
+void   evoca_get_chem_params(int c, float *out);
+float *evoca_get_chem_env(int c);
+void   evoca_get_chem_priv(int c, float *out);
+void   evoca_get_chem_flux(int c, double *out);
+long   evoca_get_tox_deaths_last(void);
+void   evoca_set_chem_priv(int c, const float *amt);
 int  evoca_get_n_chem(void);
 /* Compound "energy" weight used by the vector->f reduction (default 1.0 for
  * every compound). Reading exposes it for probes/tests. */
