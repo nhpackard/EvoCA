@@ -205,7 +205,7 @@ return to its site.
 | intake | eating (egene match, capped mouthful) | none (milestone 3) |
 | excretion | none | `d = chem_disp[c] * a * max(0, 1 - E)` into the cell's own site |
 | toxicity | none | private amount `>= chem_tox[c]` (> 0) kills |
-| energy weight in `f` | 1 (fixed) | 0 or 1 |
+| energy weight in `f` | 1 (fixed) | 0 (fixed until milestone 3) |
 
 **Metabolism, the one reaction:** the tax converts compound 0 into
 `g_metab_product` (the energy actually consumed: `t`, or the whole store if
@@ -215,6 +215,7 @@ smaller). `-1` = into nothing, which is the single-food model.
 - *Tax death:* the cell's compounds `c >= 1` return to its site; its energy is `<= 0`.
 - *Toxic death:* everything returns, energy into `F_food`. This is a transfer, not a dissipation sink.
 - *Eviction:* the `c >= 1` compounds return; the energy is discarded as before (sink (b)).
+- *Outside the step* (`set_alive*`, `stamp_patch` clearing or replacing an occupant): the `c >= 1` compounds return to the site, as on any death.
 
 **Reproduction** splits every compound 50/50.
 
@@ -267,4 +268,50 @@ The milestone-1 parity golden and all earlier goldens still pass.
 - wgenes (egene-like disposal genes);
 - source/sink masks for waste;
 - a reaction network (milestone 3);
-- energy weights other than 0/1.
+- energy-carrying compounds `c >= 1` (weights other than 0).
+
+## 8. Review fixes (2026-10-23)
+
+**Summary.** Two reviews of milestone 2 ran on 2026-10-23: a local single-agent
+review of `main...chem`, and the cloud `/code-review ultra` of
+`food-cap-standard...chem`. Fixed:
+
+- Every setter or stamp that kills a cell, replaces its occupant or rewrites its store now keeps the waste-mass balance `d(ΣW + Σw) = in − out`.
+- Compounds `c >= 1` carry no energy.
+- The Python view (`params()`, recipes, Restart) stays in agreement with what C runs.
+
+There are 13 regression tests (22 cases) in `tests/test_chem_review_fixes.py`,
+all through public entry points with constructed fixtures. Each test failed
+with its fix reverted. Section 5 of `tests/notebooks/chem-m2-test.ipynb` holds
+the matching PASS/FAIL cells. Dynamics of an ordinary food/waste or
+single-food run are unchanged: the goldens pass and the Chem notebook outputs
+are unchanged. The shared `diffuse()` refactor was left for a separate change.
+
+| # | finding (L = local, C = cloud) | fix | test |
+|---|---|---|---|
+| 1 | L1 / C3: `stamp_patch` overwrite left a cleared cell's private waste in place, to vanish under the next birth | `evoca_chem_release(mask)` returns the host's `c >= 1` compounds to the site before the stamp; `evoca_chem_sync_from_f` also returns them for any cell marked dead | `test_stamp_overwrite_dead_cells_return_host_waste` |
+| 2 | L5: a stamped organism inherited the host's waste | same release | `test_stamp_overwrite_live_cells_start_without_host_waste` |
+| 3 | L4: `set_f_all` erased private waste at `N_chem > 1` | rewrites only the energy compound (`chem_cell_set_energy`); bit-exact at `N_chem = 1` | `test_set_f_all_keeps_private_waste` |
+| 4 | L6: `set_alive*` deleted waste instead of returning it | the four setters settle dying cells through `chem_cell_vacate` | `test_set_alive_returns_dying_cells_waste` (4 cases) |
+| 5 | L7: `set_w` (`evoca_set_chem_priv`) was not booked | a rise is booked as input, a fall as output | `test_set_w_is_booked_in_the_flux` |
+| 6 | L2 / C2: weight 1 was accepted for `c >= 1` (and was the C default), making the tax free while booking it as dissipated | compound 0 is fixed at 1 and `c >= 1` at 0, the default in `evoca_init` and `chem_env_reset`; other requests are clamped with a notice | `test_set_chem_energy_refuses_an_energy_carrying_waste`, `test_low_level_metabolism_defaults_to_energy_free_product` |
+| 7 | L3 / C4: `set_n_chem` left `wdiff`/`waste_sink`/`waste_disp` and the preset stale | Python `set_n_chem` configures as `init(n_chem=n)` would: 1 resets the waste params, 2 applies the preset, other sizes are refused. The inert `N_chem=2` parity probe calls the C entry point `_lib.evoca_set_n_chem` | 4 `test_set_n_chem_*` tests, including a record → replay fingerprint check |
+| 8 | C5: `init` raised for a bad chemistry after it had changed `N` and the metaparams | `_check_chem` runs first (and refuses non-finite waste params) | `test_refused_init_leaves_the_instance_untouched` (3 cases) |
+| 9 | C1: Restart (`controls.on_restart`) re-ran `evoca_init` (which resets to `N_chem = 1`) plus a fixed list of setters, dropping the chemistry | `EvoCA.init` = validate + store, then `_apply_metaparams()`, the single place C is configured from; `EvoCA.reinit()` and `controls.restart_sim()` reuse it | `test_restart_reapplies_every_metaparameter` (restart equals a fresh run) |
+| 10 | L8: colormode 6 showed no waste when metabolism was off | shows the metabolic product, or compound 1 | `test_food_waste_colormode_shows_seeded_waste_without_metabolism` |
+| 11 | L9: `params_from_row` passed NaN cells, which defeated the truthiness check | NaN cells dropped at load time (defaults apply) | `test_params_from_row_drops_nan_cells` |
+| 12 | L12: `get_W`/`get_w` hard-coded `n_chem == 2` and read a NULL field when absent | `get_chem_env(c)` / `get_chem_priv(c)` (zeros when absent); `get_W`/`get_w` are the compound-1 conveniences; the gallery's `W_mean` keys on C's `N_chem` | `test_per_compound_accessors` |
+| 13 | L11: the env source was booked once per cell in the hot loop | booked once as `inc × cells` | `test_env_source_is_booked_as_inc_times_cells` (pins the value; behavior-preserving, so it cannot fail with the change reverted) |
+| 14 | C7: stale `evoca_set_n_chem` header comment | rewritten (also the `CHEM_MAX_N` and energy-weight comments) | — |
+
+**Skipped:** L10 / C6, the third copy of the 3×3 periodic blur. The shared
+`diffuse()` is a separate refactor.
+
+**Energy across a stamp** is not claimed. `stamp_patch` writes `f` directly (an
+experimenter injection). Only the waste mass is balanced across it.
+
+**Structural notes:**
+
+- `_apply_metaparams` turns the Restart re-initialization from a hand-maintained setter list into a derived one: a new metaparameter now reaches Restart by being added to `_apply_metaparams`.
+- `evoca_chem_release` and `chem_cell_vacate` add outside-the-step call sites of `chem_return_to_env` (it was called only from tax death, toxic death and eviction).
+

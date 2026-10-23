@@ -95,14 +95,21 @@ def sim_from_scan(scan, config_idx, N=None, seed=0, runs_dir=None,
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _is_nan(v):
+    return isinstance(v, (float, np.floating)) and np.isnan(v)
+
+
 def params_from_row(row):
     """Scan results row (pandas Series) -> build_sim params: every
     param_<key> column for key in _PARAM_KEYS; restricted_mu as int,
-    the rest as float. A missing column is left out (build_sim default),
-    apart from evoca_explore.correct_scan_row_params (a pre-A9 row without
+    the rest as float. A missing column -- or a NaN cell, which is how
+    pandas fills a column a row never had (error rows, concatenated old and
+    new scans) -- is left out (build_sim default), apart from
+    evoca_explore.correct_scan_row_params (a pre-A9 row without
     param_food_cap gets the standard food_cap=1)."""
     import evoca_explore as ee
-    p = {k: row['param_' + k] for k in ee._PARAM_KEYS if 'param_' + k in row.index}
+    p = {k: row['param_' + k] for k in ee._PARAM_KEYS
+         if 'param_' + k in row.index and not _is_nan(row['param_' + k])}
     p['restricted_mu'] = int(p.get('restricted_mu', 0))
     p = {k: float(v) if k != 'restricted_mu' else v for k, v in p.items()}
     return ee.correct_scan_row_params(p)

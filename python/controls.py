@@ -119,6 +119,16 @@ def available_probes():
 _active_stop = None
 
 
+def restart_sim(sim):
+    """The Restart button's re-initialization: reallocate the C lattice from
+    the sim's full current parameter set -- the same configuration
+    EvoCA.init applies (chemistry, food_per, food_cap, lineage, ...) -- then
+    replay the recorded state() initialization."""
+    saved_state = sim.state_params
+    sim.reinit()
+    sim.state(**saved_state)
+
+
 def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
                       diag=False):
     """
@@ -1165,25 +1175,7 @@ def run_with_controls(sim, cell_px=None, colormode=0, paused=True, probes=None,
         _set_paused(True)
         time.sleep(0.02)   # let sim thread settle into paused state
 
-        saved_state = sim.state_params
-
-        # Re-initialize C library (realloc arrays, reset counters)
-        sim._lib.evoca_init(N, sim.food_inc, sim.m_scale)
-        sim._lib.evoca_set_gdiff(sim.gdiff)
-        sim._lib.evoca_set_mu_lut(sim.mu_lut)
-        sim._lib.evoca_set_mu_egene(sim.mu_egene)
-        sim._lib.evoca_set_mu_egenome(sim.mu_egenome)
-        sim._lib.evoca_set_p_dup_egene(sim.p_dup_egene)
-        sim._lib.evoca_set_tax(sim.tax)
-        sim._lib.evoca_set_tax_per_egene(sim.tax_per_egene)
-        sim._lib.evoca_set_tax_lut(sim.tax_lut)
-        sim._lib.evoca_set_tax_ring(sim.tax_ring)
-        sim._lib.evoca_set_restricted_mu(sim.restricted_mu)
-        if pat_enabled:
-            sim._lib.evoca_set_n_ent(sim.n_ent)
-
-        # Replay state initialization
-        sim.state(**saved_state)
+        restart_sim(sim)
 
         # Reset step counter
         st['step_cnt'] = 0

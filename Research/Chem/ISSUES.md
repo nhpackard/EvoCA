@@ -2,7 +2,7 @@
 _Updated 2026-10-23_
 
 ## Decisions needed (N)
-- **CHEM-D1**: Merge chem milestone 2 (branch `chem`) into `main`? — Additive: at `n_chem=1` none of the new code runs and every golden (milestone-1 parity, food-cap, food-thresh fingerprints) is unchanged. Pre-merge test notebook `tests/notebooks/chem-m2-test.ipynb`; `/code-review ultra` is worth running first (new C mechanism). Recommendation: merge after review.
+- **CHEM-D1**: Merge chem milestone 2 (branch `chem`) into `main`? — Additive: at `n_chem=1` none of the new code runs and every golden (milestone-1 parity, food-cap, food-thresh fingerprints) is unchanged. A local review and the cloud `/code-review ultra` both ran; their findings are fixed (see Fixed, CHEM-F1) except the shared-`diffuse()` refactor (parked, CHEM-P1). Pre-merge test notebook `tests/notebooks/chem-m2-test.ipynb` (section 5 covers the fixes). Recommendation: merge.
 - **CHEM-D2**: Should environmental waste saturate? — Currently `W` is unbounded and mass-conserving: excretion stops at `W >= 1`, but deaths still return waste, so where the sink is slower than production (`waste_sink` < tax x density) `W` piles up to 5-12, cells can never excrete, and waste acts as uniform aging (lifespan ~ 1/tax). Option: cap `W` at 1 with the excess discarded and booked as an overflow sink, the counterpart of the food `F <= 1` regeneration cap (N's "parallel to food" principle). Recommendation: keep unbounded for now (conserving, and the balance regime is where structure appears); revisit if the aging regime matters.
 - **CHEM-D3**: wgenes — evolvable excretion (N's open question in the checkpoint)? — Without them excretion is uniform (`waste_disp`), so selection can act on waste only through the evolvable tax terms (`tax_per_egene`, `tax_lut`) and through where cells live. Recommendation: first characterize the no-wgene model (CHEM-N1/N2).
 
@@ -18,5 +18,7 @@ _Updated 2026-10-23_
 - **CHEM-N4**: Milestone 3, the reaction network (FKP-style autocatalysis) and egene -> compound-profile eating — dev, `Docs/plan-chem.md`.
 
 ## Fixed
+- **CHEM-F1** (2026-10-23): review fixes, `Docs/plan-chem.md` §8. Setters and stamps that kill a cell, replace its occupant or rewrite its store (`stamp_patch`, `set_f_all`, `set_alive*`, `set_w`) now keep the waste-mass balance. Waste can no longer carry energy (an energy-1 product made the tax free). `set_n_chem`, a refused `init` and the controls Restart keep `params()`/recipes in agreement with C (Restart had silently dropped the food/waste chemistry). Colormode 6 shows waste with metabolism off. NaN scan-row cells are dropped. Per-compound `get_chem_env`/`get_chem_priv` were added. Ordinary food/waste runs are unchanged: the notebook outputs are identical.
 
 ## Parked
+- **CHEM-P1**: One shared `diffuse(field, tmp, d)` for the three copies of the 3x3 periodic box blur (food full and partial passes, compound fields). A separate refactor; it must keep the food goldens bit-exact.

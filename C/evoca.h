@@ -50,7 +50,7 @@
  * single-food model (the milestone-1 parity gate). Reactions / multi-compound
  * intake (milestones 2-3) are NOT implemented here. */
 #define CHEM_MAX     8   /* per-cell active-compound slot capacity */
-#define CHEM_MAX_N   CHEM_MAX  /* max supported compound-universe size (m1: 1) */
+#define CHEM_MAX_N   CHEM_MAX  /* max supported compound-universe size */
 
 /* Display scale: screen pixels per simulation cell.  Change and recompile. */
 #define CELL_PX  2
@@ -72,10 +72,12 @@ void evoca_set_seed(uint32_t seed);
 void evoca_set_food_inc(float f);
 void evoca_set_m_scale(float m);
 
-/* Chem machinery (milestone 1). N_chem is the size of the compound universe.
- * Only N_chem==1 (single-food parity) is implemented; evoca_set_n_chem returns
- * 1 on success, 0 if the requested value is unsupported (value is clamped to
- * the supported range and a one-line notice is emitted). */
+/* Chem compound-universe size, 1..CHEM_MAX_N; call after evoca_init (which
+ * resets it to 1). Allocates one zeroed environment field per compound c >= 1,
+ * resets every compound c >= 1 to inert (no source, sink, diffusion,
+ * excretion or toxicity, energy 0, no metabolism) and empties their private
+ * stores. Returns 1 on success, 0 if the value is unsupported (it is then
+ * clamped to 1 and a one-line notice is emitted). */
 int  evoca_set_n_chem(int n);
 /* Milestone 2 (Docs/plan-chem.md §7): environment fields, exchange and
  * metabolism for compounds c >= 1; food/waste is N_chem=2 with waste
@@ -91,8 +93,9 @@ void   evoca_get_chem_flux(int c, double *out);
 long   evoca_get_tox_deaths_last(void);
 void   evoca_set_chem_priv(int c, const float *amt);
 int  evoca_get_n_chem(void);
-/* Compound "energy" weight used by the vector->f reduction (default 1.0 for
- * every compound). Reading exposes it for probes/tests. */
+/* Compound "energy" weight used by the vector->f reduction: compound 0 is
+ * fixed at 1, every compound c >= 1 at 0 (energy-weighted fluxes are
+ * milestone 3); other requests are clamped with a notice. */
 void  evoca_set_chem_energy(int compound, float energy);
 float evoca_get_chem_energy(int compound);
 void evoca_set_gdiff(float d);
@@ -136,8 +139,12 @@ void evoca_set_egenome_random_all(uint8_t wt);
  * ternary pair. Use this to seed runs at any cognitive complexity. */
 void evoca_set_egenome_pair_all(uint8_t value, uint8_t mask);
 void evoca_set_f_all(float f);
-/* Resync the chem store after f_priv was written via evoca_get_f(). */
+/* Resync the chem store after f_priv was written via evoca_get_f(). At
+ * N_chem > 1 a cell marked dead returns its compounds c >= 1 to its site. */
 void evoca_chem_sync_from_f(void);
+/* Return the compounds c >= 1 of every cell with mask[i] != 0 to its site,
+ * keeping f_priv (before replacing an occupant from outside the step). */
+void evoca_chem_release(const uint8_t *mask);
 void evoca_set_F_all(float F);
 /* Per-cell agent mutation-rate gene (mutation-of-mutation Wave-1 storage
  * scaffold). Inherited on reproduction but read nowhere that affects

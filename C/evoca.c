@@ -1222,6 +1222,35 @@ static void chem_return_to_env(int idx, int with_energy)
     }
 }
 
+/* A cell leaves the population outside the step (a setter or a stamp marked
+ * it dead): as on any death its compounds c >= 1 return to its site, and
+ * its energy is discarded. Empties the store and zeroes f_priv. At
+ * N_chem == 1 this is exactly the old chem_cell_clear + f_priv = 0. */
+static void chem_cell_vacate(int idx)
+{
+    if (g_n_chem > 1) chem_return_to_env(idx, 0);
+    chem_cell_clear(idx);
+    f_priv[idx] = 0.0f;
+}
+
+/* N_chem > 1: return a cell's compounds c >= 1 to its site and leave it a
+ * single compound-0 slot holding `f` (f_priv refreshed). */
+static void chem_cell_release(int idx, float f)
+{
+    chem_return_to_env(idx, 0);
+    chem_cell_set(idx, f);
+}
+
+/* Set a cell's energy compound to `f` and refresh f_priv. At N_chem == 1
+ * this is chem_cell_set (single compound-0 slot, bit-exact); at N_chem > 1
+ * only the compound-0 slot is rewritten and the other compounds are kept. */
+static inline void chem_cell_set_energy(int idx, float f)
+{
+    if (g_n_chem == 1) { chem_cell_set(idx, f); return; }
+    *chem_slot(idx, 0, 1) = f;
+    f_priv[idx] = chem_reduce_to_f(idx);
+}
+
 /* Free the milestone-2 environment fields and reset the per-compound
  * parameters to inert defaults. */
 static void chem_env_reset(void)
@@ -1231,6 +1260,7 @@ static void chem_env_reset(void)
         chem_env_inc[c] = chem_env_sink[c] = chem_env_diff[c] = 0.0f;
         chem_disp[c] = chem_tox[c] = 0.0f;
         chem_src_cum[c] = chem_sink_cum[c] = 0.0;
+        if (c >= 1) chem_energy[c] = 0.0f;      /* inert: energy-free */
     }
     free(chem_env_tmp); chem_env_tmp = NULL;
     g_metab_product = -1;
@@ -1335,7 +1365,7 @@ void evoca_init(int N, float food_inc, float m_scale)
     chem_ns  = calloc(cells,               sizeof(uint8_t));
     chem_id  = calloc(cells * CHEM_MAX,    sizeof(uint8_t));
     chem_amt = calloc(cells * CHEM_MAX,    sizeof(float));
-    for (int c = 0; c < CHEM_MAX_N; c++) chem_energy[c] = 1.0f;
+    chem_energy[0] = 1.0f;                     /* c >= 1: 0, set by chem_env_reset */
     chem_env_reset();
     g_n_chem = 1;
     births    = calloc(cells,               sizeof(uint8_t));
@@ -1485,15 +1515,15 @@ void evoca_set_chem_energy(int compound, float energy)
     /* Intake, tax, the 50/50 split, the eating headroom (1 - f) and the
      * dissipation accountant all move AMOUNTS of compound 0, so its weight
      * must stay 1 (a weight of 2 broke the energy identity by ~2e3 over 50
-     * steps). A compound c >= 1 may be energy-free (0, e.g. waste) or carry
-     * unit energy (1); other weights wait for milestone 3's energy-weighted
-     * intake. Unsupported requests are surfaced and clamped. */
-    float w = energy;
-    if (compound == 0 && energy != 1.0f) w = 1.0f;
-    if (compound >= 1 && energy != 0.0f && energy != 1.0f) w = 1.0f;
+     * steps). A compound c >= 1 must be energy-free (0): metabolism, the
+     * excretion/death returns and the dissipation accountant book only
+     * compound-0 energy, so an energy-carrying product made the tax free
+     * while still booking it as dissipated. Energy-weighted fluxes are
+     * milestone 3. Unsupported requests are surfaced and clamped. */
+    float w = (compound == 0) ? 1.0f : 0.0f;
     if (w != energy)
         fprintf(stderr, "evoca_set_chem_energy: weight %g unsupported for compound %d "
-                "(compound 0: 1 only; others: 0 or 1); using %g.\n",
+                "(compound 0: 1 only; others: 0 only); using %g.\n",
                 (double)energy, compound, (double)w);
     chem_energy[compound] = w;
 }
@@ -1557,9 +1587,15 @@ long evoca_get_tox_deaths_last(void) { return g_tox_deaths_last; }
 void evoca_set_chem_priv(int c, const float *amt)
 {
     if (c < 1 || c >= g_n_chem) return;
+    /* The imposed change is booked in the mass balance (a rise as input, a
+     * fall as output), so d(sum env + sum priv) = in - out still holds. */
     for (size_t i = 0; i < (size_t)gN * gN; i++) {
         if (!alive[i]) continue;
-        *chem_slot((int)i, c, 1) = amt[i] > 0.0f ? amt[i] : 0.0f;
+        float *a = chem_slot((int)i, c, 1);
+        float v = amt[i] > 0.0f ? amt[i] : 0.0f;
+        double d = (double)v - (double)*a;
+        if (d > 0.0) chem_src_cum[c] += d; else chem_sink_cum[c] -= d;
+        *a = v;
         f_priv[i] = chem_reduce_to_f((int)i);
     }
 }
@@ -1667,9 +1703,10 @@ void evoca_set_egenome_random_all(uint8_t wt) {
 
 void evoca_set_f_all(float f)
 {
-    /* Seed the sparse store (single compound-0 slot) and refresh the f_priv
-     * cache. At N_chem==1 this leaves f_priv[i]==f exactly, as before. */
-    for (size_t i = 0; i < (size_t)gN * gN; i++) chem_cell_set((int)i, f);
+    /* Seed the energy compound and refresh the f_priv cache. At N_chem==1
+     * this leaves f_priv[i]==f exactly, as before; at N_chem > 1 every
+     * other compound (private waste) is kept, not silently erased. */
+    for (size_t i = 0; i < (size_t)gN * gN; i++) chem_cell_set_energy((int)i, f);
 }
 
 /* Rebuild the chem store from the f_priv cache after a caller wrote
@@ -1686,12 +1723,26 @@ void evoca_chem_sync_from_f(void)
             chem_cell_set((int)i, f_priv[i]);
         return;
     }
-    /* N_chem > 1: rewrite only the energy compound, keep the others. */
+    /* N_chem > 1: every cell's energy compound is rewritten from f_priv.
+     * A cell the caller marked dead holds no other compound: its compounds
+     * c >= 1 return to its site, as on any death. A live cell keeps them;
+     * a caller replacing a live occupant (stamp_patch) first releases the
+     * host's compounds with evoca_chem_release. */
     for (size_t i = 0; i < (size_t)gN * gN; i++) {
-        float f = f_priv[i];
-        *chem_slot((int)i, 0, 1) = f;
-        f_priv[i] = chem_reduce_to_f((int)i);
+        if (!alive[i]) chem_cell_release((int)i, f_priv[i]);
+        else           chem_cell_set_energy((int)i, f_priv[i]);
     }
+}
+
+/* Release the compounds c >= 1 of every cell with mask[i] != 0 to its site
+ * (as on an eviction), keeping f_priv. For callers that replace a cell's
+ * occupant from outside the step (stamp_patch), so the newcomer does not
+ * inherit the host's waste. No-op at N_chem == 1. */
+void evoca_chem_release(const uint8_t *mask)
+{
+    if (g_n_chem == 1) return;
+    for (size_t i = 0; i < (size_t)gN * gN; i++)
+        if (mask[i]) chem_cell_release((int)i, f_priv[i]);
 }
 
 /* Seed every cell's mutation-rate gene to a single scalar. Used to reset the
@@ -1997,9 +2048,9 @@ void evoca_step(void)
     for (int c = 1; c < g_n_chem; c++) {
         float *E = chem_env[c], inc = chem_env_inc[c], sink = chem_env_sink[c];
         if (inc > 0.0f || sink > 0.0f) {
+            chem_src_cum[c] += (double)inc * (double)cells;
             for (size_t i = 0; i < cells; i++) {
                 E[i] += inc;
-                chem_src_cum[c] += (double)inc;
                 if (sink > 0.0f) {
                     float r = E[i] < sink ? E[i] : sink;
                     if (r > 0.0f) { E[i] -= r; chem_sink_cum[c] += (double)r; }
@@ -4621,10 +4672,13 @@ void evoca_colorize(int32_t *pixels, int colormode)
              * red = waste field W (clipped to [0,1]; 0 when N_chem == 1),
              * blue = 255 on alive cells. Shows the two environmental fields
              * everywhere, so a refractory (waste-loaded) zone reads red. */
+        {
+            /* The waste compound is the metabolic product, or compound 1
+             * when metabolism is off but the field exists (seeded waste). */
+            int wc = g_metab_product > 0 ? g_metab_product : (g_n_chem > 1 ? 1 : -1);
             for (size_t i = 0; i < cells; i++) {
                 float fv = F_food[i];
-                float wv = (g_n_chem > 1 && g_metab_product > 0)
-                           ? chem_env[g_metab_product][i] : 0.0f;
+                float wv = wc > 0 ? chem_env[wc][i] : 0.0f;
                 if (fv > 1.0f) fv = 1.0f;
                 if (fv < 0.0f) fv = 0.0f;
                 if (wv > 1.0f) wv = 1.0f;
@@ -4634,6 +4688,7 @@ void evoca_colorize(int32_t *pixels, int colormode)
                 pixels[i] = (int32_t)(0xFF000000u | (r << 16) | (g << 8) | b);
             }
             break;
+        }
         default:
             for (size_t i = 0; i < cells; i++)
                 pixels[i] = (int32_t)0xFF000000;
@@ -4686,8 +4741,7 @@ void evoca_set_alive(const uint8_t *arr)
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) {
             v_curr[i] = 0;
-            chem_cell_clear((int)i);
-            f_priv[i] = 0.0f;
+            chem_cell_vacate((int)i);
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
             active[i] = 0;
             cell_rehash((int)i);
@@ -4709,8 +4763,7 @@ void evoca_set_alive_fraction(float frac)
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) {
             v_curr[i] = 0;
-            chem_cell_clear((int)i);
-            f_priv[i] = 0.0f;
+            chem_cell_vacate((int)i);
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
             active[i] = 0;
             cell_rehash((int)i);
@@ -4735,8 +4788,7 @@ void evoca_set_alive_patch(int radius)
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) {
             v_curr[i] = 0;
-            chem_cell_clear((int)i);
-            f_priv[i] = 0.0f;
+            chem_cell_vacate((int)i);
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
             active[i] = 0;
             cell_rehash((int)i);
@@ -4759,8 +4811,7 @@ void evoca_set_alive_halfplane(int axis)
     for (size_t i = 0; i < cells; i++) {
         if (!alive[i]) {
             v_curr[i] = 0;
-            chem_cell_clear((int)i);
-            f_priv[i] = 0.0f;
+            chem_cell_vacate((int)i);
             memset(lut + i * LUT_BYTES, 0, LUT_BYTES);
             active[i] = 0;
             cell_rehash((int)i);

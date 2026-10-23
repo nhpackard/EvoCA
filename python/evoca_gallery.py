@@ -389,7 +389,7 @@ def _run_job(job):
                     rows.append(_spatial_metrics(al.copy(), sim.get_F().reshape(N, N).copy()))
                 else:
                     rows.append({'alive_density': float(al.mean())})
-                if sim.n_chem == 2:                     # food/waste chemistry: mean env waste
+                if sim.get_n_chem() > 1:                # food/waste chemistry: mean env waste
                     rows[-1]['W_mean'] = float(sim.get_W().mean())
                 ts.append(t)
             if t in snaps:

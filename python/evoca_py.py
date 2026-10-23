@@ -168,7 +168,8 @@ class EvoCA:
         self.tax_ring      = 0.0
         self.restricted_mu = 0
         self.food_per      = 1      # env food-regen period (>=1); 1 = no-op
-        self.n_chem        = 1      # chem compound-universe size (m1: only 1)
+        self.n_chem        = 1      # chem compound-universe size (1 food, 2 food/waste)
+        self.lineage       = False
         self.food_cap      = 1      # 1 = mouthful capped at available F (A9 fix); 0 = legacy
         self._n_ent      = 2
         self.egenome      = 0
@@ -299,6 +300,8 @@ class EvoCA:
         L.evoca_set_f_all.restype       = None
         L.evoca_chem_sync_from_f.argtypes = []
         L.evoca_chem_sync_from_f.restype  = None
+        L.evoca_chem_release.argtypes = [ctypes.POINTER(ctypes.c_uint8)]
+        L.evoca_chem_release.restype  = None
         L.evoca_set_F_all.argtypes      = [ctypes.c_float]
         L.evoca_set_F_all.restype       = None
         L.evoca_set_env_mask.argtypes   = [ctypes.POINTER(ctypes.c_uint8)]
@@ -618,15 +621,15 @@ class EvoCA:
              restricted_mu=0, food_per=1, n_ent=2,
              N_log_interval=1, lineage=False, n_chem=1, food_cap=1,
              wdiff=0.0, waste_sink=0.0, waste_disp=0.0):
-        # Opt-in lineage record (research-directions §1). The C flag must
-        # be set before evoca_init so the arrays get allocated. Default
-        # OFF -> zero added work in the Phase-1/Phase-4 hot path.
-        self._lib.evoca_enable_lineage(1 if lineage else 0)
+        # Refuse a bad chemistry before any side effect, so a rejected call
+        # leaves a live instance (its N, metaparams and C lattice) untouched.
+        wdiff, waste_sink, waste_disp = self._check_chem(n_chem, wdiff, waste_sink, waste_disp)
         stop = getattr(self, '_stop_display', None)
         if stop is not None:
             stop()
             self._stop_display = None
         self._N         = N
+        self.lineage    = bool(lineage)
         self.food_inc   = float(food_inc)
         self.m_scale    = float(m_scale)
         self.gdiff      = float(gdiff)
@@ -643,24 +646,31 @@ class EvoCA:
         self.food_cap   = 1 if int(food_cap) else 0
         # Food/waste chemistry (chem milestone 2; Docs/plan-chem.md §7).
         # n_chem=2 is the food/waste preset; the waste metaparams need it.
-        self.wdiff      = float(wdiff)
-        self.waste_sink = float(waste_sink)
-        self.waste_disp = float(waste_disp)
-        if int(n_chem) not in (1, 2):
-            raise ValueError(f"n_chem={n_chem}: only 1 (single food) and 2 (food/waste) "
-                             f"are configured; larger universes are chem milestone 3")
-        if int(n_chem) == 1 and (self.wdiff or self.waste_sink or self.waste_disp):
-            raise ValueError("wdiff / waste_sink / waste_disp need n_chem=2 (food/waste)")
+        self.n_chem     = int(n_chem)
+        self.wdiff, self.waste_sink, self.waste_disp = wdiff, waste_sink, waste_disp
         self._n_ent     = int(n_ent)
         self.N_log_interval = max(1, int(N_log_interval))
-        self._lib.evoca_init(N, self.food_inc, self.m_scale)
+        self._state_params = {}
+        self._apply_metaparams()
+
+    def reinit(self):
+        """Re-initialize the C library from this instance's current
+        metaparameters (the Restart button): the same full configuration
+        init() applies, so no parameter can drop out of a restart. The
+        lattice is reallocated empty; replay state() afterwards."""
+        self._apply_metaparams()
+
+    def _apply_metaparams(self):
+        """Allocate the C lattice for self._N and push every metaparameter
+        (the single place init() and reinit() configure C from)."""
+        # Opt-in lineage record (research-directions §1). The C flag must
+        # be set before evoca_init so the arrays get allocated. Default
+        # OFF -> zero added work in the Phase-1/Phase-4 hot path.
+        self._lib.evoca_enable_lineage(1 if self.lineage else 0)
+        self._lib.evoca_init(self._N, self.food_inc, self.m_scale)
         # Chem compound-universe size: 1 = single food (the standard model),
         # 2 = food/waste, configured through the general chem API.
-        self.n_chem = int(n_chem)
-        self._lib.evoca_set_n_chem(self.n_chem)
-        self.n_chem = int(self._lib.evoca_get_n_chem())  # reflect any clamp
-        if self.n_chem == 2:
-            self._configure_food_waste()
+        self._apply_chem()
         self._lib.evoca_set_gdiff(self.gdiff)
         self._lib.evoca_set_mu_lut(self.mu_lut)
         self._lib.evoca_set_mu_egene(self.mu_egene)
@@ -683,7 +693,6 @@ class EvoCA:
         # dynamics, so this is a pure no-op.
         self._lib.evoca_set_mu_lut_gene_all(ctypes.c_float(self.mu_lut))
         self._lib.evoca_set_n_ent(self._n_ent)
-        self._state_params = {}
         self._init_metaparams = {
             'food_inc': self.food_inc,
             'm_scale': self.m_scale,
@@ -704,6 +713,29 @@ class EvoCA:
             'waste_sink': self.waste_sink,
             'waste_disp': self.waste_disp,
         }
+
+    @staticmethod
+    def _check_chem(n_chem, wdiff=0.0, waste_sink=0.0, waste_disp=0.0):
+        """Validate a chemistry (n_chem + waste metaparams); return the waste
+        metaparams as floats. Raises ValueError, with no side effect."""
+        w = tuple(float(x) for x in (wdiff, waste_sink, waste_disp))
+        if not all(np.isfinite(x) for x in w):
+            raise ValueError(f"wdiff / waste_sink / waste_disp must be finite, got {w}")
+        if not np.isfinite(float(n_chem)) or int(n_chem) not in (1, 2):
+            raise ValueError(f"n_chem={n_chem}: only 1 (single food) and 2 (food/waste) "
+                             f"are configured; larger universes are chem milestone 3")
+        if int(n_chem) == 1 and any(w):
+            raise ValueError("wdiff / waste_sink / waste_disp need n_chem=2 (food/waste)")
+        return w
+
+    def _apply_chem(self):
+        """Push self.n_chem and, at n_chem=2, the food/waste preset to C."""
+        self._lib.evoca_set_n_chem(self.n_chem)
+        got = int(self._lib.evoca_get_n_chem())
+        if got != self.n_chem:
+            raise RuntimeError(f"C refused n_chem={self.n_chem} (got {got})")
+        if self.n_chem == 2:
+            self._configure_food_waste()
 
     # ── Food/waste chemistry (chem milestone 2) ───────────────────────
 
@@ -741,19 +773,30 @@ class EvoCA:
         self._require_waste('waste_disp')
         self.waste_disp = max(0.0, float(r)); self._configure_food_waste()
 
-    def get_W(self):
-        """Environmental waste field W (N x N copy); zeros when n_chem == 1."""
-        if self.n_chem != 2:
+    def get_chem_env(self, c):
+        """Environment field of compound c (N x N copy; c = 0 is the food
+        field F); zeros when compound c does not exist in C."""
+        ptr = self._lib.evoca_get_chem_env(int(c))
+        if not ptr:
             return np.zeros((self._N, self._N), dtype=np.float32)
-        ptr = self._lib.evoca_get_chem_env(self.WASTE)
         return np.ctypeslib.as_array(ptr, shape=(self._N * self._N,)).copy().reshape(self._N, self._N)
 
-    def get_w(self):
-        """Private waste of every cell (N x N); zeros when n_chem == 1."""
+    def get_chem_priv(self, c):
+        """Private amount of compound c in every cell (N x N); zeros when
+        compound c does not exist in C."""
         out = np.zeros(self._N * self._N, dtype=np.float32)
-        if self.n_chem == 2:
-            self._lib.evoca_get_chem_priv(self.WASTE, out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
+        self._lib.evoca_get_chem_priv(int(c), out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)))
         return out.reshape(self._N, self._N)
+
+    def get_W(self):
+        """Environmental waste field W (N x N copy): the food/waste
+        convenience for get_chem_env(WASTE); zeros when n_chem == 1."""
+        return self.get_chem_env(self.WASTE)
+
+    def get_w(self):
+        """Private waste of every cell (N x N): the food/waste convenience
+        for get_chem_priv(WASTE); zeros when n_chem == 1."""
+        return self.get_chem_priv(self.WASTE)
 
     def set_w(self, w):
         """Seed the private waste of every alive cell (scalar or N x N)."""
@@ -1172,11 +1215,19 @@ class EvoCA:
 
     # ── Chem machinery (milestone 1: single-food parity) ───────────────
     def set_n_chem(self, n):
-        """Set the compound-universe size (C: 1..8; resets every compound
-        c >= 1 to inert and empties their stores). Low-level: init(n_chem=2)
-        also applies the food/waste preset. Returns the effective value."""
-        self._lib.evoca_set_n_chem(int(n))
-        self.n_chem = int(self._lib.evoca_get_n_chem())
+        """Switch the chemistry mid-setup, as init(n_chem=n) would configure
+        it: 1 = single food (the waste metaparams reset to 0), 2 = the
+        food/waste preset with the current waste metaparams. C resets the
+        compounds c >= 1 and empties their stores. params() and recipes then
+        describe the chemistry that runs. (The inert N_chem=2 parity probe
+        calls the C entry point _lib.evoca_set_n_chem directly, outside
+        the Python view.) Returns the effective value."""
+        n = int(n)
+        w = (0.0, 0.0, 0.0) if n == 1 else (self.wdiff, self.waste_sink, self.waste_disp)
+        w = self._check_chem(n, *w)
+        self.n_chem = n
+        self.wdiff, self.waste_sink, self.waste_disp = w
+        self._apply_chem()
         return self.n_chem
 
     def get_food_cap(self):
@@ -1187,8 +1238,9 @@ class EvoCA:
         return int(self._lib.evoca_get_n_chem())
 
     def set_chem_energy(self, compound, energy):
-        """Reduction weight for a compound in the vector->f mapping
-        (default 1.0 for every compound; compound 0 is the energy 'food')."""
+        """Reduction weight for a compound in the vector->f mapping. Fixed
+        until milestone 3: compound 0 (food) 1, every other compound 0; C
+        clamps other requests and prints a notice."""
         self._lib.evoca_set_chem_energy(int(compound), float(energy))
 
     def get_chem_energy(self, compound):
@@ -2224,6 +2276,7 @@ class EvoCA:
             self._lib.evoca_get_f(),
             shape=(N * N,)).reshape(N, N)
 
+        written = np.zeros((N, N), dtype=np.uint8)
         n_written = 0
         for pr in range(side):
             tr = r0 + pr
@@ -2266,7 +2319,12 @@ class EvoCA:
                         int(tr) * N + int(tc),
                         lut[tr, tc, :].ctypes.data_as(
                             ctypes.POINTER(ctypes.c_uint8)))
+                written[tr, tc] = 1
                 n_written += 1
+        # The host occupants of rewritten cells leave: their compounds
+        # c >= 1 (waste) return to the site, so neither a stamped organism
+        # nor a cleared cell keeps the host's private waste.
+        self._lib.evoca_chem_release(written.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
         # f was written straight into f_priv above; rebuild the chem
         # store from it, or the next tax/eat would restore the host
         # cell's old private food into the stamped organism.

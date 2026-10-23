@@ -37,11 +37,16 @@ def test_n_chem_defaults_to_one_and_clamps():
     sim = EvoCA()
     sim.init(N=8, food_inc=0.01, m_scale=1.0)
     assert sim.get_n_chem() == 1
-    # Milestone 2: 1..CHEM_MAX_N (8) are accepted; larger sizes clamp to 1 (surfaced).
-    assert sim.set_n_chem(2) == 2
-    eff = sim.set_n_chem(9)
-    assert eff == 1
+    # Milestone 2, C level: 1..CHEM_MAX_N (8) are accepted; larger sizes
+    # clamp to 1 (surfaced).
+    assert sim._lib.evoca_set_n_chem(2) == 1 and sim.get_n_chem() == 2
+    assert sim._lib.evoca_set_n_chem(9) == 0
     assert sim.get_n_chem() == 1
+    # Python level: only the configured chemistries (1, 2); others refused.
+    assert sim.set_n_chem(2) == 2
+    with pytest.raises(ValueError):
+        sim.set_n_chem(9)
+    assert sim.get_n_chem() == 2
 
 
 def test_chem_energy_default_is_unit():

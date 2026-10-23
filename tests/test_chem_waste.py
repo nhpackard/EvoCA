@@ -45,7 +45,7 @@ def _evolving(make_sim, N=48, seed=1, n_chem_after_init=None, **kw):
     p.update(kw)
     s = make_sim(N, **p)
     if n_chem_after_init is not None:
-        s.set_n_chem(n_chem_after_init)            # low level: every compound c >= 1 inert
+        s._lib.evoca_set_n_chem(n_chem_after_init)  # C level: every compound c >= 1 inert
     s.set_seed(seed)
     s.state(lut='gol', egenome='uniform', egenome_value=0b000011)
     s.set_v(rng.integers(0, 2, (N, N), dtype=np.uint8))
