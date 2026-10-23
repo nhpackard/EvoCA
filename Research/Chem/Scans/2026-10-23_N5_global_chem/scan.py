@@ -267,8 +267,13 @@ def tasks():
 
 
 def main():
-    save_scan_config(HERE, N=[256, 512], n_steps=N_STEPS,
-                     sample_every=SAMPLE_EVERY, seed=SEEDS, shadow=False)
+    cfg_path = save_scan_config(HERE, N=512, n_steps=N_STEPS,
+                                sample_every=SAMPLE_EVERY, seed=0, shadow=False)
+    # N and seed vary per row (columns N, seed); record that, not one value
+    cfg = json.load(open(cfg_path))
+    cfg.update({'N': 'per row: part A 256, part B 512', 'seed': 'per row: 0, 1, 2',
+                'recipe': os.path.relpath(RECIPE, HERE)})
+    json.dump(cfg, open(cfg_path, 'w'), indent=2)
     ts = tasks()
     print(f"Running {len(ts)} runs across {N_WORKERS} workers...", flush=True)
     t0 = time.perf_counter()
