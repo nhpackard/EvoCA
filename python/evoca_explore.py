@@ -181,7 +181,7 @@ def build_sim(params, N=256, seed=0, init='halfplane', *, lineage=False,
 
 
 def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
-            shadow=True, init='halfplane'):
+            shadow=True, init='halfplane', step_hook=None):
     """
     Run one EvoCA configuration headless.
 
@@ -192,6 +192,10 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
     seed: numpy seed for v_curr initialisation.
     shadow: whether to enable Channon-style neutral shadow + N-activity.
     init: 'halfplane' (left half alive) or 'fraction' (random 50%).
+    step_hook: optional object with .start(sim), .step(sim, t) (called
+        after each step, t = steps done) and .summary() -> dict, merged
+        into the result (it may not overwrite a run_sim key). For per-scan
+        extras without copying the step loop.
 
     Returns a dict of summary metrics + parameter echo.
     """
@@ -199,6 +203,8 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
 
     if shadow:
         sim.neutral_enable()
+    if step_hook is not None:
+        step_hook.start(sim)
 
     samples = defaultdict(list)
     dominator_history = set()
@@ -318,6 +324,8 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
 
         if t < n_steps:
             sim.step()
+            if step_hook is not None:
+                step_hook.step(sim, t + 1)
 
     # ── Compose summary ──────────────────────────────────────────────
     out = {}
@@ -464,6 +472,13 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
         out['min_pop'] = 0
         out['extinct'] = True
 
+    if step_hook is not None:
+        extra = step_hook.summary()
+        clash = sorted(set(extra) & set(out))
+        if clash:
+            sim.free()
+            raise ValueError(f"step_hook summary overwrites run_sim keys {clash}")
+        out.update(extra)
     sim.free()
     return out
 

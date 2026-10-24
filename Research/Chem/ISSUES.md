@@ -35,6 +35,13 @@ _Updated 2026-10-23_
     - evolution itself (wgenes, CHEM-D3, may select tighter colony cycles);
     - a coarser readout.
   - Whether spirals matter enough to pursue is N's call.
+- **CHEM-Q5**: How does the wave regime shape evolution? CHEM-N7 (2026-10-24, N=512, 20000 steps, 4 seeds):
+  - **Genotype persistence above drift collapses in waves.** Activity excess and A_new are 5-400 times lower than vanilla, per step and per generation. Mortality there is massive and largely genotype-blind: half of all deaths are toxic, and the generation time is 42 steps against 217.
+  - **The phenotype moves directionally.** Egenes per cell rise from 1.0 to 1.38 (one-way waves) and 1.28 (two-way), against 1.02 in vanilla, and intake is about 15% higher. So: strong selection on a few traits, short-lived genotypes.
+  - Vanilla's high activity is persistence (stasis), not innovation; these statistics cannot tell the two apart.
+  - One-way at tox 1.0 (T1) has waves early and loses them by 6000-15000 steps in every seed: evolution or a transient? Needs a mutation-off control.
+  - wdiff 0.08 at tox 0.4 (S1) makes waste harmless, so it behaves like vanilla.
+  - Next: mutation-off controls, transplant or competition assays (`patch_transfer.py`), phenotype trajectories.
 - **CHEM-Q2**: Does waste keep selection alive at abundance (checkpoint section B / LB6 hypothesis)? — Untested. Needs evolution metrics (dyn_excess, A_new) at high `food_inc` with waste on and off.
 - **CHEM-Q3**: In the sink-limited (aging) regime, is there selection for cheaper genomes (lower evolvable tax terms), since lifespan is ~ 1/tax?
 
@@ -50,6 +57,7 @@ _Updated 2026-10-23_
   - The Run/Pause label fix.
   - `waste_tox` is a metaparameter (default 1.0, the old fixed value).
   - Sliders for `waste_sink`, `wdiff`, `waste_disp` and `waste_tox`.
+- **CHEM-N7 done** (2026-10-24): `Scans/2026-10-24_N7_evolution_waves`, run locally; results in CHEM-Q5. `run_sim` gained an optional `step_hook`.
 - **CHEM-N6 done** (2026-10-24): `Scans/2026-10-24_N6_layered_fronts`; results in CHEM-Q1. New statistics in `python/evoca_waves.py`: `ring_spectrum` (with ring contrast), `kw_spectrum`, `site_period`. Measures tried and dropped are listed in the notes.
 - **CHEM-N1 done** (2026-10-23): `Scans/2026-10-23_N1_twoway_waves`; results in CHEM-Q1. Detector `python/evoca_waves.py`.
 - **CHEM-N5 done** (2026-10-23): `Scans/2026-10-23_N5_global_chem`; results in CHEM-Q1.

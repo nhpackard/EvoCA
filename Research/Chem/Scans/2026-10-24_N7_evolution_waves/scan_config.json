@@ -1,0 +1,49 @@
+{
+  "created": "2026-10-24T08:20:39",
+  "N": 512,
+  "n_steps": 20000,
+  "sample_every": 200,
+  "seed": "0-3",
+  "shadow": true,
+  "initialization": {
+    "lut": "gol",
+    "egenome": "uniform",
+    "egenome_value": 3,
+    "v_density": 0.5,
+    "f_init": 0.5,
+    "F": "uniform",
+    "F_init": 1.0,
+    "alive": "halfplane",
+    "alive_axis": 0
+  },
+  "recipe": "../../Runs/2026-10-23_chem_fw_spiralpoint.evoca",
+  "conditions": {
+    "W1": {
+      "waste_exchange": 0,
+      "waste_tox": 0.4,
+      "waste_sink": 0.019,
+      "wdiff": 0.01
+    },
+    "S1": {
+      "waste_exchange": 0,
+      "waste_tox": 0.4,
+      "waste_sink": 0.019,
+      "wdiff": 0.08
+    },
+    "T1": {
+      "waste_exchange": 0,
+      "waste_tox": 1.0,
+      "waste_sink": 0.019,
+      "wdiff": 0.01
+    },
+    "W2": {
+      "waste_exchange": 1,
+      "waste_tox": 1.0,
+      "waste_sink": 0.015,
+      "wdiff": 0.08
+    },
+    "C0": {
+      "n_chem": 1
+    }
+  }
+}
