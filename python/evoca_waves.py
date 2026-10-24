@@ -27,6 +27,22 @@ spatial heterogeneity.
   blocks. R near 1 is bulk (synchronized) pulsing; waves and spirals give
   low R with large coherent phase domains.
 - `period_of`: dominant period of a time series from its autocorrelation.
+
+Layered fronts (N, 2026-10-24): rather than locate moving cores, detect the
+spiral *arms*. Away from its core a spiral is a train of evenly spaced
+fronts, so it puts a ring in the spatial power spectrum at k = N / lambda.
+- `ring_spectrum`: from a stack of frames, the radial spectrum, its peak
+  (wavelength), the ring's prominence over the low-k band, a crude count of
+  coherent layers k / FWHM, the ring's isotropy (a ring for spirals and
+  targets, two spots for a plane wave), and its moving fraction (ring power
+  in the fluctuation about the time-mean field, against the total: about 1
+  for moving fronts, about 0 for a frozen mosaic).
+- `kw_spectrum`: from a space-time plot (rows = steps), the power at
+  frequency w != 0 against all power at k != 0 (moving against stationary
+  structure), and the wavelength and phase speed of the strongest moving
+  mode.
+Neither separates a spiral from a target source: both are layered moving
+fronts. That needs a core or a handedness, which these deliberately skip.
 """
 import numpy as np
 
@@ -114,3 +130,110 @@ def period_of(series, dt):
             peak = float(acf[k])
             return (float(k * dt) if peak >= 0.2 else float('nan')), peak
     return float('nan'), 0.0
+
+
+def _radial_index(n):
+    k = np.fft.fftfreq(n) * n
+    kx, ky = np.meshgrid(k, k)
+    return np.hypot(kx, ky), np.arctan2(ky, kx)
+
+
+def _radial_mean(P, kr, kmax):
+    idx = np.rint(kr).astype(int)
+    m = idx <= kmax
+    tot = np.bincount(idx[m], P[m], minlength=kmax + 1)
+    cnt = np.bincount(idx[m], minlength=kmax + 1)
+    return tot / np.maximum(cnt, 1)
+
+
+def ring_spectrum(frames, b=4):
+    """Layered-front statistics of frames (T x N x N, or one N x N frame),
+    coarse-grained to b x b blocks. Returns a dict:
+      k_peak       ring radius in FFT index units (1 = one wave across N)
+      wavelength   N / k_peak in cells
+      prominence   S(k_peak) / median S over 1 .. n/4 (white noise ~ 1)
+      contrast     S(k_peak) / min S over 1 .. k_peak - 1: how far the ring
+                   rises above the dip on its low-k side. A reddened spectrum
+                   (power falling from k = 1) has no ring: k_peak = 1 and
+                   contrast nan. Read prominence only where contrast > ~2.
+      layers       k_peak / FWHM of the ring, a crude count of ordered fronts
+      isotropy     1 - |sum P e^{2i phi}| / sum P over the ring (ring ~ 1, plane wave 0)
+      moving       ring power of the fluctuation about the time-mean field /
+                   the ring power of the frames (nan for a single frame)
+      S            the radial spectrum of the frames (index 0 .. n/2)
+    """
+    X = np.asarray(frames, float)
+    if X.ndim == 2:
+        X = X[None]
+    N = X.shape[1]
+    C = np.array([block_means(x, b) for x in X])
+    n = C.shape[1]
+    C = C - C.mean(axis=(1, 2), keepdims=True)
+    kr, phi = _radial_index(n)
+    kmax = n // 2
+    P = (np.abs(np.fft.fft2(C)) ** 2).mean(axis=0)
+    S = _radial_mean(P, kr, kmax)
+    band = slice(1, max(n // 4, 3) + 1)
+    kp = 1 + int(np.argmax(S[band]))
+    half = S[kp] / 2
+    lo = kp
+    while lo > 1 and S[lo - 1] > half:
+        lo -= 1
+    hi = kp
+    while hi < kmax and S[hi + 1] > half:
+        hi += 1
+    # linear interpolation of the half-max crossings, at least one bin wide
+    left = lo - 1 + (half - S[lo - 1]) / (S[lo] - S[lo - 1]) if lo > 0 and S[lo] != S[lo - 1] else lo - 0.5
+    right = hi + (S[hi] - half) / (S[hi] - S[hi + 1]) if hi < kmax and S[hi] != S[hi + 1] else hi + 0.5
+    fwhm = max(right - left, 1.0)
+    ring = np.abs(kr - kp) <= 0.5
+    w = P[ring]
+    iso = 1.0 - float(np.abs((w * np.exp(2j * phi[ring])).sum()) / w.sum()) if w.sum() > 0 else float('nan')
+    if len(C) > 1:
+        D = C - C.mean(axis=0)
+        Pf = (np.abs(np.fft.fft2(D)) ** 2).mean(axis=0)
+        moving = float(Pf[ring].sum() / P[ring].sum()) if P[ring].sum() > 0 else float('nan')
+    else:
+        moving = float('nan')
+    med = float(np.median(S[band]))
+    contrast = float(S[kp] / S[1:kp].min()) if kp > 1 and S[1:kp].min() > 0 else (
+        float('inf') if kp > 1 else float('nan'))
+    return {'k_peak': kp, 'wavelength': N / kp,
+            'prominence': float(S[kp] / med) if med > 0 else float('inf'),
+            'contrast': contrast,
+            'layers': float(kp / fwhm), 'isotropy': iso, 'moving': moving, 'S': S}
+
+
+def kw_spectrum(kymo, dt=1, b=1):
+    """Moving-front statistics of a space-time plot (T x N; row t = step t*dt),
+    coarse-grained to b cells along x. Returns a dict:
+      moving       power at w != 0 / all power, over k != 0
+      k_peak, w_peak   the strongest mode with k != 0 and w != 0 (index units)
+      wavelength   N / k_peak in cells
+      speed        phase speed of that mode in cells per step
+      peak_share   its power (both signs) / all power at k != 0
+    """
+    X = np.asarray(kymo, float)
+    T, N = X.shape
+    if b > 1:
+        X = X[:, :N // b * b].reshape(T, N // b, b).mean(axis=2)
+    X = X - X.mean()
+    P = np.abs(np.fft.fft2(X)) ** 2
+    P[:, 0] = 0.0                                  # k = 0: bulk, not structure
+    tot = P.sum()
+    if tot == 0:
+        return {'moving': float('nan'), 'k_peak': 0, 'w_peak': 0, 'wavelength': float('nan'),
+                'speed': float('nan'), 'peak_share': float('nan')}
+    moving = float(P[1:].sum() / tot)
+    Q = P.copy()
+    Q[0] = 0.0
+    if Q.max() == 0:                               # nothing moves
+        return {'moving': moving, 'k_peak': 0, 'w_peak': 0, 'wavelength': float('nan'),
+                'speed': float('nan'), 'peak_share': 0.0}
+    wi, ki = np.unravel_index(np.argmax(Q), Q.shape)
+    w_idx = wi if wi <= T // 2 else wi - T
+    k_idx = ki if ki <= X.shape[1] // 2 else ki - X.shape[1]
+    share = float((Q[wi, ki] + Q[-wi % T, -ki % X.shape[1]]) / tot)
+    speed = abs(w_idx / (T * dt)) / (abs(k_idx) / N)
+    return {'moving': moving, 'k_peak': abs(int(k_idx)), 'w_peak': abs(int(w_idx)),
+            'wavelength': N / abs(k_idx), 'speed': float(speed), 'peak_share': share}
