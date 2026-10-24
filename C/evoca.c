@@ -1,25 +1,19 @@
 #include "evoca.h"
+#include "core.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
 
-/* xorshift32 PRNG step on an explicit state word. */
-static inline uint32_t xorshift32(uint32_t *s)
-{
-    uint32_t x = *s;
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    return *s = x;
-}
+/* PRNG step (core_xorshift32), Poisson sampling and diffusion live in
+ * core.c, shared with chemca.c. This model's PRNG states stay here. */
 
 #define RNG_DEFAULT_SEED 0x12345678u
 
 /* Dynamics PRNG — reproduction tie-breaking, mutation, init helpers.
  * Every draw that can influence the real lattice comes from here. */
 static uint32_t g_rng = RNG_DEFAULT_SEED;
-static inline uint32_t rng_next(void) { return xorshift32(&g_rng); }
+static inline uint32_t rng_next(void) { return core_xorshift32(&g_rng); }
 
 /* Shadow PRNG — a SEPARATE stream consumed only by the Channon neutral
  * shadow (neutral_apply_demography / neut_mutate_inplace). Keeping the
@@ -49,7 +43,7 @@ static uint32_t shadow_seed_from(uint32_t seed)
 static inline uint32_t shadow_rng_next(void)
 {
     if (!g_shadow_rng) g_shadow_rng = shadow_seed_from(RNG_DEFAULT_SEED);
-    return xorshift32(&g_shadow_rng);
+    return core_xorshift32(&g_shadow_rng);
 }
 
 /* Deterministically reset BOTH PRNG streams from `seed`.
@@ -172,26 +166,10 @@ static int32_t hash_to_color(uint32_t h, uint32_t wt)
     return (int32_t)(0xFF000000u | (h & 0x00FFFFFFu));
 }
 
-/* Poisson sample (Knuth's algorithm) drawing uniforms from the stream
- * whose step function is `next` (rng_next for dynamics, shadow_rng_next
- * for the neutral shadow). */
-static int poisson_sample_from(uint32_t (*next)(void), float lambda)
-{
-    if (lambda < 1e-6f) return 0;
-    float L = expf(-lambda);
-    float p = 1.0f;
-    int k = 0;
-    do {
-        k++;
-        p *= (float)(next() & 0xFFFFFF) / 16777216.0f;
-    } while (p > L);
-    return k - 1;
-}
-
 /* Dynamics-stream Poisson sample. */
 static int poisson_sample(float lambda)
 {
-    return poisson_sample_from(rng_next, lambda);
+    return core_poisson(rng_next, lambda);
 }
 
 /* ── Grid state ─────────────────────────────────────────────────── */
@@ -1876,84 +1854,6 @@ static int fiducial_matches_best(int row, int col, int idx,
     return best;
 }
 
-/* ── Food diffusion (3×3 box blur, periodic) ───────────────────── */
-
-static void diffuse_food_once(void)
-{
-    int N = gN;
-    for (int row = 0; row < N; row++) {
-        for (int col = 0; col < N; col++) {
-            float sum = 0.0f;
-            for (int di = -1; di <= 1; di++) {
-                int r = ((row + di) % N + N) % N;
-                for (int dj = -1; dj <= 1; dj++) {
-                    int c = ((col + dj) % N + N) % N;
-                    sum += F_food[r * N + c];
-                }
-            }
-            F_temp[row * N + col] = sum * (1.0f / 9.0f);
-        }
-    }
-    /* swap buffers */
-    float *tmp = F_food; F_food = F_temp; F_temp = tmp;
-}
-
-/* Partial diffusion pass with strength s ∈ (0, 1):
- *   F'(x) = (1 - s) * F(x) + s * mean_3x3(F(x))
- * Equivalently F'(x) = F(x) - s * (F(x) - mean), which collapses to
- * diffuse_food_once when s = 1 and to identity when s = 0. */
-static void diffuse_food_partial(float s)
-{
-    int N = gN;
-    float t = 1.0f - s;
-    float inv9 = s * (1.0f / 9.0f);
-    for (int row = 0; row < N; row++) {
-        for (int col = 0; col < N; col++) {
-            float sum = 0.0f;
-            for (int di = -1; di <= 1; di++) {
-                int r = ((row + di) % N + N) % N;
-                for (int dj = -1; dj <= 1; dj++) {
-                    int c = ((col + dj) % N + N) % N;
-                    sum += F_food[r * N + c];
-                }
-            }
-            F_temp[row * N + col] = t * F_food[row * N + col] + inv9 * sum;
-        }
-    }
-    /* swap buffers */
-    float *tmp = F_food; F_food = F_temp; F_temp = tmp;
-}
-
-/* Diffusion of a milestone-2 environment field, the same rule as gdiff:
- * floor(d) full 3x3 box-blur passes, then one partial pass of strength
- * d - floor(d). Swaps *fld with chem_env_tmp. */
-static void diffuse_field(float **fld, float d)
-{
-    int N = gN;
-    int n_full = (int)d;
-    float frac = d - (float)n_full;
-    for (int pass = 0; pass <= n_full; pass++) {
-        float s = (pass < n_full) ? 1.0f : frac;
-        if (s <= 0.0f) break;
-        float t = 1.0f - s, w9 = s * (1.0f / 9.0f);
-        float *src = *fld, *dst = chem_env_tmp;
-        for (int row = 0; row < N; row++) {
-            for (int col = 0; col < N; col++) {
-                float sum = 0.0f;
-                for (int di = -1; di <= 1; di++) {
-                    int r = ((row + di) % N + N) % N;
-                    for (int dj = -1; dj <= 1; dj++) {
-                        int c = ((col + dj) % N + N) % N;
-                        sum += src[r * N + c];
-                    }
-                }
-                dst[row * N + col] = t * src[row * N + col] + w9 * sum;
-            }
-        }
-        chem_env_tmp = src; *fld = dst;
-    }
-}
-
 /* Death bookkeeping shared by the tax death and the toxic death: flush the
  * lineage accumulators, mark dead, zero the genome and rehash. The caller
  * has already settled the cell's compounds (returned or dissipated). */
@@ -2052,12 +1952,7 @@ void evoca_step(void)
     /* Phase 2b: Food diffusion. floor(gdiff) full 3×3 box-blur passes,
      * then one partial pass with strength = (gdiff - floor(gdiff)) so the
      * diffusion knob is continuous below 1 as well as above. */
-    if (ggdiff > 0.0f) {
-        int n_full = (int)ggdiff;
-        float frac = ggdiff - (float)n_full;
-        for (int d = 0; d < n_full; d++) diffuse_food_once();
-        if (frac > 0.0f) diffuse_food_partial(frac);
-    }
+    core_diffuse(&F_food, &F_temp, N, ggdiff);
 
     /* Phase 2' (N_chem > 1): environment fields of compounds c >= 1,
      * mirroring food: uniform source, then uniform sink (removal floored
@@ -2074,7 +1969,7 @@ void evoca_step(void)
                 }
             }
         }
-        if (chem_env_diff[c] > 0.0f) diffuse_field(&chem_env[c], chem_env_diff[c]);
+        core_diffuse(&chem_env[c], &chem_env_tmp, N, chem_env_diff[c]);
     }
 
     /* Phase 2c: Tax — decrement private food; death if depleted.
@@ -3201,11 +3096,11 @@ static void neut_mutate_inplace(uint8_t *child_lut)
 {
     int nf;
     if (grestricted_mu && n_active > 0) {
-        nf = poisson_sample_from(shadow_rng_next, gmu_lut * n_active);
+        nf = core_poisson(shadow_rng_next, gmu_lut * n_active);
         for (int f = 0; f < nf; f++)
             lut_flip(child_lut, active_bits[shadow_rng_next() % n_active]);
     } else {
-        nf = poisson_sample_from(shadow_rng_next, gmu_lut * LUT_BITS);
+        nf = core_poisson(shadow_rng_next, gmu_lut * LUT_BITS);
         for (int f = 0; f < nf; f++)
             lut_flip(child_lut, shadow_rng_next() % LUT_BITS);
     }

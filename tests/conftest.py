@@ -4,7 +4,6 @@ Run from repo root:  python3 -m pytest -q
 The C library is rebuilt once per session if missing or stale.
 """
 import os
-import subprocess
 import sys
 
 import pytest
@@ -15,14 +14,8 @@ sys.path.insert(0, os.path.join(_ROOT, 'python'))
 
 @pytest.fixture(scope='session', autouse=True)
 def _build_lib():
-    src = os.path.join(_ROOT, 'C', 'evoca.c')
-    lib = os.path.join(_ROOT, 'C', 'libevoca.dylib')
-    if (not os.path.exists(lib)
-            or os.path.getmtime(lib) < os.path.getmtime(src)):
-        subprocess.run(
-            ['gcc', '-O2', '-Wall', '-fPIC', '-dynamiclib',
-             '-o', lib, src], cwd=_ROOT, check=True)
-    return lib
+    import evoca_build
+    return evoca_build.build()
 
 
 @pytest.fixture
