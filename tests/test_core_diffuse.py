@@ -117,3 +117,40 @@ def test_core_diffuse_swaps_and_noop():
     assert addr == a
     out, addr, a, b = _run_core(F, 0.0)        # no-op
     assert addr == a and np.array_equal(out, F)
+
+
+def _run_precise(F, d):
+    lib, fp = _core()
+    lib.core_diffuse_precise.argtypes = lib.core_diffuse.argtypes
+    lib.core_diffuse_precise.restype = None
+    N = F.shape[0]
+    a = np.ascontiguousarray(F, np.float32).copy()
+    b = np.zeros_like(a)
+    pa, pb = a.ctypes.data_as(fp), b.ctypes.data_as(fp)
+    for _ in range(200):
+        lib.core_diffuse_precise(ctypes.byref(pa), ctypes.byref(pb), N, d)
+    addr = ctypes.cast(pa, ctypes.c_void_p).value
+    return (a if addr == a.ctypes.data else b).copy()
+
+
+def test_precise_diffusion_has_no_mass_bias():
+    """The float rule drifts systematically (t + 9*w9 != 1 in float); the
+    precise rule used by ChemCA does not. 200 calls at d = 0.3 and 1.0."""
+    F = np.random.default_rng(6).random((32, 32)).astype(np.float32)
+    M0 = F.sum(dtype=np.float64)
+    for d in (0.3, 1.0):
+        out = _run_precise(F, d)
+        assert abs(out.sum(dtype=np.float64) - M0) / M0 < 1.5e-7   # float rule: 4e-7..4e-6
+        # same rule as the float version, to rounding
+        assert np.allclose(_run_core(F, d)[0], _run_precise_once(F, d), atol=1e-6)
+
+
+def _run_precise_once(F, d):
+    lib, fp = _core()
+    lib.core_diffuse_precise.argtypes = lib.core_diffuse.argtypes
+    a = np.ascontiguousarray(F, np.float32).copy()
+    b = np.zeros_like(a)
+    pa, pb = a.ctypes.data_as(fp), b.ctypes.data_as(fp)
+    lib.core_diffuse_precise(ctypes.byref(pa), ctypes.byref(pb), F.shape[0], d)
+    addr = ctypes.cast(pa, ctypes.c_void_p).value
+    return (a if addr == a.ctypes.data else b).copy()

@@ -12,8 +12,8 @@ import subprocess
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-SOURCES = ('C/evoca.c', 'C/core.c')
-HEADERS = ('C/evoca.h', 'C/core.h')
+SOURCES = ('C/evoca.c', 'C/core.c', 'C/chemca.c')
+HEADERS = ('C/evoca.h', 'C/core.h', 'C/chemca.h')
 CFLAGS = ('-O2', '-Wall', '-fPIC')
 
 

@@ -37,4 +37,8 @@ int core_poisson(uint32_t (*next)(void), float lambda);
  * *field points at the result and *tmp at scratch. d <= 0 does nothing. */
 void core_diffuse(float **field, float **tmp, int N, float d);
 
+/* The same rule in double with an unbiased update (see core.c): mass is
+ * conserved to rounding with no systematic drift. Used by ChemCA. */
+void core_diffuse_precise(float **field, float **tmp, int N, float d);
+
 #endif /* CORE_H */

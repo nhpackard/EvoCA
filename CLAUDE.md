@@ -18,7 +18,7 @@ EvoCA is an evolutionary cellular automata simulation. It extends the GeneLife m
 
 ```bash
 make                        # builds C/libevoca.dylib (macOS) or C/libevoca.so (Linux)
-gcc -O2 -Wall -fPIC -dynamiclib -o C/libevoca.dylib C/evoca.c   # manual macOS build
+gcc -O2 -Wall -fPIC -dynamiclib -o C/libevoca.dylib C/evoca.c C/core.c C/chemca.c   # manual macOS build
 jupyter notebook evoca_test.ipynb
 ```
 

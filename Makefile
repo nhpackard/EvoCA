@@ -9,8 +9,8 @@
 
 CC     = gcc
 CFLAGS = -O2 -Wall -fPIC
-SRCS   = C/evoca.c C/core.c
-HDRS   = C/evoca.h C/core.h
+SRCS   = C/evoca.c C/core.c C/chemca.c
+HDRS   = C/evoca.h C/core.h C/chemca.h
 
 UNAME := $(shell uname)
 ifeq ($(UNAME), Darwin)
