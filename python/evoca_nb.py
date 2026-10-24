@@ -5,7 +5,7 @@ evoca_explore.build_sim (used directly by the notebooks); this module
 holds the notebook-side glue around recipes, scans and frames:
 
     rgb, argb_to_rgb         lattice frame -> (N, N, 3) uint8
-    make_sim                 bare EvoCA: init(N, **params) + set_seed
+    make_sim                 bare EvoCA or ChemCA (params['model']): init + set_seed
     load_recipe              import_run + reproducible seeding
     sim_from_scan            scan row -> recipe (temp dir) -> load_recipe
     params_from_row          scan results row -> build_sim params
@@ -23,6 +23,7 @@ import json
 import numpy as np
 
 import evoca_paths
+import sim_model
 from evoca_py import EvoCA, import_run
 
 
@@ -43,8 +44,14 @@ def rgb(sim, colormode=0):
 # ── construction ──────────────────────────────────────────────────────
 
 def make_sim(N, seed=0, **params):
-    """EvoCA() + init(N, **params) + set_seed(seed); no state() call."""
-    s = EvoCA()
+    """EvoCA() + init(N, **params) + set_seed(seed); no state() call.
+    params['model'] == 'chemca' (sim_model) makes a ChemCA instead."""
+    model, params = sim_model.split_model(params)
+    if model == 'chemca':
+        from chemca_py import ChemCA
+        s = ChemCA()
+    else:
+        s = EvoCA()
     s.init(N, **params)
     s.set_seed(seed)
     return s
@@ -63,8 +70,16 @@ def load_recipe(name, N=None, seed=0, recipe='init', seed_v=True,
     draws v from an unseeded generator). Overrides go through the
     update_<key>() setters; shadow=True calls neutral_enable() last.
     Returns (sim, display_kwargs)."""
-    _check_overrides(overrides)
     sim, kw = import_run(name, N=N, recipe=recipe)
+    if not isinstance(sim, EvoCA):
+        # ChemCA: state() already applied the recipe's own seed, so the run
+        # is reproducible as loaded; overrides go through update().
+        if shadow:
+            raise ValueError("shadow is an EvoCA probe")
+        if overrides:
+            sim.update(**overrides)
+        return sim, kw
+    _check_overrides(overrides)
     sim.set_seed(seed)
     if seed_v:
         n = sim._N

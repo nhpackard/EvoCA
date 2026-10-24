@@ -53,6 +53,10 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 from evoca_py import EvoCA   # noqa: E402
 import evoca_paths            # noqa: E402
+import sim_model              # noqa: E402
+# ChemCA's headless run lives with its model; re-exported here so scan
+# drivers find both runners in one module (run_sim is EvoCA's).
+from chemca_py import build_chemca, run_chemca   # noqa: E402,F401
 
 
 # ── Fixed initialisation used by run_sim ─────────────────────────────
@@ -159,7 +163,16 @@ def build_sim(params, N=256, seed=0, init='halfplane', *, lineage=False,
     egenome: 'uniform' (value 0b000011) or 'random' (set_egenome_random).
 
     Returns a live EvoCA instance (caller is responsible for .free()).
+
+    Dispatches on params['model'] (sim_model; missing = 'evoca'): a
+    'chemca' params dict returns chemca_py.build_chemca(params, N, seed,
+    init), a live ChemCA. EvoCA behavior is unchanged.
     """
+    model, params = sim_model.split_model(params)
+    if model == 'chemca':
+        if lineage or egenome != 'uniform':
+            raise ValueError("lineage/egenome are EvoCA options, not ChemCA")
+        return build_chemca(params, N=N, seed=seed, init=init)
     rng = np.random.default_rng(seed)
 
     sim = EvoCA()
@@ -199,6 +212,9 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
 
     Returns a dict of summary metrics + parameter echo.
     """
+    if sim_model.model_of(params) != 'evoca':
+        raise ValueError("run_sim is EvoCA's harness; use run_chemca for model='chemca'")
+    params = sim_model.split_model(params)[1]
     sim = build_sim(params, N=N, seed=seed, init=init)
 
     if shadow:

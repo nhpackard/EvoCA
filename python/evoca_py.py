@@ -2463,6 +2463,14 @@ def import_run(filepath=None, recipe='init', lib_path=None, N=None):
     with open(filepath) as f:
         data = json.load(f)
 
+    # A recipe without 'model' is EvoCA (load-time default, sim_model).
+    import sim_model
+    if sim_model.model_of(data) == 'chemca':
+        import chemca_py
+        sim, kw = chemca_py.load_recipe(data, recipe=recipe, N=N, lib_path=lib_path)
+        sim._origin_recipe = os.path.basename(filepath)
+        return sim, kw
+
     # version 1 had a single 'metaparams' key; version 2 has init/final
     if 'metaparams_init' in data:
         mp = data['metaparams_init'] if recipe == 'init' else data['metaparams_final']
