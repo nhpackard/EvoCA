@@ -9,7 +9,12 @@ EvoCA is an evolutionary cellular automata simulation. It extends the GeneLife m
 ## Code Layout
 
 - `C/` — C core: CA lattice, genome data structures, and CA update functions (optimized for speed)
-- `python/` — Python layer: `evoca_py.py` (ctypes wrapper), `display.py` (SDL2 window + widgets)
+  - `evoca.c/.h` — the EvoCA model
+  - `core.c/.h` — pure helpers shared by both models (xorshift32 step, Poisson, box-blur diffusion)
+  - `chemca.c/.h` — ChemCA, the metabolism-based agent model (prefix `chemca_`; Docs/plan-chemca.md)
+- `python/` — Python layer: `evoca_py.py` (ctypes wrapper), `display.py` (SDL2 window + widgets),
+  `chemca_py.py` (ChemCA wrapper, presets fw2/gs3, `run_chemca`), `sim_model.py` (the recipe/params
+  `model` key; missing = `'evoca'`), `evoca_build.py` (the build, stated once for Python)
 - `Docs/` — Reference papers, `model.md` (full spec), `probes.md` (probe windows)
 - `EvoCA.md` — Full model specification (read this for implementation details)
 - `evoca_test.ipynb` — Test notebook: GoL verification, benchmarks, SDL2 display launch
@@ -17,7 +22,7 @@ EvoCA is an evolutionary cellular automata simulation. It extends the GeneLife m
 ## Build & Run
 
 ```bash
-make                        # builds C/libevoca.dylib (macOS) or C/libevoca.so (Linux)
+make                        # builds C/libevoca.dylib (macOS) or C/libevoca.so (Linux); in N's zsh use `command make`
 gcc -O2 -Wall -fPIC -dynamiclib -o C/libevoca.dylib C/evoca.c C/core.c C/chemca.c   # manual macOS build
 jupyter notebook evoca_test.ipynb
 ```

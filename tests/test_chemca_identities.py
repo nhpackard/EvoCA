@@ -18,7 +18,7 @@ ENERGY_TOL = 1e-9    # absolute, per step (C books the realized float changes of
 
 RUNS = {
     'fw2': dict(model='chemca', preset='fw2', mu_rgene=0.05, mu_ractive=0.05,
-                m_e=0.02, light=0.03),
+                m_e=0.018, light=0.03),
     'gs3': dict(model='chemca', preset='gs3', mu_rgene=0.05, mu_ractive=0.05),
 }
 
