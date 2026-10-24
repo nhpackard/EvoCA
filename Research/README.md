@@ -1,5 +1,10 @@
 # EvoCA Research
 
+> **The goal (N, 2026-10-24):** find relationships, ideally laws, between free-energy flux through
+> an evolving system and its evolution and evolvability. Every workstream should be able to say
+> in one line which candidate law it bears on. Anchor:
+> [`../Docs/big-picture-energy-flux-and-evolution.md`](../Docs/big-picture-energy-flux-and-evolution.md).
+
 Curated results layer of the EvoCA repo-as-artifact. This directory holds
 the **findings** of the research program *and* the raw run/scan data that
 backs them, organized by workstream; the model spec, theory, and campaign
