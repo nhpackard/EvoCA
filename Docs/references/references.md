@@ -136,3 +136,29 @@ section of `Docs/# checkpoint 3 July 2026.md`.
   Nonequilibrium Systems: From Dissipative Structures to Order through
   Fluctuations.* Wiley-Interscience. (Dissipative-structure theory
   underpinning the §L source→sink through-flux framing.)
+
+## Kaneko group: cells with catalytic reaction networks (downloaded 2026-10-24, `kaneko/`)
+
+Summary and comparison with chemca: `Docs/2026-10-24_kaneko-literature.md`. All arXiv versions.
+
+- **Kaneko, K. & Yomo, T. (1997).** *Isologous diversification: a theory of cell differentiation.* Bull. Math. Biol. 59:139. arXiv adap-org/9606002 → `kaneko/kaneko_yomo1997_isologous_diversification.pdf`.
+- **Furusawa, C. & Kaneko, K. (1998).** *Emergence of multicellular organisms with dynamic differentiation and spatial pattern.* Artificial Life 4:79–93. Author copy (Georgia Tech course page) → `kaneko/furusawa_kaneko1998_multicellular_differentiation_spatial_pattern_ALife.pdf`.
+- **Furusawa, C. & Kaneko, K. (1998).** *Emergence of rules in cell society: differentiation, hierarchy, and stability.* arXiv adap-org/9802002 → `kaneko/furusawa_kaneko1998_emergence_of_rules_cell_society.pdf`.
+- **Kaneko, K. & Furusawa, C. (1999).** Stem cells and chaotic intracellular dynamics (Physica A proceedings). arXiv chao-dyn/9912005 → `kaneko/kaneko_furusawa1999_stem_cells_chaos.pdf`.
+- **Furusawa, C. & Kaneko, K. (2000).** *Origin of complexity in multicellular organisms.* Phys. Rev. Lett. 84:6130. arXiv nlin/0009008 → `kaneko/furusawa_kaneko2000_origin_of_complexity_multicellular_PRL.pdf`.
+- **Furusawa, C. & Kaneko, K. (2000).** Chaos hypothesis for stem-cell differentiation. arXiv nlin/0009007 → `kaneko/furusawa_kaneko2000_chaos_hypothesis_stem_cells.pdf`.
+- **Kaneko, K. & Yomo, T. (2002).** *Kinetic origin of heredity in a replicating system with a catalytic network.* arXiv nlin/0203039 → `kaneko/kaneko_yomo2002_kinetic_origin_of_heredity.pdf`.
+- **Kaneko, K. (2003).** *Recursiveness, switching, and fluctuations in a replicating catalytic network.* arXiv cond-mat/0302313 → `kaneko/kaneko2003_recursiveness_switching_fluctuations.pdf`.
+- **Furusawa, C. & Kaneko, K. (2003).** *Zipf's law in gene expression.* Phys. Rev. Lett. 90:088102. arXiv physics/0209103 → `kaneko/furusawa_kaneko2003_zipfs_law_gene_expression_PRL.pdf`.
+- **Furusawa, C. & Kaneko, K. (2005).** *Evolutionary origin of power-laws in biochemical reaction network.* arXiv q-bio/0504032 → `kaneko/furusawa_kaneko2005_evolutionary_origin_power_laws.pdf`.
+- **Kaneko, K. (2005).** *On recursive production and evolvability of cells: catalytic reaction network approach.* Adv. Chem. Phys. arXiv q-bio/0504016 → `kaneko/kaneko2005_recursive_production_evolvability_review.pdf`.
+- **Kamimura, A. & Kaneko, K. (2010).** *Reproduction of a protocell by replication of minority molecule in catalytic reaction network.* Phys. Rev. Lett. 105:268103. arXiv 1005.1142 → `kaneko/kamimura_kaneko2010_protocell_minority_molecule_PRL.pdf`.
+- **Kamimura, A. & Kaneko, K. (2017).** Exponential growth for self-reproduction in a catalytic reaction network: minority species and crowdedness. arXiv 1711.08988 → `kaneko/kamimura_kaneko2017_exponential_growth_minority_crowding.pdf`.
+- **Takagi, H. & Kaneko, K. (2001).** *Differentiation and replication of spots in a reaction diffusion system with many chemicals.* arXiv nlin/0104058 → `kaneko/takagi_kaneko2001_spots_reaction_diffusion_many_chemicals.pdf`.
+
+## Hogeweg group: spatial replicators, spirals, multilevel selection (downloaded 2026-10-24, `hogeweg/`)
+
+- **Boerlijst, M. C. & Hogeweg, P. (1991).** *Spiral wave structure in pre-biotic evolution: hypercycles stable against parasites.* Physica D 48:17–28. Utrecht group copy → `hogeweg/boerlijst_hogeweg1991_spiral_waves_hypercycles_parasites_PhysicaD.pdf`.
+- **Boerlijst, M. C. & Hogeweg, P. (1991).** *Self-structuring and selection.* In Langton et al., eds., Artificial Life II, pp. 255–276 (scanned, no text layer). Utrecht group copy → `hogeweg/boerlijst_hogeweg1991_selfstructuring_hypercycles_ALifeII.pdf`.
+- **Takeuchi, N. & Hogeweg, P. (2009).** *Multilevel selection in models of prebiotic evolution II.* PLoS Comput. Biol. 5:e1000542. Open access → `hogeweg/takeuchi_hogeweg2009_multilevel_selection_II_PLoSCB.pdf`.
+- Not downloaded (needs a browser): Takeuchi, Kaneko & Hogeweg (2016) *Evolutionarily stable disequilibrium*, Proc. R. Soc. B 283:20153109, https://dspace.library.uu.nl/bitstream/1874/347072/1/Evo.pdf; von der Dunk, Colizzi & Hogeweg (2017) *Evolutionary conflict leads to innovation*, Life 7:43, https://www.mdpi.com/2075-1729/7/4/43.
