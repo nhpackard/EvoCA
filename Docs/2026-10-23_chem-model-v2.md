@@ -13,6 +13,24 @@ Nothing here is implemented. Section 13 lists the decisions for N.
 
 ---
 
+## Status and corrections (2026-10-24, after N's reading)
+
+- **Status: design only, Track B, later.** N: "let's not gallop ahead". Current work stays in vanilla EvoCA's food/waste mode (Track A): understand its dynamics and their evolutionary properties, including wgenes (CHEM-N3, which is *not* paused; §8e's recommendation is withdrawn). The one thing vanilla cannot do cleanly is a genetic metabolic rate (§4), which is why chemca exists at all.
+- **Gray-Scott is agreed as the reference starting point for chemca**, with a correction to §0 point 4 and §6.
+  - Gray-Scott has three species: U + 2V -> 3V, V -> P, with U fed and everything washed out. P is inert, so the dynamics are usually written with two variables.
+  - The autocatalysis is **cubic**. My F + W -> 2W is quadratic, and that mostly gives simple invasion fronts. The threshold behavior (spots, pulses, spiral-like waves) needs the cubic term.
+  - A closed-mass version **needs the third species**. With two species and conserved mass, each site's well-mixed chemistry is one-dimensional and cannot oscillate. The closed loop is: F + 2A -> 3A inside agents (yielding energy), A -> P inside agents (P exported), P -> F in the environment by light.
+    - A is the activator; it is inherited at division.
+    - P is the waste in the toxic sense.
+    - Toxicity on P gives the refractory zone; on A it gives the "need some, die of too much" tension.
+  - The first chemca is therefore three compounds, not two.
+- **§2 (statistics) is superseded by CHEM-N6** (`Research/Chem/Scans/2026-10-24_N6_layered_fronts/notes.md`).
+  - Following N's suggestion, the layered fronts were measured instead of the cores.
+  - The result: excitation waves, also one-way at tox 0.4. They are irregular in space, so they show no spectral ring, but each site fires with one period (115-120 steps). The site period is the working discriminator.
+  - Core tracking (§2c) was not built.
+
+---
+
 ## 0. Summary
 
 **Scan statistics (section 2).**

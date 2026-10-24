@@ -111,3 +111,30 @@ def test_kw_spectrum_ignores_bulk_pulsing():
     steps, x = 64, np.arange(N, dtype=float)
     ky = np.array([np.cos(2 * np.pi * x / LAM) + 3 * np.cos(2 * np.pi * t / 16) for t in range(steps)])
     assert ew.kw_spectrum(ky)['moving'] < 1e-9
+
+
+
+def _sources_kymo(c=2.0, period=110, steps=600, n=512, sources=(40, 170, 300, 420), seed=3):
+    """Irregular excitation waves (sites fire with one period, fronts
+    irregular in space): each site's phase is set by its nearest
+    source, phi = t / period - |x - s| / (c * period), so fronts leave the
+    sources at speed c (V shapes) and annihilate where neighbors meet (Lambda
+    shapes). Sharp fronts (pulses), plus noise."""
+    x = np.arange(n, dtype=float)
+    d = np.min([np.minimum(np.abs(x - s), n - np.abs(x - s)) for s in sources], axis=0)
+    t = np.arange(steps, dtype=float)[:, None]
+    phi = (t / period - d[None, :] / (c * period)) % 1.0
+    rng = np.random.default_rng(seed)
+    return (phi < 0.2).astype(float) + 0.3 * rng.standard_normal((steps, n))
+
+
+def test_site_period_of_irregular_fronts():
+    per, peak = ew.site_period(_sources_kymo())
+    assert abs(per - 110) <= 2 and peak > 0.3
+
+
+def test_site_period_noise_and_frozen_have_none():
+    rng = np.random.default_rng(4)
+    assert np.isnan(ew.site_period(rng.standard_normal((600, 512)))[0])
+    frozen = np.repeat(rng.standard_normal(512)[None], 600, axis=0)
+    assert np.isnan(ew.site_period(frozen)[0])

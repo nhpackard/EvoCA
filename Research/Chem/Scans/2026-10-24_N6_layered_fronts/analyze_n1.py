@@ -48,6 +48,7 @@ def main():
             k = ew.kw_spectrum(ky, b=4)
             row.update({f'ring_{name}_{s}': r[s] for s in ('wavelength', 'prominence', 'contrast', 'layers', 'isotropy')})
             row.update({f'kw_{name}_{s}': k[s] for s in ('moving', 'wavelength', 'speed', 'peak_share')})
+            row[f'period_{name}'], row[f'period_{name}_peak'] = ew.site_period(ky)
         n1 = rows.get(key, {})
         row.update({'n1_surv_480_excess': n1.get('surv_480_excess', ''), 'n1_R_mean': n1.get('R_mean', ''),
                     'n1_alive_mean': n1.get('alive_mean', '')})

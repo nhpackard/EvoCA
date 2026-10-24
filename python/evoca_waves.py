@@ -41,6 +41,13 @@ fronts, so it puts a ring in the spatial power spectrum at k = N / lambda.
   frequency w != 0 against all power at k != 0 (moving against stationary
   structure), and the wavelength and phase speed of the strongest moving
   mode.
+- `site_period`: the temporal period shared by the sites of a space-time
+  plot (the site-averaged autocorrelation), and its peak height. Excitation
+  waves from many sources are irregular in space (no ring in S(k), only a
+  knee at the patch scale) but every site fires with one period.
+  (Tried and dropped, 2026-10-24: a fixed-speed ridge in the (k, w)
+  spectrum and a structure-tensor slope. Both pass constructed fixtures but
+  on EvoCA space-time plots lock onto slow drift or persistent colonies.)
 Neither separates a spiral from a target source: both are layered moving
 fronts. That needs a core or a handedness, which these deliberately skip.
 """
@@ -237,3 +244,28 @@ def kw_spectrum(kymo, dt=1, b=1):
     speed = abs(w_idx / (T * dt)) / (abs(k_idx) / N)
     return {'moving': moving, 'k_peak': abs(int(k_idx)), 'w_peak': abs(int(w_idx)),
             'wavelength': N / abs(k_idx), 'speed': float(speed), 'peak_share': share}
+
+
+def site_period(kymo, dt=1, b=4):
+    """(period in steps, peak height) of the site-averaged autocorrelation of
+    a space-time plot (T x N, row t = step t*dt), coarse-grained to b cells
+    (per-cell speckle otherwise dominates the variance): the largest autocorrelation
+    between the first zero crossing and T/2. (A first local maximum is fooled
+    by noise wiggles in the negative lobe.) Period nan if the peak is below 0.2
+    or the autocorrelation never crosses zero."""
+    X = np.asarray(kymo, float)
+    T, N = X.shape
+    if b > 1:
+        X = X[:, :N // b * b].reshape(T, N // b, b).mean(axis=2)
+    Y = X - X.mean(axis=0)
+    F = np.fft.rfft(Y, n=2 * T, axis=0)
+    acf = np.fft.irfft(np.abs(F) ** 2, axis=0)[:T].sum(axis=1)
+    if acf[0] <= 0:
+        return float('nan'), 0.0
+    acf = acf / acf[0]
+    half = T // 2
+    neg = np.where(acf[:half] < 0)[0]
+    if len(neg) == 0 or neg[0] + 1 >= half:
+        return float('nan'), 0.0
+    j = neg[0] + 1 + int(np.argmax(acf[neg[0] + 1:half]))
+    return (float(j * dt) if acf[j] >= 0.2 else float('nan')), float(acf[j])

@@ -4,7 +4,7 @@ _Updated 2026-10-23_
 ## Decisions needed (N)
 - **CHEM-D2**: Should environmental waste saturate? — Currently `W` is unbounded and mass-conserving: excretion stops at `W >= 1`, but deaths still return waste, so where the sink is slower than production (`waste_sink` < tax x density) `W` piles up to 5-12, cells can never excrete, and waste acts as uniform aging (lifespan ~ 1/tax). Option: cap `W` at 1 with the excess discarded and booked as an overflow sink, the counterpart of the food `F <= 1` regeneration cap (N's "parallel to food" principle). Recommendation: keep unbounded for now (conserving, and the balance regime is where structure appears); revisit if the aging regime matters.
 
-- **CHEM-D5**: Chem model v2, a metabolism-based agent as a separate model (`Docs/2026-10-23_chem-model-v2.md`, §13 lists 9 decisions). Core points: under pinned decision B a genetic food->waste rate evolves to 0, so v2 needs an energy currency produced by reactions; closed mass (F + W) with W -> F regeneration by a light field; autocatalysis F + W -> 2W offered as a gene choice to make waste needed; mass-action rates on a discrete log grid, reaction genes (A, B, C, k) in the egene slot layout; separate `C/chemca.c` with a shared `core.c` (retires CHEM-P1), recipe `model` key, `controls.py` moved onto a sim interface. Conflicts with CHEM-D3/N3 (wgenes are CA-pattern genes; recommendation: pause N3 pending D5). Also proposes recalibrating the wave statistics against N's eye before any ranking or Pareto search (the one-way tox 0.4 / sink 0.019 point was never measured by them).
+- **CHEM-D5**: Chem model v2 (`chemca`), a metabolism-based agent as a separate model (`Docs/2026-10-23_chem-model-v2.md`, §13 lists 9 decisions). **Status (N, 2026-10-24): design only; Track B, later.** Current work stays in vanilla EvoCA food/waste (Track A): its dynamics and their evolution. An evolutionary Gray-Scott (three species: F + 2A -> 3A and A -> P inside agents, P -> F by light) is agreed as the reference starting point for chemca. CHEM-N3 (wgenes) is not paused: wgenes belong to vanilla.
 
 ## Decided
 - **CHEM-D4** (N, 2026-10-23): two-way (passive membrane) waste exchange is adopted **as an option**: metaparameter `waste_exchange` (0 = one-way excretion, the default, so every recipe is unchanged; 1 = two-way `d = waste_disp * (w - W)`), a checkbox in the controls. Bit-identical to the experiment patch; `waste_exchange=0` is bit-identical to the previous `main`. Tests `tests/test_waste_exchange.py` and the two-way cases of the waste-mass and energy identities. The wave/spiral survey under it is CHEM-N1.
@@ -22,6 +22,12 @@ _Updated 2026-10-23_
     - Wavelength about 200 cells; R about 0.1, against 0.4 for one-way.
     - Defect survival over 4 periods reaches about twice the one-way level.
     - **No spirals resolved in 2D**: the phase field is noisy at 32-64 cells.
+  - **CHEM-N6** (2026-10-24): **excitation waves**, also under **one-way** exchange at `waste_tox` 0.4 / `waste_sink` 0.019 (N's interactive point), at N = 256-1024.
+    - Space-time plots show fronts leaving sources, traveling at about 1-2 cells/step and annihilating on collision.
+    - Sites fire with one period, 115-120 steps.
+    - The fronts are irregular in space (many sources), so the spatial spectrum has no ring, only a knee at the patch scale.
+    - The N5 "no propagation" statement holds only at `waste_tox` 1.0; toxicity 0.4 makes the one-way medium excitable.
+    - Spiral versus target is still unresolved.
 - **CHEM-Q4**: What would make the two-way medium's phase coherent below the ~200-cell wavelength, so spirals could be resolved?
   - The colonies are a scattered ~33% speckle, so the local cycle phase is noisy.
   - Candidates:
@@ -44,6 +50,7 @@ _Updated 2026-10-23_
   - The Run/Pause label fix.
   - `waste_tox` is a metaparameter (default 1.0, the old fixed value).
   - Sliders for `waste_sink`, `wdiff`, `waste_disp` and `waste_tox`.
+- **CHEM-N6 done** (2026-10-24): `Scans/2026-10-24_N6_layered_fronts`; results in CHEM-Q1. New statistics in `python/evoca_waves.py`: `ring_spectrum` (with ring contrast), `kw_spectrum`, `site_period`. Measures tried and dropped are listed in the notes.
 - **CHEM-N1 done** (2026-10-23): `Scans/2026-10-23_N1_twoway_waves`; results in CHEM-Q1. Detector `python/evoca_waves.py`.
 - **CHEM-N5 done** (2026-10-23): `Scans/2026-10-23_N5_global_chem`; results in CHEM-Q1.
 - **CHEM-F1** (2026-10-23): review fixes, `Docs/plan-chem.md` §8. Setters and stamps that kill a cell, replace its occupant or rewrite its store (`stamp_patch`, `set_f_all`, `set_alive*`, `set_w`) now keep the waste-mass balance. Waste can no longer carry energy (an energy-1 product made the tax free). `set_n_chem`, a refused `init` and the controls Restart keep `params()`/recipes in agreement with C (Restart had silently dropped the food/waste chemistry). Colormode 6 shows waste with metabolism off. NaN scan-row cells are dropped. Per-compound `get_chem_env`/`get_chem_priv` were added. Ordinary food/waste runs are unchanged: the notebook outputs are identical.
