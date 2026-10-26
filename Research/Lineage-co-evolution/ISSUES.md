@@ -3,8 +3,13 @@ _Updated 2026-10-23_
 
 The workstream question has two parts: (1) is there adaptive LUT<->egene *coupling* (co-evolution) or just joint drift, and (2) can lineage-level net metabolic return separate adaptation from drift. H1/D3 address part 2; the #8 redesign is the only direct handle on part 1. Example-run evidence cited below comes from `Lineage-co-evolution.ipynb` (single seed, N<=128, not campaign results), re-executed 2026-10-23 under the standard model (`food_cap=1`). Campaign evidence for #3 and #3c now comes from the 2026-10-23 standard-model rescans; the recorded May results were legacy-rule (`food_cap=0`) results and several do not hold (notebook, last section).
 
+## Plans and design docs
+- [`plans/plan-8-lineage-coevolution.md`](plans/plan-8-lineage-coevolution.md): Campaign #8, the direct lineage co-evolution metric: **on hold** since 2026-05-19, after a design flaw in the binary indicators. The redesign options A-F are the subject of LIN-D1.
+- [`plans/plan-3c-coevolution-substrate.md`](plans/plan-3c-coevolution-substrate.md): Campaign #3c spec (done): `Scans/2026-05-19_3c_coevolution_substrate`, standard-model rescan `Scans/2026-10-23_3c_coevolution_substrate_standard`.
+- [`plans/2026-10-18_lineage-decisions-guide.md`](plans/2026-10-18_lineage-decisions-guide.md): Guide for N to the open lineage decisions (LIN-D1 to LIN-D3): background, options, recommendations.
+
 ## Decisions needed (N)
-- **LIN-D1**: #8 redesign: which fix option, now that D2 exists? (`Docs/plan-8-lineage-coevolution.md` lists A-F; the board lists old #8 as "superseded by D2 + H1", but D2/H1 answer part 2, not the part-1 coupling question.) Options:
+- **LIN-D1**: #8 redesign: which fix option, now that D2 exists? (`Research/Lineage-co-evolution/plans/plan-8-lineage-coevolution.md` lists A-F; the board lists old #8 as "superseded by D2 + H1", but D2/H1 answer part 2, not the part-1 coupling question.) Options:
   - *Retire #8*, rely on H1 only. Cheapest; leaves "do LUT and egene changes get retained *jointly*?" untested.
   - **Recommended: Option A (Hamming magnitude of LUT bytes vs egene bytes per surviving edge) with `restricted_mu=1` (the existing toggle, i.e. Option F for free), reusing the harness.** Notebook section 3 shows the binary indicator saturating exactly as 1-exp(-250 mu) (0.918 at 0.01, 0.9995 at 0.03) while Hamming keeps mean 250*mu and nonzero spread, and bulk LUT bytes come from one pointer read, so no per-cell loop. Pure Python, no C change. Add the D2 join as phase 2 (below).
   - Option B (add lut_complexity level change) as a secondary read-out; needs a tiny per-cell accessor (dev).

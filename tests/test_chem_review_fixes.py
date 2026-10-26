@@ -1,4 +1,4 @@
-"""Regression tests for the chem-branch review fixes (Docs/plan-chem.md,
+"""Regression tests for the chem-branch review fixes (Research/Chem/plans/plan-chem.md,
 "Review fixes"). Each enters through the public door a caller uses
 (stamp_patch, set_f_all, set_alive*, set_w, set_n_chem, set_chem_energy,
 init, the controls Restart path, colorize, params_from_row) on a constructed

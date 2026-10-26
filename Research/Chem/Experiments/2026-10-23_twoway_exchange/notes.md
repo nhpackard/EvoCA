@@ -1,10 +1,10 @@
 # Experiment: two-way (passive membrane) waste exchange (2026-10-23)
 
-**Status.** Adopted as an option (CHEM-D4, N, 2026-10-23): `waste_exchange=1` on `main`, bit-identical to `twoway.patch` (checked: same state hash after 800 steps at N=128). The one-way rule stays the default. The scripts below now run on `main` with the flag; the patch is kept as the record of what was tested.
+**Status.** Adopted as an option ([CHEM-D4](../../ISSUES.md), N, 2026-10-23): `waste_exchange=1` on `main`, bit-identical to `twoway.patch` (checked: same state hash after 800 steps at N=128). The one-way rule stays the default. The scripts below now run on `main` with the flag; the patch is kept as the record of what was tested.
 
 ## Why
 
-The food/waste model makes no spirals (CHEM-N5, `Chem.ipynb` "No spirals yet"). Its refractory zone is soft. In the one-way rule a cell excretes `d = disp * a * max(0, 1 - E)`: waste only leaves the cell, and stops leaving once the site holds `E >= 1`. A cell on waste-loaded ground therefore lives about `(tox - a) / tax` steps, and a fast-reproducing lineage can persist there. Waste ground never empties of life, so no clean food lakes form for a front to sweep across.
+The food/waste model makes no spirals ([CHEM-N5](../../ISSUES.md), `Chem.ipynb` "No spirals yet"). Its refractory zone is soft. In the one-way rule a cell excretes `d = disp * a * max(0, 1 - E)`: waste only leaves the cell, and stops leaving once the site holds `E >= 1`. A cell on waste-loaded ground therefore lives about `(tox - a) / tax` steps, and a fast-reproducing lineage can persist there. Waste ground never empties of life, so no clean food lakes form for a front to sweep across.
 
 ## The rule tested
 

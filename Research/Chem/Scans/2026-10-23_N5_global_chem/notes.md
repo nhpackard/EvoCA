@@ -1,6 +1,6 @@
-# CHEM-N5: global-chem baseline (2026-10-23)
+# [CHEM-N5](../../ISSUES.md): global-chem baseline (2026-10-23)
 
-**Why.** Before wgenes (CHEM-D3) there are two questions. Is the three-state oscillating regime at the waste balance (`waste_sink ~ tax x density`) robust? And does the food/waste model give the refractory medium that spirals need (N's question, 2026-10-23; RXD-Q6)? So far there is one seed, at N=256.
+**Why.** Before wgenes ([CHEM-D3](../../ISSUES.md)) there are two questions. Is the three-state oscillating regime at the waste balance (`waste_sink ~ tax x density`) robust? And does the food/waste model give the refractory medium that spirals need (N's question, 2026-10-23; [RXD-Q6](../../../Reaction-diffusion/ISSUES.md))? So far there is one seed, at N=256.
 
 **Design** (driver `scan.py`; recipe `Runs/2026-10-23_chem_fw_spiralpoint.evoca`, standard rule, mutation on, halfplane start, 6000 steps, statistics over steps 3000-6000):
 - **A, robustness (N=256, 99 runs):** `waste_sink` 0.010-0.020 in steps of 0.001, x `food_inc` {0.013, 0.016, 0.020}, x seeds 0-2.

@@ -1,7 +1,7 @@
-# CHEM-N6: layered fronts and excitation waves (2026-10-24)
+# [CHEM-N6](../../ISSUES.md): layered fronts and excitation waves (2026-10-24)
 
 **Question (N).** N saw "noisy fronts, almost spiral waves" at one-way exchange, `waste_tox` 0.4,
-`waste_sink` 0.019 (N=256, interactive). The CHEM-N1 statistics had never measured that point. N
+`waste_sink` 0.019 (N=256, interactive). The [CHEM-N1](../../ISSUES.md) statistics had never measured that point. N
 suggested detecting the layered fronts (the spiral arms) with a crude spatial power spectrum,
 rather than tracking moving cores.
 
@@ -13,11 +13,11 @@ in two-way exchange.
   seeds.
 - They are not periodic in space. The fronts come from many sources, so the spatial spectrum has
   **no ring**, only a knee at the patch scale (about 100-200 cells). That is why the crude spatial
-  spectrum, and the CHEM-N1 core statistics, did not see them.
+  spectrum, and the [CHEM-N1](../../ISSUES.md) core statistics, did not see them.
 - They are not spirals in any resolved sense. Spirals and target sources both give layered fronts,
   and nothing here separates them.
 
-**This corrects CHEM-N5's "no propagation under one-way".** N5 ran at `waste_tox` 1.0, and at 1.0
+**This corrects [CHEM-N5](../../ISSUES.md)'s "no propagation under one-way".** N5 ran at `waste_tox` 1.0, and at 1.0
 the one-way control in N1 shows no period either. It is the lower toxicity that makes the one-way
 medium excitable. The notebook's toxicity sweep ranked this point only by alive std, which
 measures bulk fluctuation and is blind to waves.
@@ -54,7 +54,7 @@ Saved per run (`frames/`, not committed):
 | two-way N=1024 (0.019, 0.03, 0.6) | 115 | 0.34 | 1.56 | waves |
 | two-way N=1024 (0.019, 0.01, 0.4) | 87 | 0.29 | 1.37 | waves, shorter period |
 
-**On the 39 saved CHEM-N1 runs** (`n1_fronts.csv`, `analyze_n1.py`, from the saved middle rows):
+**On the 39 saved [CHEM-N1](../../ISSUES.md) runs** (`n1_fronts.csv`, `analyze_n1.py`, from the saved middle rows):
 
 - the one-way control (tox 1.0) has no period;
 - two-way runs have one in 50-100% of cases per cell, except wdiff 0.08 at tox 1.0 (20%);

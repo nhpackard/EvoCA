@@ -264,7 +264,7 @@ operator*, which at high μ is a different thing.
 > **Note (2026-10-15, branch `shadow-rng`).** Independently of the
 > construction issue above, the shadow used to draw its random numbers
 > (kills, parent choice, mutation) from the *dynamics* RNG stream, so
-> enabling it changed the real trajectory (`Docs/Oct2026/06-seeding-findings.md`
+> enabling it changed the real trajectory (`Docs/Archive/Oct2026/06-seeding-findings.md`
 > A2). It now has its own stream, seeded from the sim seed in
 > `evoca_set_seed`, and is a pure observer: same seed ⇒ shadow-on and
 > shadow-off trajectories are bit-identical. Consequence: shadow-on

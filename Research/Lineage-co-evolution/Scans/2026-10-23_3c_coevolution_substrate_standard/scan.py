@@ -2,7 +2,7 @@
 # the shim after its imports, which forces food_cap=1 (the capped rule is the standard model, N 2026-10-23), and N_WORKERS from the environment. Same configs: same sampling seeds and source files. Results land here.
 """Campaign #3c — egene evolution on a frozen *evolved* substrate.
 
-Spec: Docs/plan-3c-coevolution-substrate.md (user-approved 2026-05-19).
+Spec: Research/Lineage-co-evolution/plans/plan-3c-coevolution-substrate.md (user-approved 2026-05-19).
 
 Single continuous sim per run. Phase-1 evolves LUT-only; at the switch
 the rule is either frozen (mu_lut->0) or kept evolving, and egene

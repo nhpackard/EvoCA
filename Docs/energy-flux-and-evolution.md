@@ -1,4 +1,4 @@
-# The big picture: free-energy flux and evolution
+# Free-energy flux and evolution
 
 **Anchor document.** N, 2026-10-24:
 
@@ -19,14 +19,14 @@ restating them.
   1. an energy-flux variable that can be varied independently, and in the end evolves;
   2. evolutionary measures that are valid in the regime being measured;
   3. a collapse test: different parameter routes to the same flux give the same evolutionary outcome.
-- **In the open models (vanilla, food/waste), total throughput is imposed.** At steady state it equals the source (`food_inc` x sites); it is identical, about 4158 per step, across all five CHEM-N7 conditions. Evolution can change only:
+- **In the open models (vanilla, food/waste), total throughput is imposed.** At steady state it equals the source (`food_inc` x sites); it is identical, about 4158 per step, across all five [CHEM-N7](../Research/Chem/ISSUES.md) conditions. Evolution can change only:
   - **per-capita** throughput Φ;
   - the **partition** of the flux into metabolism (tax), death and unharvested overflow;
   - its spatial and temporal **structure** (waves).
 
   The law-bearing variables in the open models are partition and structure, not total flux.
 - **Prior data already show partition and structure tracking evolution.**
-  - Wave regime (CHEM-N7): 12% of the flux goes unharvested and deaths rise 35-fold. Per-capita Φ is up 18%, turnover is 5 times faster, genotype persistence above drift collapses, and a trait (the egene count) still rises.
+  - Wave regime ([CHEM-N7](../Research/Chem/ISSUES.md)): 12% of the flux goes unharvested and deaths rise 35-fold. Per-capita Φ is up 18%, turnover is 5 times faster, genotype persistence above drift collapses, and a trait (the egene count) still rises.
   - Resource-driving pilot: A_new is an inverted U against `food_inc/tax`, while Φ is nearly degenerate (Φ = max(tax, food_inc)). Per-capita flux is pinned by the imposed tax.
 - **chemca is the model in which flux becomes endogenous**, which is the reason to build it.
   - Mass is closed, and free energy enters only by light acting on waste (P -> F).
@@ -57,7 +57,7 @@ restating them.
 
 | Model | Free-energy input | Sinks (dissipation channels) | Imposed | Emergent (evolution can change it) |
 |---|---|---|---|---|
-| vanilla | `food_inc` per site (capped at F <= 1) | tax (metabolism), death (stores lost), overflow (input past the cap), eviction | total input; tax per cell | density; per-capita Φ (pinned at about tax when food-limited, RES-Q2); harvested fraction; spatial structure |
+| vanilla | `food_inc` per site (capped at F <= 1) | tax (metabolism), death (stores lost), overflow (input past the cap), eviction | total input; tax per cell | density; per-capita Φ (pinned at about tax when food-limited, [RES-Q2](../Research/Resource-driving/ISSUES.md)); harvested fraction; spatial structure |
 | food/waste (`n_chem=2`) | same | same; the tax is also the source of waste mass | total input; tax; waste sink, toxicity, exchange | partition (tax, death, overflow); waves; refractory structure |
 | chemca closed | light on waste: r(x) x P (or W) | agent metabolism (reaction yield into `e`, then costs and reproduction), death (e lost), env relaxation | light rate r; total mass m̄; G_c | **total throughput** (depends on how much waste the population produces and where); per-capita yield; reaction rates themselves (genes) |
 
@@ -77,9 +77,9 @@ sense.
 
 | Measure | What it measures | Valid where | Known defect |
 |---|---|---|---|
-| `dyn_excess`, `eg_excess` (activity above a drift shadow) | persistence of components above neutral | moderate turnover, components with populations | rewards persistence: stasis scores high (CHEM-N7); dyn artifact when `mu_lut = 0` freezes a rich substrate |
+| `dyn_excess`, `eg_excess` (activity above a drift shadow) | persistence of components above neutral | moderate turnover, components with populations | rewards persistence: stasis scores high ([CHEM-N7](../Research/Chem/ISSUES.md)); dyn artifact when `mu_lut = 0` freezes a rich substrate |
 | A_new (Bedau-Packard) | count of components above the neutral p90 | LUT-only evolution | not well posed when egenes evolve (shadow is LUT-only) |
-| activity flux | population of components crossing a low activity band | genomes with populations (D << pop) | clips at the 65536-sample buffer; about D/10 when genomes are singletons (CHEM-N7 notes) |
+| activity flux | population of components crossing a low activity band | genomes with populations (D << pop) | clips at the 65536-sample buffer; about D/10 when genomes are singletons ([CHEM-N7](../Research/Chem/ISSUES.md) notes) |
 | trait trajectories (egene count, specificity, ring level, k in chemca) | directional phenotypic change | everywhere | needs a neutral expectation (the drift of a trait under the same mutation) |
 | invasion / competition assays (`patch_transfer.py`) | fitness of evolved against ancestral types in a given medium | everywhere | per-assay cost; the choice of medium matters |
 | lineage tracing (lineage-return reducer) | which lineages persist and where (wave sources, Savill et al. 1997) | everywhere | lineage identity under mutation |
@@ -92,33 +92,33 @@ makes a statement about energy and evolution, rather than about time.
 ## 4. Candidate laws (hypotheses, each with a falsifier)
 
 - **L1, the window (inverted U; Schneider & Kay, Chaisson, `research_directions` §6).** Selectable complexity and adaptive change peak at an intermediate source/sink gradient (`food_inc/tax`). There is extinction below the window and drift (gradient collapse, fitness variance near 0) above it.
-  - Falsifier: curves at different `tax` do not superimpose against the ratio, or complexity keeps rising on the rich flank (RES-N1).
+  - Falsifier: curves at different `tax` do not superimpose against the ratio, or complexity keeps rising on the rich flank ([RES-N1](../Research/Resource-driving/ISSUES.md)).
 - **L2, maximum power (Lotka 1922).** Where throughput is endogenous, selection increases the free-energy flux the population captures, up to a limit set by a trade-off (in chemca: tempo against toxicity).
   - Prediction in chemca: mean k and captured light flux rise over evolutionary time until waste toxicity or ignition limits bind.
   - Falsifier: throughput falls or wanders while fitness rises, i.e. selection favors efficiency (yield per unit flux) over power.
   - The alternative, minimum dissipation or maximum efficiency, is the competing law. Which one wins, and when, is itself the law-level result.
 - **L3, partition.** The rate of evolutionary change scales with the fraction of the flux routed through **turnover** (death plus birth), not with total flux.
-  - CHEM-N7 is suggestive: waves raise the death and overflow shares, and turnover rises 5 times.
+  - [CHEM-N7](../Research/Chem/ISSUES.md) is suggestive: waves raise the death and overflow shares, and turnover rises 5 times.
   - Falsifier: equal turnover fractions reached by different routes (tax, toxicity, imposed mortality) give different evolutionary rates.
 - **L4, structured flux.** Spatial and temporal structure in the flux (waves, lumpiness, refractory zones) changes the *level* at which selection acts (pattern-level selection, Boerlijst & Hogeweg; Savill et al. 1997) and the evolvability, at fixed mean flux.
-  - Tests: RES-N5 (lumpy food), the CHEM-N7 wave and no-wave contrast with a fitness measure, S1/S2 of the Hogeweg survey.
+  - Tests: [RES-N5](../Research/Resource-driving/ISSUES.md) (lumpy food), the [CHEM-N7](../Research/Chem/ISSUES.md) wave and no-wave contrast with a fitness measure, S1/S2 of the Hogeweg survey.
   - Falsifier: no difference at matched mean flux and turnover.
 - **L5, evolvability and flux variance.** Evolvability (mutational neighborhoods with fitness variance) is selected up when the environment, here the flux, fluctuates on the time scale of a few generations. This is the energetic version of the "evolution of evolvability under fluctuating environments" results (Crombach & Hogeweg 2008, in `Docs/references/hogeweg/`).
   - Falsifier: no rise of evolvability measures under periodic flux (`food_per` > 1) against a constant flux.
 
 Dimensionless groups to look for: source/sink ratio (`food_inc/tax`), turnover per unit flux
 (births / dissipated energy), structure period / generation time (the wave period of 115 steps
-against generation times of 42-217 steps in CHEM-N7), and in chemca a = k1·m̄²/k2 and ρ = r/k2
+against generation times of 42-217 steps in [CHEM-N7](../Research/Chem/ISSUES.md)), and in chemca a = k1·m̄²/k2 and ρ = r/k2
 from the regime study.
 
 ## 5. Prior data against the candidates
 
 | Source | Finding | Bears on |
 |---|---|---|
-| Resource-driving pilot (RES-Q1/Q2) | A_new is an inverted U in `food_inc/tax` (peak at a ratio of about 0.6; collapse at 2.9); Φ is nearly degenerate (= max(tax, food_inc)); alive density = ratio below 1 | L1 supported (pilot only); in vanilla, per-capita Φ is not an independent axis |
-| R1 rescan (RES-Q4) | extinction AUC is slightly better for the ratio than for `food_inc` alone, but the `tax` range is too narrow | L1 collapse test pending (RES-N1) |
-| CHEM-N7 (2026-10-24) | equal total flux in every condition; waves shift the partition (overflow 12%, death x35, per-capita Φ +18%), turnover x5, persistence above drift collapses, egene count rises | L3, L4 (suggestive); the measure validity problem in §3 |
-| CHEM-N6 | excitation waves; period about 115 steps | gives the structure variable for L4 |
+| Resource-driving pilot ([RES-Q1](../Research/Resource-driving/ISSUES.md)/Q2) | A_new is an inverted U in `food_inc/tax` (peak at a ratio of about 0.6; collapse at 2.9); Φ is nearly degenerate (= max(tax, food_inc)); alive density = ratio below 1 | L1 supported (pilot only); in vanilla, per-capita Φ is not an independent axis |
+| R1 rescan ([RES-Q4](../Research/Resource-driving/ISSUES.md)) | extinction AUC is slightly better for the ratio than for `food_inc` alone, but the `tax` range is too narrow | L1 collapse test pending ([RES-N1](../Research/Resource-driving/ISSUES.md)) |
+| [CHEM-N7](../Research/Chem/ISSUES.md) (2026-10-24) | equal total flux in every condition; waves shift the partition (overflow 12%, death x35, per-capita Φ +18%), turnover x5, persistence above drift collapses, egene count rises | L3, L4 (suggestive); the measure validity problem in §3 |
+| [CHEM-N6](../Research/Chem/ISSUES.md) | excitation waves; period about 115 steps | gives the structure variable for L4 |
 | GS regime study | closed-loop chemistry: excitable pulses and spirals at a about 30-100, ρ about 0.03-0.07; an oscillatory ridge only | sets chemca's starting point for L2 |
 | vanilla stasis (memory, 2026-10-23) | evolution settles; activity is persistence | a law has to cover the stasis endpoint (L1 high flank?) |
 
@@ -154,7 +154,7 @@ a *contrast*: whether evolution tracks energy flux when energy does not gate rep
 
 | Workstream / item | One line on the goal |
 |---|---|
-| Resource-driving (RES-N1 inverted U, RES-N5 lumpy food) | L1 directly (imposed flux, collapse test); L5 via lumpiness. **Central, overdue.** |
+| Resource-driving ([RES-N1](../Research/Resource-driving/ISSUES.md) inverted U, [RES-N5](../Research/Resource-driving/ISSUES.md) lumpy food) | L1 directly (imposed flux, collapse test); L5 via lumpiness. **Central, overdue.** |
 | Chem Track A (food/waste waves, N6/N7, wgenes, S1/S2) | L3 and L4: how flux structure and partition change evolution at fixed total flux |
 | Chem Track B (chemca: fw2, gs3, mass gate) | L2: endogenous flux, maximum power or efficiency; exact free energy |
 | Activity-metrics | the measures that §3 says are the weakest link; fix the flux clipping; define evolvability |
@@ -174,7 +174,7 @@ produced:
 
 1. **"Vary the energy flux" is ill-posed in the open models.**
    - Draft: treat `food_inc` as the flux axis.
-   - Objection: at steady state, total throughput equals the source regardless of evolution (CHEM-N7: about 4158 in every condition). The axis is imposed, and evolution cannot respond along it.
+   - Objection: at steady state, total throughput equals the source regardless of evolution ([CHEM-N7](../Research/Chem/ISSUES.md): about 4158 in every condition). The axis is imposed, and evolution cannot respond along it.
    - Revision: §0 and §2 separate total, per-capita, partition and structure. The open-model laws are restated in partition and structure terms (L3, L4). L2 is assigned to chemca, where flux is endogenous.
 2. **The evolutionary measures were taken as given.**
    - Draft: plot activity against flux.
@@ -194,6 +194,6 @@ produced:
 ## 10. Decisions for N
 
 1. **Adopt this as the anchor document**, linked from `Research/README.md` and checked at each plan ("rabbit-hole test", §8)?
-2. **Promote RES-N1** (the inverted-U campaign with the `tax`-collapse test) to the top of the queue? It is the most direct existing test of L1, and it has waited since October.
+2. **Promote [RES-N1](../Research/Resource-driving/ISSUES.md)** (the inverted-U campaign with the `tax`-collapse test) to the top of the queue? It is the most direct existing test of L1, and it has waited since October.
 3. **Define evolvability operationally** (§3, last row) as an Activity-metrics task, and fix the flux clipping as part of it?
 4. **Make energy-budget outputs standard** in chemca's `run_chemca`: light input, captured yield, dissipation by channel.

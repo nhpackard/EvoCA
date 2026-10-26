@@ -1,6 +1,6 @@
-# CHEM-N7: evolution in vs out of the wave regime (2026-10-24)
+# [CHEM-N7](../../ISSUES.md): evolution in vs out of the wave regime (2026-10-24)
 
-**Question (N).** Does evolution differ in the wave regime found by CHEM-N6?
+**Question (N).** Does evolution differ in the wave regime found by [CHEM-N6](../../ISSUES.md)?
 
 **Runs.** `scan.py`, run locally (torque was overheating). Recipe `2026-10-23_chem_fw_spiralpoint`
 with mutation on, N=512, 20000 steps, 4 seeds per condition, 0 errors, about 12 minutes on 10

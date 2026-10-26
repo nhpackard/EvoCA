@@ -1,6 +1,6 @@
 """Campaign #3c — egene evolution on a frozen *evolved* substrate.
 
-Spec: Docs/plan-3c-coevolution-substrate.md (user-approved 2026-05-19).
+Spec: Research/Lineage-co-evolution/plans/plan-3c-coevolution-substrate.md (user-approved 2026-05-19).
 
 Single continuous sim per run. Phase-1 evolves LUT-only; at the switch
 the rule is either frozen (mu_lut->0) or kept evolving, and egene

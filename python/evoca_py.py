@@ -651,7 +651,7 @@ class EvoCA:
         self.restricted_mu = int(restricted_mu)
         self.food_per   = max(1, int(food_per))
         self.food_cap   = 1 if int(food_cap) else 0
-        # Food/waste chemistry (chem milestone 2; Docs/plan-chem.md §7).
+        # Food/waste chemistry (chem milestone 2; Research/Chem/plans/plan-chem.md §7).
         # n_chem=2 is the food/waste preset; the waste metaparams need it.
         self.n_chem     = int(n_chem)
         for k, v in waste.items():

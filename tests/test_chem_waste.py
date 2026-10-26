@@ -3,7 +3,7 @@
 Waste (compound 1) carries no energy, is what the tax converts food into, is
 excreted into its own environmental field W at d = waste_disp * w * (1 - W),
 kills a cell when its private amount reaches 1, and in the environment has no
-source, a uniform sink waste_sink and diffusion wdiff (Docs/plan-chem.md §7).
+source, a uniform sink waste_sink and diffusion wdiff (Research/Chem/plans/plan-chem.md §7).
 
 Guards:
   1. The general N_chem > 1 code paths with every compound inert reproduce

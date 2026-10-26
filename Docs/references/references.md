@@ -28,7 +28,7 @@ not verify a stable identifier for are omitted rather than guessed.
 - **Channon, A. D. (2001).** *Passing the ALife test: Activity
   statistics classify evolution in Geb as unbounded.* Advances in
   Artificial Life (ECAL 2001), LNCS 2159, Springer.
-  → `Docs/channon_ad_ecal2001.pdf`.
+  → `Docs/references/channon_ad_ecal2001.pdf`.
 - **genelife papers** → `Docs/genelife-1.pdf`, `Docs/genelife-2.pdf`
   (the activity-profile figure referenced by the `q_activity` probe is
   Fig. 3 of genelife-2).
@@ -139,7 +139,7 @@ section of `Docs/# checkpoint 3 July 2026.md`.
 
 ## Kaneko group: cells with catalytic reaction networks (downloaded 2026-10-24, `kaneko/`)
 
-Summary and comparison with chemca: `Docs/2026-10-24_kaneko-literature.md`. All arXiv versions.
+Summary and comparison with chemca: `Docs/references/2026-10-24_kaneko-literature.md`. All arXiv versions.
 
 - **Kaneko, K. & Yomo, T. (1997).** *Isologous diversification: a theory of cell differentiation.* Bull. Math. Biol. 59:139. arXiv adap-org/9606002 → `kaneko/kaneko_yomo1997_isologous_diversification.pdf`.
 - **Furusawa, C. & Kaneko, K. (1998).** *Emergence of multicellular organisms with dynamic differentiation and spatial pattern.* Artificial Life 4:79–93. Author copy (Georgia Tech course page) → `kaneko/furusawa_kaneko1998_multicellular_differentiation_spatial_pattern_ALife.pdf`.

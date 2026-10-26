@@ -183,7 +183,7 @@ every checkpoint.
 - `tests/chem_parity.py`, `tests/test_chem_parity.py`,
   `tests/data/chem_parity_golden.npz` — the parity gate.
 - `chem-test.ipynb` — PASS/FAIL parity demo.
-- `Docs/plan-chem.md` — this document.
+- `Research/Chem/plans/plan-chem.md` — this document.
 
 ---
 
@@ -322,9 +322,9 @@ experimenter injection). Only the waste mass is balanced across it.
 - **Run/Pause label.** `Gallery.show` opened running with the button reading "Run". The front end snaps a slider value to its step (`m_scale` 3.5 becomes 3.5000000000000004) and sends it back. The slider callback took that as a move and paused, and its 200 ms timer then resumed the sim without updating the label. Now a change below float rounding is ignored, and the resume goes through `_set_paused(False)`. `tests/test_controls_pause_label.py` drives `run_with_controls` headless; 2 of its 3 tests fail without the fix.
 - `Chem.ipynb` was re-executed; its text outputs are unchanged, and the film is in the new colors.
 
-## 10. Toxicity as a metaparameter, CHEM-N5, and the two-way exchange experiment (2026-10-23)
+## 10. Toxicity as a metaparameter, [CHEM-N5](../ISSUES.md), and the two-way exchange experiment (2026-10-23)
 
-**Plan (N).** Add waste sliders, write up CHEM-N5 and a toxicity sweep, and test two-way exchange the cheap way (a local film at the balance point).
+**Plan (N).** Add waste sliders, write up [CHEM-N5](../ISSUES.md) and a toxicity sweep, and test two-way exchange the cheap way (a local film at the balance point).
 
 **Done.**
 - **`waste_tox` is a metaparameter** (default 1.0, the old fixed value, so every recipe and scan row loads unchanged).
@@ -332,7 +332,7 @@ experimenter injection). Only the waste mass is balanced across it.
   - It still has to be added by hand to `export_recipe`'s `metaparams_final`, `_init_metaparams`, `_PARAM_KEYS` (`evoca_explore`) and `_PARAM_COLS` (`evoca_gallery`).
   - Sliders for `waste_sink`, `wdiff`, `waste_disp` and `waste_tox` appear when `n_chem == 2`.
   - Tests: `tests/test_waste_tox.py` (5) and the slider tests in `tests/test_controls_pause_label.py`. Six of them fail on the previous Python layer.
-- **CHEM-N5** (159 runs, torque): the balance regime is reproducible but 0.001-0.002 wide in `waste_sink`, and nothing propagates.
+- **[CHEM-N5](../ISSUES.md)** (159 runs, torque): the balance regime is reproducible but 0.001-0.002 wide in `waste_sink`, and nothing propagates.
 - **Toxicity sweep** (notebook): a low `waste_tox` kills everywhere alike, so it gives no refractory contrast. The coarsest mosaic is at `waste_tox` 0.4, `waste_sink` 0.019.
 - **Two-way exchange** (`Research/Chem/Experiments/2026-10-23_twoway_exchange`, a patch, outside the model):
   - the structured band widens;
@@ -340,11 +340,11 @@ experimenter injection). Only the waste mass is balanced across it.
   - traveling phase waves and wave sources appear;
   - spirals are not established.
 - **Chem.ipynb**, new section "No spirals yet" with the N5 figure and table, the toxicity sweep, and the space-time plot and phase maps of the two-way experiment.
-- **Decision open:** CHEM-D4 (adopt two-way exchange, as an option).
+- **Decision open:** [CHEM-D4](../ISSUES.md) (adopt two-way exchange, as an option).
 
-## 11. Two-way waste exchange as an option (CHEM-D4, 2026-10-23)
+## 11. Two-way waste exchange as an option ([CHEM-D4](../ISSUES.md), 2026-10-23)
 
-**Plan (N).** Add two-way exchange as an option, an exchange-mode flag defaulting to one-way so every recipe is unchanged, with a waste-mass test; then run the wave and spiral survey CHEM-N1 under it on torque.
+**Plan (N).** Add two-way exchange as an option, an exchange-mode flag defaulting to one-way so every recipe is unchanged, with a waste-mass test; then run the wave and spiral survey [CHEM-N1](../ISSUES.md) under it on torque.
 
 **Done.**
 - **C.** Per-compound `chem_exch_mode[c]` (0 one-way, 1 two-way), reset to 0 with the chemistry; `evoca_set_chem_exchange_mode` / `evoca_get_chem_exchange_mode`. The two-way branch is the experiment patch verbatim: `d = disp * (a - E)`, capped by the source, and uptake creates the store slot.
@@ -352,13 +352,13 @@ experimenter injection). Only the waste mass is balanced across it.
 - **Tests.** `tests/test_waste_exchange.py` (11): constructed one-way and two-way steps (both directions, the one-way room cutoff, uptake to toxicity, uptake into a cell with no store, dead cells inert), explicit one-way bit-identical to the default, recipe round trip including a recipe without the flag, Restart, validation. Two-way cases added to the per-step waste-mass identity (also with `wdiff` 0) and the energy identity. A C build that ignores the flag fails the three two-way behavior tests. Controls checkbox test.
 - **Fidelity.** After 800 steps at N=128: `waste_exchange=1` gives the experiment patch's state hash, and `waste_exchange=0` the previous `main`'s.
 
-**CHEM-N1** (113 runs, torque, 0 errors).
+**[CHEM-N1](../ISSUES.md)** (113 runs, torque, 0 errors).
 - Two-way exchange gives traveling waves with stationary sources across a broad region:
   - `waste_tox` 0.6-1.0;
   - `waste_sink` 0.015-0.019;
   - all `wdiff`.
 - R is about 0.1, against 0.4 one-way. The wavelength is about 200 cells.
-- No spirals are resolved in 2D. The phase is noisy at 32-64 cells because the colonies are speckle (CHEM-Q4).
+- No spirals are resolved in 2D. The phase is noisy at 32-64 cells because the colonies are speckle ([CHEM-Q4](../ISSUES.md)).
 - The detector module `python/evoca_waves.py` has:
   - a time-mean-centered phase (a spatial-mean center hides a synchronized oscillation);
   - Kuramoto R;

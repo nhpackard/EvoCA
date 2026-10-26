@@ -348,7 +348,7 @@ real death or real parent is mirrored by a uniform draw within the same age clas
 |---|---|---|---|---|
 | **A** (branch's (a)) | Age-structured mirror in the panmictic shadow | No: approximates H2, misses H1 and H3 | $E_{\text{pan}}$ minus age effects | moderate C change; open-ended validation |
 | **B** (branch's (b)) | Marker "floor": compare channel statistics with a neutral marker on the real genealogy | Only if marker kernel and rates match the channel; currently they don't | eg − marker difference | a dyn-space marker is needed for dyn |
-| **C** (branch's (c)) | Accept the bias; report only floor-referenced effect sizes | No | — | none; leaves ACT-D1 blocked |
+| **C** (branch's (c)) | Accept the bias; report only floor-referenced effect sizes | No | — | none; leaves [ACT-D1](../ISSUES.md) blocked |
 | **P** (recommended) | **Pedigree shadow.** For each real cell, R neutral shadow genomes (full 250-bit LUT + egenome) that ride the real parent→child events. At each real birth the child's shadow genomes copy the parent's and get the child's real mutation counts at fresh random positions (`genome_mutate` replay). At each real death or eviction they die with the cell | **Yes**: under content-neutrality the real genome and each shadow genome are exchangeable given the pedigree | $E_{\text{ped}}$: expression-weighted substitution contrast (below); TV becomes meaningful | 49 B × R per cell (25 MB at N=256, R=8). It generalizes the existing per-cell marker. Reuses `genome_mutate` |
 | **S** (preview, no C change) | **Internal synonymous-site contrast.** LUT inputs that are never (or rarely) queried are neutral sites on the *same* genealogy with the *same* per-bit mutation rate (without `restricted_mu`). Compare divergence at expressed inputs with divergence at unexpressed ones | Approximately: needs a clean "never queried" set; the query distribution evolves | purifying selection at expressed inputs; positive selection if expressed sites diverge *faster* | analysis only, using existing data (per-input query counts, allele frequencies) |
 
@@ -394,9 +394,9 @@ the share of divergence that lands on expressed sites, relative to a uniform spr
 - Do not build Option A as the main fix. It is a moving target (H1 and H3 remain) and can become
   anti-conservative.
 - Option P also unifies two workstreams:
-  - the pedigree is the same object as LIN-D2's barcoded clades;
+  - the pedigree is the same object as [LIN-D2](../../Lineage-co-evolution/ISSUES.md)'s barcoded clades;
   - the H1 lineage program can use the same per-cell shadow genomes.
-- **What it unblocks.** ACT-D1 becomes "two channels, each scored by a pedigree-conditioned contrast,
+- **What it unblocks.** [ACT-D1](../ISSUES.md) becomes "two channels, each scored by a pedigree-conditioned contrast,
   Pareto across channels within egene-cost strata".
 
 **D2. Primary selection test.**
