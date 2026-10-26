@@ -23,6 +23,14 @@ not verify a stable identifier for are omitted rather than guessed.
   Theory in Biosciences 135:131–161. DOI 10.1007/s12064-016-0229-7.
   Open author version → `banzhaf2016_defining_simulating_OEE_novelty.pdf`.
 
+- **Pfeiffer, T., Schuster, S., Bonhoeffer, S. (2001).** *Cooperation
+  and competition in the evolution of ATP-producing pathways.* Science
+  292:504–507. DOI 10.1126/science.1058079. The rate-yield trade-off;
+  spatial structure favors the high-yield strategy. Cited in
+  `Docs/energy-gradient.md`. Copy supplied by N (2026-10-26) →
+  `pfeiffer2001_atp_pathways_rate_yield.pdf`. Correction: Science
+  293:1436 (2001), not in the repo.
+
 ## Already in repo (Docs/)
 
 - **Channon, A. D. (2001).** *Passing the ALife test: Activity

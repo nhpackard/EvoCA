@@ -181,12 +181,12 @@ All are reported per unit energy, as the anchor doc requires.
    - Revision: the regularizer `δ`, and a clip at zero mouthful when `Δμ ≤ ε` (no reverse
      reaction in stage 1).
 
-## 9. References (not downloaded)
+## 9. References
 
-None are in `Docs/references/` yet. For Pfeiffer et al. (2001), DOI 10.1126/science.1058079,
-no open copy was found on 2026-10-25: Science is paywalled, and the MDC Berlin repository record
-(edoc.mdc-berlin.de, eprint 4795) has no file. It needs a library login or a request to the authors.
-
+Pfeiffer et al. (2001) is in `Docs/references/`:
+[`pfeiffer2001_atp_pathways_rate_yield.pdf`](references/pfeiffer2001_atp_pathways_rate_yield.pdf)
+(N found a copy, 2026-10-26). A correction to it was published in Science 293:1436 (2001); that
+correction is not in the repo. The others are not downloaded.
 
 - A. J. Lotka (1922), "Contribution to the energetics of evolution", PNAS 8:147.
 - H. T. Odum and R. C. Pinkerton (1955), "Time's speed regulator: the optimum efficiency for
@@ -194,7 +194,7 @@ no open copy was found on 2026-10-25: Science is paywalled, and the MDC Berlin r
 - F. L. Curzon and B. Ahlborn (1975), "Efficiency of a Carnot engine at maximum power output",
   American Journal of Physics 43:22.
 - T. Pfeiffer, S. Schuster and S. Bonhoeffer (2001), "Cooperation and competition in the
-  evolution of ATP-producing pathways", Science 292:504.
+  evolution of ATP-producing pathways", Science 292:504. DOI 10.1126/science.1058079.
 - E. D. Schneider and J. J. Kay (1994), "Life as a manifestation of the second law of
   thermodynamics", Mathematical and Computer Modelling 19:25.
 - H. J. Morowitz (1968), *Energy Flow in Biology*, Academic Press.
