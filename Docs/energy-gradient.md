@@ -25,8 +25,8 @@ L2 (maximum power against efficiency) and L4 (structured flux) in
   power" and "evolution maximizes efficiency" cannot be told apart.
   - Our own data show the symptom. In `chemca`, `gs3` evolved the F → P shortcut, which captures
     twice the energy per conversion (1 against 0.5), and nothing opposed it.
-- **Recommendation (§6):** a single heritable **coupling** trait `n`, the energy captured per
-  unit of food, with an eating rate that falls as `n` approaches the local driving force
+- **Recommendation (§6):** a single heritable **coupling** trait `ε`, the energy captured per
+  unit of food, with an eating rate that falls as `ε` approaches the local driving force
   `Δμ(x) = Δμ0 + ln(F/W)`.
   - This puts the gradient (both reservoirs, locally) and the rate-yield trade-off into the
     food/waste model with one formula.
@@ -54,11 +54,11 @@ In EvoCA's food/waste model the low side limits *survival* (toxicity) but never 
    - As waste builds up, each conversion is worth less, and at equilibrium it is worth nothing.
    - A heat engine is the same: Carnot efficiency `1 − T_c/T_h` depends on the sink temperature.
 2. **It makes speed cost efficiency.**
-   - A conversion that captures `n` units of the available `Δμ` runs at a net rate that falls as
-     `n → Δμ`. In flux-force form, `J ∝ 1 − exp(−(Δμ − n)/kT)`.
+   - A conversion that captures `ε` units of the available `Δμ` runs at a net rate that falls as
+     `ε → Δμ`. In flux-force form, `J ∝ 1 − exp(−(Δμ − ε)/kT)`.
    - Capturing everything means running at equilibrium, infinitely slowly. Running fast means
      capturing little.
-   - So power `n · J(n)` peaks at an intermediate `n`: **maximum power is not maximum efficiency**.
+   - So power `ε · J(ε)` peaks at an intermediate `ε`: **maximum power is not maximum efficiency**.
      Classic forms of this:
      - Odum and Pinkerton's "time's speed regulator" (maximum power at about 50% efficiency);
      - the Curzon–Ahlborn efficiency at maximum power, `1 − sqrt(T_c/T_h)`, for heat engines;
@@ -92,7 +92,7 @@ In EvoCA's food/waste model the low side limits *survival* (toxicity) but never 
     yield depend on `W` couples the waves to energy capture directly, not only through deaths.
 - **Evolvability.** N asks whether a gradient would make the model "more evolvable". A trade-off
   creates a real fitness landscape where there was a ramp:
-  - an interior optimum `n*`;
+  - an interior optimum `ε*`;
   - an optimum that depends on the environment (local `F`, `W`, mixing);
   - frequency dependence (the commons).
 
@@ -105,7 +105,7 @@ In EvoCA's food/waste model the low side limits *survival* (toxicity) but never 
 | | Change | Track | Cost | Bears on | Notes |
 |---|---|---|---|---|---|
 | G1 | Yield per unit food falls with local waste: `y = clip(Δμ(x)/Δμ0, 0, 1)` | A (food/waste) | small (C, one factor in eating) | L2 weakly, L3 | Gradient without a trade-off trait: yield is environmental, not heritable |
-| **G2** | **Heritable coupling `n`**: yield `n`, rate factor `1 − exp(−(Δμ(x) − n))` | A (food/waste) | moderate (one per-cell float trait, mutation, recipe and shadow plumbing) | **L2 directly**, L4 | Recommended; contains G1 as its environmental part |
+| **G2** | **Heritable coupling `ε`**: yield `ε`, rate factor `1 − exp(−(Δμ(x) − ε))` | A (food/waste) | moderate (one per-cell float trait, mutation, recipe and shadow plumbing) | **L2 directly**, L4 | Recommended; contains G1 as its environmental part |
 | G3 | Separated source and sink (vent geometry): `F` regenerates in one region, `W` is removed in another (masks exist: `env_mask`; source/sink masks for waste are listed as a next step in `plan-chem.md`) | A | small (masks) | L1, L4 | Complements G2; Schneider–Kay test: does evolution increase gradient dissipation? |
 | G4 | Concentration-dependent free energies in `chemca`: yield `G_A − G_B + ln([A]/[B])` | B | one-line change in the yield, but Track B | L2 | The `chemca` version of G1/G2 once Track B resumes |
 | — | Tax depending on the local environment (the runner's ambient temperature) | A | small | L3 | Already partly present: toxicity plays this role |
@@ -114,29 +114,29 @@ In EvoCA's food/waste model the low side limits *survival* (toxicity) but never 
 
 All quantities are per site, in units where the vanilla model has yield 1.
 
-- **Driving force:** `Δμ(x) = Δμ0 + ln((F(x) + ε) / (W(x) + ε))`.
+- **Driving force:** `Δμ(x) = Δμ0 + ln((F(x) + δ) / (W(x) + δ))`.
   - `Δμ0` is a metaparameter, the standard free energy of eating.
-  - `ε` regularizes the logarithm.
-- **Trait:** each cell carries `n ∈ [0, n_max]`, the energy captured per unit food. It is
+  - `δ` regularizes the logarithm.
+- **Trait:** each cell carries `ε ∈ [0, ε_max]`, the energy captured per unit food. It is
   inherited and mutates like the egene rates.
 - **Eating:**
-  - mouthful `M' = M · max(0, 1 − exp(−(Δμ(x) − n)))`, where `M` is today's mouthful (egene match,
+  - mouthful `M' = M · max(0, 1 − exp(−(Δμ(x) − ε)))`, where `M` is today's mouthful (egene match,
     caps);
-  - private energy gain `n · M' / n_ref`;
-  - waste produced per unit of energy, `1/n` relative to today, so efficient cells pollute less per
+  - private energy gain `ε · M' / ε_ref`;
+  - waste produced per unit of energy, `1/ε` relative to today, so efficient cells pollute less per
     offspring.
-- **Parity:** with `Δμ0 → ∞` (a metaparameter switch `gradient=0`) and `n = n_ref`, the factor is 1
+- **Parity:** with `Δμ0 → ∞` (a metaparameter switch `gradient=0`) and `ε = ε_ref`, the factor is 1
   and the yield is 1. That is today's model, bit for bit, and the first test.
 - **Where it acts:**
   - near clean, full sites, the driving force is large and the factor is close to 1 for any
-    modest `n`;
-  - in waste-laden or depleted sites, only low-`n` (fast, wasteful) cells can eat at all.
+    modest `ε`;
+  - in waste-laden or depleted sites, only low-`ε` (fast, wasteful) cells can eat at all.
 
-  So `n*` should vary in space and track the waves.
+  So `ε*` should vary in space and track the waves.
 
 **Measurements** (all exist or are small additions):
-- the distribution of `n` over time and space;
-- power per cell `n · M'`;
+- the distribution of `ε` over time and space;
+- power per cell `ε · M'`;
 - efficiency, as energy captured per unit food;
 - the partition (tax / death / overflow);
 - energy per unit of waste.
@@ -145,16 +145,16 @@ All are reported per unit energy, as the anchor doc requires.
 
 ## 7. Predictions and falsifiers
 
-1. **Interior optimum.** Evolved `n` settles strictly inside `(0, Δμ)`.
+1. **Interior optimum.** Evolved `ε` settles strictly inside `(0, Δμ)`.
    - Falsified if it runs to either bound in every environment.
 2. **Mixing decides the strategy** (Pfeiffer et al.). Lower `wdiff` (more structured) gives
-   higher evolved `n` (efficient); higher `wdiff` (well mixed) gives lower `n` (fast).
-   - Falsified if `n*` is independent of `wdiff` at matched total flux.
-3. **Maximum power or maximum efficiency (L2).** Compare evolved `n*` with the `n` that
-   maximizes power at the evolved local `Δμ`, and with the `n` that maximizes efficiency.
+   higher evolved `ε` (efficient); higher `wdiff` (well mixed) gives lower `ε` (fast).
+   - Falsified if `ε*` is independent of `wdiff` at matched total flux.
+3. **Maximum power or maximum efficiency (L2).** Compare evolved `ε*` with the `ε` that
+   maximizes power at the evolved local `Δμ`, and with the `ε` that maximizes efficiency.
    - Lotka/Odum predicts the former.
    - The collapse test of the anchor doc applies: reach the same total flux by different routes
-     (`food_inc`, `Δμ0`, `waste_sink`) and check that `n*` depends only on the flux variables.
+     (`food_inc`, `Δμ0`, `waste_sink`) and check that `ε*` depends only on the flux variables.
 4. **Gradient dissipation (Schneider–Kay, with G3).** Under evolution, the source-to-sink
    difference across the colony shrinks over time against a mutation-off control.
 
@@ -178,10 +178,15 @@ All are reported per unit energy, as the anchor doc requires.
    - Revision: every comparison is at matched total flux, with the density/turnover decorrelation
      the anchor doc requires (prediction 3).
 5. **A numerical hazard.** `ln(F/W)` diverges as `W → 0` and is undefined at `F = 0`.
-   - Revision: the regularizer `ε`, and a clip at zero mouthful when `Δμ ≤ n` (no reverse
+   - Revision: the regularizer `δ`, and a clip at zero mouthful when `Δμ ≤ ε` (no reverse
      reaction in stage 1).
 
-## 9. References (not yet downloaded)
+## 9. References (not downloaded)
+
+None are in `Docs/references/` yet. For Pfeiffer et al. (2001), DOI 10.1126/science.1058079,
+no open copy was found on 2026-10-25: Science is paywalled, and the MDC Berlin repository record
+(edoc.mdc-berlin.de, eprint 4795) has no file. It needs a library login or a request to the authors.
+
 
 - A. J. Lotka (1922), "Contribution to the energetics of evolution", PNAS 8:147.
 - H. T. Odum and R. C. Pinkerton (1955), "Time's speed regulator: the optimum efficiency for
