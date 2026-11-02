@@ -119,3 +119,54 @@ cap. The first is the one that matters most (above).
    store F → W, as EvoCA's tax does, so waste is made at the tax rate instead of at intake.
 3. A noise control: add per-site multiplicative noise to ChemCA uptake, to test whether noise alone turns
    the clean spirals into EvoCA's turbulence.
+
+## 6. With ChemCA's food cap (2026-11-02, later)
+
+ChemCA gained `cap_<c>` (commit `678695e`): `inc_F 0.012, cap_F 1, sink_F 0` is EvoCA's food rule
+exactly. **s5** (`s5_capscan.py`, torque, 150 runs, N = 256): u_F × tox_W × u_W × sink_W.
+40 extinct. Best by the same score (0.19, against 0.84 before the cap):
+
+| | alive | F | W | period |
+|---|---|---|---|---|
+| EvoCA target | 0.22 | 0.53 | 0.19 | 146 |
+| cap137 (u_F 1, tox_W 1.6, u_W 0.4, sink_W 0.05) | 0.20 | 0.52 | 0.21 | 147 |
+| cap105 (u_F 0.75, tox_W 1.6, u_W 0.2, sink_W 0.05) | 0.22 | 0.52 | 0.22 | 144 |
+
+Toxicity never binds in these (tox share 0, identical results for tox_W 1.6, 2.4, off): the
+refractory phase is food depletion alone, where EvoCA has 13% toxic deaths.
+
+Spiral test (s3, N = 512, 2 seeds), 8-cell blocks:
+
+| run | cores/frame | 150 steps | chance | 600 steps | chance |
+|---|---|---|---|---|---|
+| evoca | 320 | 0.82 | 0.66 | 0.73 | 0.67 |
+| cap105 | 641 | 0.94 | 0.90 | 0.91 | 0.90 |
+| cap137 | 170 | 0.73 | 0.37 | 0.61 | 0.38 |
+
+So the cap fixes the levels, and the lattice fills (movie `figs/s4_cap137_s0.mp4`, sheet
+`figs/s4_sheet_cap137.png`: the right panel now looks like EvoCA). cap105 is EvoCA-like turbulence
+(dense defects, no persistence); cap137 keeps some persistent cores (+0.23 over chance at four
+periods; EvoCA +0.06). One ChemCA knob (u_F, waste export) moves the port between EvoCA's
+turbulence and persistent spirals.
+
+## 7. N's question: how to widen the spacing between fronts (s6)
+
+`s6_wavelength.py`, torque, 32 runs of the recipe (mutation on), N = 512, 6000 steps: food_inc ×
+gdiff × waste_sink. Scale = first zero of the row autocorrelation of F (patch half-size); no run has
+a positive second peak, so there is no regular wave train, only a typical patch size.
+
+| food_inc | gdiff 0.08: scale | period | alive |
+|---|---|---|---|
+| 0.012 | 32 | 147 | 0.27 |
+| 0.008 | 38 | 200 | 0.16 |
+| 0.006 | 44 | (236 at waste_sink 0.01) | 0.11 |
+| 0.004 | 50 | — | 0.07 |
+
+(waste_sink 0.019; 0.010 is similar except at food_inc 0.012, where it breaks the pattern.)
+
+- **Lower food_inc widens the fronts' spacing** (32 → 50 cells from 0.012 to 0.004, roughly
+  food_inc^-0.4) and lengthens the period (147 → 236), at the cost of population (0.27 → 0.07).
+- **gdiff has a narrow window.** Only 0.08 (the recipe's value) gives fronts. At 0.02 every run
+  goes extinct (in the initial boom and bust); at 0.3 and 1.0 the food is mixed so fast that no
+  fronts form: a fine, uniform scatter of cells (scale 3–9).
+- Figures: `figs/s6_sweep_wsink0.019.png`, `figs/s6_sweep_wsink0.01.png`.
