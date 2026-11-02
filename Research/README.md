@@ -66,7 +66,9 @@ Resolving locations in code: use [`python/evoca_paths.py`](../python/evoca_paths
 finds a recipe by bare filename, and `evoca_from_scan('<date>_<name>')` and
 the other scan helpers accept a bare scan name. A **new** recipe goes to
 the workstream named in the `EVOCA_WORKSTREAM` environment variable, else
-to `Research/_unsorted/Runs/` (sort it later with `git mv`).
+to the workstream whose directory holds the running notebook
+(`Chem/Chem.ipynb` exports to `Chem/Runs/`), else to
+`Research/_unsorted/Runs/` (sort it later with `git mv`).
 
 Lists of configurations (a regime gallery, a set of Pareto picks, ...) are
 `Gallery` objects from [`python/evoca_gallery.py`](../python/evoca_gallery.py):

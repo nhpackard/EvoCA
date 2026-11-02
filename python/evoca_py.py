@@ -2164,8 +2164,10 @@ class EvoCA:
                       workstream=None, runs_dir=None):
         """Export current initialization recipe to
         <runs_dir>/<date>_<descriptor>.evoca. runs_dir defaults to
-        Research/<workstream>/Runs; workstream defaults to the
-        EVOCA_WORKSTREAM env var, else Research/_unsorted/Runs.
+        Research/<workstream>/Runs; workstream defaults to
+        evoca_paths.default_workstream(): the EVOCA_WORKSTREAM env var, else
+        the workstream containing the working directory (the notebook's),
+        else Research/_unsorted/Runs.
 
         Returns the filepath written.
         """

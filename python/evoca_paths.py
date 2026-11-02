@@ -7,8 +7,11 @@ Runs (.evoca recipes) and Scans (campaign dirs) belong to a workstream:
 
 The workstream list below is the single source; directories are derived
 from it. A new recipe with no workstream given goes to the workstream in
-the EVOCA_WORKSTREAM environment variable, else to Research/_unsorted/Runs
-(sort it later with `git mv`).
+the EVOCA_WORKSTREAM environment variable, else to the workstream whose
+directory contains the current working directory (a notebook's kernel runs
+in the notebook's directory, so Research/Chem/Chem.ipynb exports to
+Research/Chem/Runs), else to Research/_unsorted/Runs (sort it later with
+`git mv`).
 """
 import os
 
@@ -33,10 +36,19 @@ def _check(workstream):
     return workstream
 
 
+def cwd_workstream():
+    """The workstream whose Research/<ws>/ directory contains the current
+    working directory (at any depth, e.g. <ws>/digests), else None."""
+    rel = os.path.relpath(os.path.realpath(os.getcwd()), os.path.realpath(RESEARCH))
+    ws = rel.split(os.sep)[0]
+    return ws if ws in WORKSTREAMS else None
+
+
 def default_workstream():
-    """EVOCA_WORKSTREAM if set (validated), else the _unsorted bucket."""
+    """EVOCA_WORKSTREAM if set (validated), else cwd_workstream(), else
+    the _unsorted bucket."""
     ws = os.environ.get('EVOCA_WORKSTREAM')
-    return _check(ws) if ws else UNSORTED
+    return _check(ws) if ws else (cwd_workstream() or UNSORTED)
 
 
 def runs_dir(workstream=None):
