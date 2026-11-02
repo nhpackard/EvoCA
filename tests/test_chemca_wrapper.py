@@ -159,3 +159,17 @@ def test_set_seed_after_state_warns():
     s = _fresh(8, seed=1)
     with pytest.warns(UserWarning, match='no longer reproduces'):
         s.set_seed(2)
+
+
+def test_build_script_builds_when_run(tmp_path):
+    """`python3 python/evoca_build.py` must build (it once had no __main__
+    and silently did nothing, leaving a stale library without chemca)."""
+    import sys as _sys
+    root = tmp_path / 'repo'
+    shutil.copytree(os.path.join(evoca_build.ROOT, 'C'), root / 'C',
+                    ignore=shutil.ignore_patterns('*.dylib', '*.so'))
+    shutil.copytree(os.path.join(evoca_build.ROOT, 'python'), root / 'python',
+                    ignore=shutil.ignore_patterns('__pycache__'))
+    subprocess.run([_sys.executable, str(root / 'python' / 'evoca_build.py')], check=True,
+                   capture_output=True)
+    assert os.path.exists(evoca_build.lib_path(str(root)))

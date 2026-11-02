@@ -1,14 +1,19 @@
 """Build the one shared library (EvoCA + ChemCA + shared core).
 
 The single Python statement of the build: tests/conftest.py and the
-notebooks call build(); the Makefile and CLAUDE.md carry the same command
-for the shell:
+notebooks call build(), and run as a script it builds (if stale; --force
+always):
+
+    python3 python/evoca_build.py [--force]
+
+The Makefile and CLAUDE.md carry the same command for the shell:
 
     gcc -O2 -Wall -fPIC -dynamiclib -o C/libevoca.dylib C/evoca.c C/core.c C/chemca.c
 """
 import os
 import platform
 import subprocess
+import sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
@@ -55,3 +60,7 @@ def build(root=ROOT, force=False):
         if r.stderr.strip():
             print(r.stderr)
     return lib_path(root)
+
+
+if __name__ == '__main__':
+    print(build(force='--force' in sys.argv[1:]))
