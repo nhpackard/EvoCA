@@ -5,7 +5,7 @@
 #include <math.h>
 
 /*
- * ChemCA engine. See chemca.h for the model and Docs/plan-chemca.md for the
+ * ChemCA engine. See chemca.h for the model and Research/Chem/plans/plan-chemca.md for the
  * design choices. Step order (chemca_step):
  *   1. environment reactions (exponential integrator per site), then the
  *      open-mode source and sink;
@@ -40,9 +40,9 @@ static long     g_step = 0;
 static uint8_t *alive  = NULL;   /* [cells] */
 /* Dense per-cell stores [cells * K], cell-major (store[i*K + c]). This
  * departs from the sparse slot layout of pinned decision A
- * (Docs/plan-chem.md §2), which targets universes of ~1000 compounds; for
+ * (Research/Chem/plans/plan-chem.md §2), which targets universes of ~1000 compounds; for
  * K <= 8 dense is simpler and faster, and the layout is internal to this
- * file (Docs/2026-10-23_chem-model-v2.md §9b). */
+ * file (Research/Chem/plans/2026-10-23_chem-model-v2.md §9b). */
 static float   *store  = NULL;
 static float   *e_en   = NULL;   /* [cells] energy */
 static uint8_t *rg     = NULL;   /* [cells * NSLOT * GENE_BYTES] */

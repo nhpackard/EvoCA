@@ -1,7 +1,7 @@
 """ChemCA: Python wrapper for the metabolism-based agent model (C/chemca.c).
 
-Design: Docs/2026-10-23_chem-model-v2.md §4-10; choices and status:
-Docs/plan-chemca.md. The interface parallels EvoCA where it makes sense:
+Design: Research/Chem/plans/2026-10-23_chem-model-v2.md §4-10; choices and status:
+Research/Chem/plans/plan-chemca.md. The interface parallels EvoCA where it makes sense:
 
     sim = ChemCA()
     sim.init(128, preset='gs3', mu_rgene=0.01)

@@ -214,7 +214,7 @@ static int    gfood_per     = 1;  /* env food-regen PERIOD: regen fires only
 static int    gfood_cap     = 1;  /* 1 (default) = cap the Phase-3 mouthful at
                                    * the food actually present, max(F,0), so
                                    * F_food can never be overdrawn (A9 fix,
-                                   * Docs/Oct2026/06-seeding-findings.md).
+                                   * Docs/Archive/Oct2026/06-seeding-findings.md).
                                    * 0 = legacy uncapped rule (pre-2026-10-15
                                    * runs): mouthful = (m/25)*score*F capped
                                    * only by headroom, which overdraws F when
@@ -279,7 +279,7 @@ static float   *chem_amt = NULL;   /* [N*N*CHEM_MAX]  amount per slot */
 
 /* ── Chem milestone 2: environment fields, exchange and metabolism ──────
  * The general mechanism that food/waste is one configuration of
- * (Docs/plan-chem.md §7). Every compound c has an environmental field:
+ * (Research/Chem/plans/plan-chem.md §7). Every compound c has an environmental field:
  * compound 0 ("food", the energy compound) uses F_food with its existing
  * source food_inc (on env_mask), diffusion gdiff and the F <= 1 regen cap;
  * each compound c >= 1 has its own field chem_env[c] with a uniform source

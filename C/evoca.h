@@ -37,7 +37,7 @@
  * The `chem` branch generalises the single scalar private-food store into a
  * per-cell SPARSE vector of compound amounts (an active-compound slot list,
  * mirroring the egene slots — NOT a dense per-compound plane; see
- * Docs/plan-chem.md for the tractability argument).
+ * Research/Chem/plans/plan-chem.md for the tractability argument).
  *
  * CHEM_MAX is the per-cell slot capacity (how many distinct compounds one
  * agent may carry at once), independent of the size of the compound universe
@@ -79,7 +79,7 @@ void evoca_set_m_scale(float m);
  * stores. Returns 1 on success, 0 if the value is unsupported (it is then
  * clamped to 1 and a one-line notice is emitted). */
 int  evoca_set_n_chem(int n);
-/* Milestone 2 (Docs/plan-chem.md §7): environment fields, exchange and
+/* Milestone 2 (Research/Chem/plans/plan-chem.md §7): environment fields, exchange and
  * metabolism for compounds c >= 1; food/waste is N_chem=2 with waste
  * energy 0, toxic at 1, the tax's metabolic product. */
 void   evoca_set_chem_env(int c, float inc, float sink, float diff);

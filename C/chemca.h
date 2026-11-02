@@ -2,8 +2,8 @@
 #define CHEMCA_H
 
 /*
- * ChemCA: a metabolism-based agent model (Docs/2026-10-23_chem-model-v2.md,
- * §4-10; Docs/plan-chemca.md). Lives in the same library as EvoCA but
+ * ChemCA: a metabolism-based agent model (Research/Chem/plans/2026-10-23_chem-model-v2.md,
+ * §4-10; Research/Chem/plans/plan-chemca.md). Lives in the same library as EvoCA but
  * shares only the pure helpers in core.c; all its state is private to
  * chemca.c, including its own PRNG state.
  *

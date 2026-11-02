@@ -1,4 +1,4 @@
-"""ChemCA reproduction gate 'mass' (Kaneko style; Docs/plan-chemca.md).
+"""ChemCA reproduction gate 'mass' (Kaneko style; Research/Chem/plans/plan-chemca.md).
 
 Body compounds are those with transport rate u_c = 0. With
 repro_gate='mass' a cell divides when its body mass reaches mass_repro (a

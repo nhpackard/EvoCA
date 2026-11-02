@@ -1,6 +1,6 @@
 # chemca: plan and implementation summary
 
-For N, 2026-10-24. Branch `chemca` (not merged). Spec: `Docs/2026-10-23_chem-model-v2.md`
+For N, 2026-10-24. Branch `chemca`, merged to `main` 2026-11-02 (§10). Spec: `Research/Chem/plans/2026-10-23_chem-model-v2.md`
 (status section, §4-10) and the coordinator's brief, with three additions N approved during
 the work: a mass reproduction gate, an isologous-diversification readout, and the gs3 rates
 from the closed-loop Gray-Scott study (`Research/Chem/Experiments/2026-10-24_gs_closed_regimes`,
@@ -29,7 +29,7 @@ on main).
 
 | Step | Content | Status |
 |---|---|---|
-| 0 | `C/core.c`: PRNG step, Poisson, one box-blur diffusion (CHEM-P1); evoca.c calls them; build stated once | done, commit c41e4e0 |
+| 0 | `C/core.c`: PRNG step, Poisson, one box-blur diffusion ([CHEM-P1](../ISSUES.md)); evoca.c calls them; build stated once | done, commit c41e4e0 |
 | 1 | `C/chemca.c/.h`: state, genes, step, bookkeeping, API, colorize | done, 1dc4869 |
 | 2 | `python/chemca_py.py`, presets, recipes, dispatch, `run_chemca`, headless frames | done, 35df159 |
 | 3 | tests `tests/test_chemca_*.py`, `tests/test_core_diffuse.py`; mutation checks | done |
@@ -273,3 +273,38 @@ All 31 chemca mutations were caught (run twice, before and after the final prese
   - `composition_clusters` subsamples to 1500 cells (an O(n²) silhouette).
 - **Opportunity (not done):** a C-side `chemca_step_checked` returning the per-step mass and energy residuals would make the identities free in scans.
 - **Opportunity (not done):** `controls.py` → sim methods plus a slider registry, which the doc (§9c) already plans. It is the next pluggable point, and the one most worth `/code-review ultra`.
+
+## 10. Review and merge (2026-11-02)
+
+N ran `/code-review ultra` on `chemca` → `main` (32 files, +3735/−211). It reported nine
+findings, none in the C engine's physics or mass accounting. All nine were confirmed against the
+code and fixed on the branch:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | `init`/`reinit`/`free` kept a stale per-site light field, restored by the next `update()` | cleared on all three |
+| 2 | `evoca_nb.load_recipe` ignored `seed` for ChemCA; recipes could carry `seed: None` | N's design: `state()` always resolves and records the seed it used (explicit, else the last `set_seed()`, else a fresh draw), so no recipe lacks one; loaders replay it and an explicit `seed=` replaces it; a seedless recipe warns and uses 0; `set_seed()` after `state()` warns |
+| 3 | the light field is not serialized and was silently dropped on reload | `load_recipe` refuses such a recipe, as it does an alive array |
+| 4 | a failed `init()` stored the new N first (heap overflow in the getters) | N and params committed only after `chemca_init` succeeds |
+| 5 | `set_alive`, `set_genes` did not check array sizes | checked |
+| 6 | gcc's stderr was hidden on a failed build | `evoca_build.BuildError` shows it |
+| 7 | `params()` docstring named a call that raises | names `build_chemca` / `build_sim` |
+| 8 | `ChemCA.rgb` duplicated `evoca_nb.argb_to_rgb` | reuses it |
+| 9 | `_mass0` computed and never read | removed |
+
+Tests: `tests/test_chemca_wrapper.py` (13). Each regression test was shown to fail without its fix
+(the docstring test for #7 passes either way, as expected). Commits `0530e0c`, `77fa1ad`.
+
+Merge: `main` merged into `chemca` cleanly (the 2026-10-25 reorganization). This plan moved from
+`Docs/` to `Research/Chem/plans/`. Stale `Docs/` paths left by the reorganization in code
+comments, CLAUDE.md and `Research/Chem/Chem.ipynb` were rewritten to the new locations. Full
+suite: 324 passed. Then `chemca` was merged into `main`.
+
+Noted during review, not changed:
+
+- Every `ChemCA` object shares the one C world: a second instance re-initializes the first.
+- EvoCA recipes do not record the C PRNG seed or the `v` draw. N's workflow is twiddle → Restart →
+  watch → Export; init vs final metaparameters is the record of twiddling for now (N).
+
+Next: a ChemCA GUI (`run_with_controls` for ChemCA, §9 opportunity), plan first. N also wants
+a parity check: chemca configured to reproduce EvoCA's two-species food/waste case.

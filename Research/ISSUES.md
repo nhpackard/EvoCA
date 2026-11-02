@@ -248,7 +248,8 @@ _Updated 2026-10-23_
 
 ### Plans and design docs
 - [`plans/plan-chem.md`](Chem/plans/plan-chem.md): The `chem` branch plan: N_chem machinery (milestone 1, done), food/waste (milestone 2, done, on `main`). Milestone 3, the reaction network, is open as [CHEM-N4](Chem/ISSUES.md). Review fixes in §8 ([CHEM-F1](Chem/ISSUES.md)).
-- [`plans/2026-10-23_chem-model-v2.md`](Chem/plans/2026-10-23_chem-model-v2.md): Chem model v2 (`chemca`), a metabolism-based agent: design only, Track B ([CHEM-D5](Chem/ISSUES.md)). Its implementation is on the unmerged `chemca` branch.
+- [`plans/2026-10-23_chem-model-v2.md`](Chem/plans/2026-10-23_chem-model-v2.md): Chem model v2 (`chemca`), a metabolism-based agent: design only, Track B ([CHEM-D5](Chem/ISSUES.md)). Implemented as `chemca` (merged to `main` 2026-11-02; see `plan-chemca.md`).
+- [`plans/plan-chemca.md`](Chem/plans/plan-chemca.md): The `chemca` implementation plan and summary: shared core (`C/core.c`), the ChemCA engine (`C/chemca.c`), its Python layer (`python/chemca_py.py`), presets `fw2` and `gs3`, tests and the test notebook `tests/notebooks/chemca-test.ipynb`. Merged 2026-11-02 after the cloud `/code-review ultra` (9 findings fixed). No GUI yet.
 
 ### Decisions needed (N)
 - **[CHEM-D2](Chem/ISSUES.md)**: Should environmental waste saturate? — Currently `W` is unbounded and mass-conserving: excretion stops at `W >= 1`, but deaths still return waste, so where the sink is slower than production (`waste_sink` < tax x density) `W` piles up to 5-12, cells can never excrete, and waste acts as uniform aging (lifespan ~ 1/tax). Option: cap `W` at 1 with the excess discarded and booked as an overflow sink, the counterpart of the food `F <= 1` regeneration cap (N's "parallel to food" principle). Recommendation: keep unbounded for now (conserving, and the balance regime is where structure appears); revisit if the aging regime matters.

@@ -3,7 +3,7 @@
 
 /*
  * Shared core: pure helpers used by both models in the library
- * (EvoCA in evoca.c, ChemCA in chemca.c). Docs/2026-10-23_chem-model-v2.md §9b.
+ * (EvoCA in evoca.c, ChemCA in chemca.c). Research/Chem/plans/2026-10-23_chem-model-v2.md §9b.
  *
  * Nothing here holds state. Each model owns its own PRNG state word and
  * passes a step function in where a stream is needed, so the two models

@@ -1,4 +1,4 @@
-"""ChemCA constructed one-step fixtures (Docs/plan-chemca.md, tests).
+"""ChemCA constructed one-step fixtures (Research/Chem/plans/plan-chemca.md, tests).
 
 Each test switches on one mechanism in an otherwise inert world
 (chemca_helpers.isolated) and compares with a hand calculation.
