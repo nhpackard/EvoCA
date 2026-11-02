@@ -28,6 +28,7 @@ import ctypes
 import hashlib
 import json
 import os
+import warnings
 from datetime import datetime
 
 import numpy as np
@@ -77,8 +78,14 @@ STATE_DEFAULTS = dict(
     genes='preset',    # 'preset' | 'random'
     k_idx0=None,       # None: the preset's k_idx; int: all preset genes; list: per gene
     E_noise=0.0,       # multiplicative uniform noise on the initial E
-    seed=None,         # set_seed + numpy draws; recorded for reproducibility
+    seed=None,         # set_seed + numpy draws; None: the set_seed() value, else a fresh
+                       # draw. The seed actually used is recorded, so every recipe has one
 )
+
+
+def fresh_seed():
+    """A new 32-bit seed from OS entropy, for a run given no seed."""
+    return int(np.random.SeedSequence().entropy & 0xFFFFFFFF)
 
 
 def gene(A, B, C=None, m=0, k_idx=16):
@@ -209,6 +216,7 @@ class ChemCA:
         self._params = None
         self._init_params = None
         self._state_params = {}
+        self._seed = None             # last set_seed(); state(seed=None) uses it
 
     # ── Lifecycle ────────────────────────────────────────────────────
 
@@ -311,8 +319,16 @@ class ChemCA:
         self._light_field = None
 
     def set_seed(self, seed):
-        """Reseed ChemCA's own C PRNG (independent of EvoCA's)."""
-        self._lib.chemca_set_seed(int(seed) & 0xFFFFFFFF)
+        """Reseed ChemCA's own C PRNG (independent of EvoCA's). Before
+        state(), it is the seed state() uses (and records) when given none.
+        After state() it changes the run without changing the recipe's
+        seed, so the recipe no longer reproduces the run: warned."""
+        self._seed = int(seed) & 0xFFFFFFFF
+        self._lib.chemca_set_seed(self._seed)
+        if self._state_params:
+            warnings.warn("set_seed() after state(): the recipe's seed "
+                          f"({self._state_params.get('seed')}) no longer reproduces this run",
+                          stacklevel=2)
 
     # ── Introspection ────────────────────────────────────────────────
 
@@ -390,8 +406,11 @@ class ChemCA:
             raise ValueError(f"unknown state params {bad}")
         s = {**STATE_DEFAULTS, **kw}
         N, L, K = self._N, self._lib, len(self.compounds)
-        if s['seed'] is not None:
-            self.set_seed(s['seed'])
+        if s['seed'] is None:
+            s['seed'] = self._seed if self._seed is not None else fresh_seed()
+        s['seed'] = int(s['seed']) & 0xFFFFFFFF
+        self._state_params = {}       # not yet initialized: set_seed must not warn
+        self.set_seed(s['seed'])
         rng = np.random.default_rng(s['seed'])
 
         al = s['alive']
@@ -679,8 +698,11 @@ class ChemCA:
         return path
 
 
-def load_recipe(data, recipe='init', N=None, lib_path=None):
-    """A chemca recipe (dict or path) -> (sim, display_kwargs), state applied."""
+def load_recipe(data, recipe='init', N=None, lib_path=None, seed=None):
+    """A chemca recipe (dict or path) -> (sim, display_kwargs), state applied.
+    seed: None replays the recipe's own seed; an int replaces it (e.g. a
+    replicate). A recipe with no seed (made before seeds were always
+    recorded) loads with seed 0 and a warning."""
     if not isinstance(data, dict):
         with open(data) as f:
             data = json.load(f)
@@ -694,6 +716,12 @@ def load_recipe(data, recipe='init', N=None, lib_path=None):
         raise ValueError("recipe was made from an alive array, which is not serialized")
     if data.get('light_field'):
         raise ValueError("recipe was made with a per-site light field, which is not serialized")
+    if seed is not None:
+        init['seed'] = seed
+    elif init.get('seed') is None:
+        warnings.warn("recipe has no seed (made before seeds were always recorded); "
+                      "loading with seed 0", stacklevel=2)
+        init['seed'] = 0
     sim.state(**init)
     disp = data.get('display', {})
     kw = {'colormode': disp['colormode']} if disp.get('colormode') else {}

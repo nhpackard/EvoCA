@@ -1,6 +1,7 @@
 """ChemCA Python-wrapper defects from the 2026-11-02 ultrareview of chemca:
 stale light field, light field lost on reload, N committed before C accepts
 it, unchecked array sizes, hidden gcc errors, params() round trip."""
+import json
 import os
 import shutil
 import subprocess
@@ -103,3 +104,58 @@ def test_build_error_shows_gcc_stderr(tmp_path):
     with pytest.raises(subprocess.CalledProcessError) as ei:
         evoca_build.build(root=str(tmp_path), force=True)
     assert 'broken_on_purpose' in str(ei.value)
+
+
+# ── seeds: every recipe records the seed its run used (N, 2026-11-02) ─
+
+def _run_hash(sim, n=30):
+    sim.step(n)
+    return sim.state_hash()
+
+
+def test_unseeded_run_records_its_seed_and_reloads_identically(tmp_path):
+    import evoca_nb
+    a = ChemCA()
+    a.init(8)
+    a.state()                                # no seed given
+    seed = a.state_params['seed']
+    assert isinstance(seed, int)
+    p = a.export_recipe('noseed', runs_dir=str(tmp_path))
+    h = _run_hash(a)
+    assert json.load(open(p))['initialization']['seed'] == seed
+    assert _run_hash(load_recipe(p)[0]) == h
+    assert _run_hash(evoca_nb.load_recipe(p)[0]) == h        # notebook door
+
+
+def test_set_seed_before_state_is_the_recorded_seed():
+    s = ChemCA()
+    s.init(8)
+    s.set_seed(1234)
+    s.state()
+    assert s.state_params['seed'] == 1234
+
+
+def test_caller_seed_replaces_recipe_seed(tmp_path):
+    import evoca_nb
+    p = _fresh(8, seed=5).export_recipe('s5', runs_dir=str(tmp_path))
+    ref = _run_hash(_fresh(8, seed=9))
+    # one at a time: every ChemCA shares the single C world
+    for load in (load_recipe, evoca_nb.load_recipe):
+        sim = load(p, seed=9)[0]
+        assert sim.state_params['seed'] == 9
+        assert _run_hash(sim) == ref
+
+
+def test_recipe_without_seed_warns_and_uses_0(tmp_path):
+    rec = _fresh(8, seed=0).recipe('legacy')
+    rec['initialization']['seed'] = None
+    with pytest.warns(UserWarning, match='no seed'):
+        sim, _ = load_recipe(rec)
+    assert sim.state_params['seed'] == 0
+    assert _run_hash(sim) == _run_hash(_fresh(8, seed=0))
+
+
+def test_set_seed_after_state_warns():
+    s = _fresh(8, seed=1)
+    with pytest.warns(UserWarning, match='no longer reproduces'):
+        s.set_seed(2)

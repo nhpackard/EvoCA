@@ -63,23 +63,33 @@ def _check_overrides(overrides):
         raise TypeError(f"no EvoCA.update_<key>() setter for overrides {bad}")
 
 
-def load_recipe(name, N=None, seed=0, recipe='init', seed_v=True,
+def load_recipe(name, N=None, seed=None, recipe='init', seed_v=True,
                 shadow=False, **overrides):
-    """import_run(name, N, recipe), then make it reproducible: set_seed(seed)
-    and, if seed_v, a v field from np.random.default_rng(seed) (import_run
-    draws v from an unseeded generator). Overrides go through the
-    update_<key>() setters; shadow=True calls neutral_enable() last.
+    """import_run(name, N, recipe), then make it reproducible.
+    EvoCA: set_seed(seed) (None -> 0) and, if seed_v, a v field from
+    np.random.default_rng(seed) (import_run draws v from an unseeded
+    generator); overrides go through the update_<key>() setters.
+    ChemCA: the recipe records the seed its run used and import_run replays
+    it; an int seed replaces it (the state is rebuilt with that seed);
+    overrides go through update().
+    shadow=True calls neutral_enable() last (EvoCA only).
     Returns (sim, display_kwargs)."""
-    sim, kw = import_run(name, N=N, recipe=recipe)
+    if seed is not None:
+        with warnings.catch_warnings():     # a missing recipe seed is moot here
+            warnings.filterwarnings('ignore', message='recipe has no seed')
+            sim, kw = import_run(name, N=N, recipe=recipe)
+    else:
+        sim, kw = import_run(name, N=N, recipe=recipe)
     if not isinstance(sim, EvoCA):
-        # ChemCA: state() already applied the recipe's own seed, so the run
-        # is reproducible as loaded; overrides go through update().
         if shadow:
             raise ValueError("shadow is an EvoCA probe")
+        if seed is not None and int(seed) != sim.state_params['seed']:
+            sim.state(**{**sim.state_params, 'seed': int(seed)})
         if overrides:
             sim.update(**overrides)
         return sim, kw
     _check_overrides(overrides)
+    seed = 0 if seed is None else seed
     sim.set_seed(seed)
     if seed_v:
         n = sim._N
@@ -91,11 +101,11 @@ def load_recipe(name, N=None, seed=0, recipe='init', seed_v=True,
     return sim, kw
 
 
-def sim_from_scan(scan, config_idx, N=None, seed=0, runs_dir=None,
+def sim_from_scan(scan, config_idx, N=None, seed=None, runs_dir=None,
                   recipe='init', seed_v=True, shadow=False, **overrides):
     """A scan row as a live sim: evoca_from_scan (into a throwaway temp dir
-    unless runs_dir is given, so Runs/ is never littered) -> load_recipe.
-    Returns (sim, display_kwargs)."""
+    unless runs_dir is given, so Runs/ is never littered) -> load_recipe
+    (seed as there). Returns (sim, display_kwargs)."""
     import evoca_explore as ee
     _check_overrides(overrides)
     tmp = None
