@@ -209,7 +209,6 @@ class ChemCA:
         self._params = None
         self._init_params = None
         self._state_params = {}
-        self._mass0 = None
 
     # ── Lifecycle ────────────────────────────────────────────────────
 
@@ -225,9 +224,16 @@ class ChemCA:
             raise ValueError(f"unknown ChemCA params for preset {preset!r}: {unknown}")
         p.update(params)
         self._check(p)
-        self._N = int(N)
-        self._params = p
-        self._apply_params()
+        # commit N and params only once C has accepted them: a failed
+        # chemca_init leaves the old world allocated, and every getter sizes
+        # its buffer from self._N
+        old = self._N, self._params
+        self._N, self._params = int(N), p
+        try:
+            self._apply_params()
+        except RuntimeError:
+            self._N, self._params = old
+            raise
 
     def reinit(self):
         """Re-allocate the world from the current metaparameters (empty
@@ -257,7 +263,7 @@ class ChemCA:
         self._push_params()
         self._init_params = dict(p)
         self._state_params = {}
-        self._mass0 = None
+        self._light_field = None      # chemca_init dropped C's field
 
     def _push_params(self):
         """Push every metaparameter in self._params to C (no reallocation)."""
@@ -302,6 +308,7 @@ class ChemCA:
     def free(self):
         self._lib.chemca_free()
         self._N = 0
+        self._light_field = None
 
     def set_seed(self, seed):
         """Reseed ChemCA's own C PRNG (independent of EvoCA's)."""
@@ -330,7 +337,9 @@ class ChemCA:
         return c if isinstance(c, (int, np.integer)) else self.compounds.index(c)
 
     def params(self):
-        """Current metaparameters, suitable for init(N, **d) (with model)."""
+        """Current metaparameters with 'model' and 'N': a flat params dict
+        for build_chemca(d) or evoca_explore.build_sim(d) (not init(N, **d),
+        which takes neither key)."""
         return {'model': 'chemca', 'N': self._N, **self._params}
 
     def colormode_count(self):
@@ -428,11 +437,10 @@ class ChemCA:
         else:
             raise ValueError(f"unknown genes {s['genes']!r}")
         self._state_params = s
-        self._mass0 = self.mass()['total']
 
     # Low-level setters (constructed fixtures, tests).
     def set_alive(self, a):
-        a = np.ascontiguousarray(np.asarray(a).reshape(-1) != 0, np.uint8)
+        a = np.ascontiguousarray(np.asarray(a).reshape(self._N * self._N) != 0, np.uint8)
         self._lib.chemca_set_alive(_ptr(a, _u8p))
 
     def set_E(self, c, E):
@@ -459,8 +467,9 @@ class ChemCA:
 
     def set_genes(self, genes, active):
         """Full arrays: genes (N, N, 8, 5) uint8, active (N, N) uint8."""
-        g = np.ascontiguousarray(genes, np.uint8).reshape(-1)
-        a = np.ascontiguousarray(active, np.uint8).reshape(-1)
+        n = self._N * self._N
+        g = np.ascontiguousarray(genes, np.uint8).reshape(n * NSLOT * GENE_BYTES)
+        a = np.ascontiguousarray(active, np.uint8).reshape(n)
         if self._lib.chemca_set_genes(_ptr(g, _u8p), _ptr(a, _u8p)):
             raise ValueError("invalid gene or empty active mask on an alive cell")
 
@@ -616,8 +625,8 @@ class ChemCA:
 
     def rgb(self, colormode=0, scale=None):
         """(N, N, 3) uint8 frame, headless."""
-        a = self.colorize(None, colormode, scale).astype(np.uint32).reshape(self._N, self._N)
-        return np.stack([(a >> 16) & 255, (a >> 8) & 255, a & 255], -1).astype(np.uint8)
+        from evoca_nb import argb_to_rgb
+        return argb_to_rgb(self.colorize(None, colormode, scale).reshape(self._N, self._N))
 
     def save_frames(self, path, modes=None, scale=None, dpi=100):
         """Render colormodes side by side into a PNG (matplotlib Agg). Returns path."""
@@ -657,7 +666,8 @@ class ChemCA:
 
     def export_recipe(self, descriptor, colormode=0, workstream=None, runs_dir=None):
         """Write <runs_dir>/<date>_<descriptor>.evoca (as EvoCA.export_recipe).
-        A per-site light field is not serialized (the recipe says so)."""
+        A per-site light field is not serialized: the recipe records that one
+        was set, and load_recipe refuses it (as it does an alive array)."""
         import evoca_paths
         if runs_dir is None:
             runs_dir = evoca_paths.runs_dir(workstream)
@@ -682,6 +692,8 @@ def load_recipe(data, recipe='init', N=None, lib_path=None):
     init = dict(data.get('initialization', {}))
     if init.get('alive') == 'array':
         raise ValueError("recipe was made from an alive array, which is not serialized")
+    if data.get('light_field'):
+        raise ValueError("recipe was made with a per-site light field, which is not serialized")
     sim.state(**init)
     disp = data.get('display', {})
     kw = {'colormode': disp['colormode']} if disp.get('colormode') else {}

@@ -17,6 +17,13 @@ HEADERS = ('C/evoca.h', 'C/core.h', 'C/chemca.h')
 CFLAGS = ('-O2', '-Wall', '-fPIC')
 
 
+class BuildError(subprocess.CalledProcessError):
+    """CalledProcessError whose message shows the compiler's stderr."""
+
+    def __str__(self):
+        return f"{super().__str__()}\n{self.stderr}"
+
+
 def lib_path(root=ROOT):
     ext = 'dylib' if platform.system() == 'Darwin' else 'so'
     return os.path.join(root, 'C', f'libevoca.{ext}')
@@ -39,12 +46,12 @@ def stale(root=ROOT):
 
 
 def build(root=ROOT, force=False):
-    """Rebuild the library if stale (or force). Returns its path; raises
-    CalledProcessError (with gcc's stderr) on failure."""
+    """Rebuild the library if stale (or force). Returns its path; on failure
+    raises CalledProcessError whose message includes gcc's stderr."""
     if force or stale(root):
         r = subprocess.run(command(root), cwd=root, capture_output=True, text=True)
         if r.returncode != 0:
-            raise subprocess.CalledProcessError(r.returncode, r.args, r.stdout, r.stderr)
+            raise BuildError(r.returncode, r.args, r.stdout, r.stderr)
         if r.stderr.strip():
             print(r.stderr)
     return lib_path(root)
