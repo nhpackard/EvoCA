@@ -2,7 +2,8 @@
 and a runner that records the same readouts as s1_evoca_characterize.py.
 
 Mapping (see notes.md for the reasoning and what is approximate):
-  EvoCA food_inc, F <= 1 cap  -> open-mode inc_F, proportional sink_F
+  EvoCA food_inc, F <= 1 cap  -> open-mode inc_F, cap_F = 1, sink_F = 0 (exact;
+                                 before the ChemCA cap: a proportional sink_F)
   gdiff, wdiff                -> diff_F, diff_W (same box-blur rule)
   waste_sink (constant)       -> proportional sink_W
   waste_disp (one-way)        -> u_W (two-way transport, = EvoCA waste_exchange=1)
@@ -28,10 +29,11 @@ EVOCA = dict(food_inc=0.012, gdiff=0.08, wdiff=0.01, waste_sink=0.019, waste_dis
 
 
 def port_params(u_F=0.5, sink_F=None, sink_W=None, W_ref=0.1, tox_W=None, u_W=None,
-                m_e=None, k_idx=63):
+                m_e=None, k_idx=63, cap_F=0.0):
     """(init params, state params) for ChemCA fw2 in open mode. Unset
     arguments take the direct numeric port of the EvoCA recipe:
-    sink_F = food_inc (F saturates at inc/sink = 1, the EvoCA cap),
+    sink_F = food_inc (F saturates at inc/sink = 1) unless cap_F is set
+    (cap_F = 1, sink_F = 0 is EvoCA's food rule exactly),
     sink_W = waste_sink / W_ref (the constant sink at a typical W)."""
     E = EVOCA
     p = dict(preset='fw2', open_mode=1, light=0.0, mu_rgene=0.0, mu_ractive=0.0,
@@ -40,7 +42,8 @@ def port_params(u_F=0.5, sink_F=None, sink_W=None, W_ref=0.1, tox_W=None, u_W=No
              diff_F=E['gdiff'], diff_W=E['wdiff'],
              u_F=u_F, u_W=E['waste_disp'] if u_W is None else u_W,
              tox_F=0.0, tox_W=E['waste_tox'] if tox_W is None else tox_W,
-             inc_F=E['food_inc'], sink_F=E['food_inc'] if sink_F is None else sink_F,
+             inc_F=E['food_inc'], cap_F=cap_F,
+             sink_F=(0.0 if cap_F else E['food_inc']) if sink_F is None else sink_F,
              inc_W=0.0, sink_W=E['waste_sink'] / W_ref if sink_W is None else sink_W)
     st = dict(alive='halfplane', mbar=1.0, mass_split=(1.0, 0.0), store_frac=0.0,
               e_init=0.5, k_idx0=k_idx)

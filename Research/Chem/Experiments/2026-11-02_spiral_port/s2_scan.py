@@ -34,7 +34,7 @@ def configs():
     return [dict(zip(keys, v)) for v in itertools.product(*GRID.values())]
 
 
-def one(args):
+def one(args, sub='s2'):
     i, cfg, N, steps = args
     p, st = P.port_params(m_e=0.0501, **cfg)      # nomut EvoCA's effective tax
     d = P.run(p, st, N=N, steps=steps, kymo=1500, every=10,
@@ -54,8 +54,8 @@ def one(args):
                    eat_frac=float(np.nanmean(d['ts_eat_frac'][late])),
                    tox_frac=float(d['ts_tox'][late].sum() / max(tot, 1)),
                    period_W=per, acf_W=pk, period_alive=perA, acf_alive=pkA)
-    os.makedirs(os.path.join(HERE, 'out', 's2'), exist_ok=True)
-    np.savez_compressed(os.path.join(HERE, 'out', 's2', f'{i:03d}.npz'),
+    os.makedirs(os.path.join(HERE, 'out', sub), exist_ok=True)
+    np.savez_compressed(os.path.join(HERE, 'out', sub, f'{i:03d}.npz'),
                         **{k: d[k] for k in ('ts_t', 'ts_alive', 'ts_F', 'ts_W', 'kym_alive', 'kym_W',
                                              'frame_t', 'fr_rgb', 'fr_F', 'fr_W')})
     print(i, row.get('alive'), row.get('period_W'), flush=True)
