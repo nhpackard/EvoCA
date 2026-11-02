@@ -14,7 +14,8 @@ time per process.
 
 Metaparameters. DEFAULTS is the one statement of every default. Scalar
 keys are global; the per-compound fields COMPOUND_FIELDS (free energy G,
-diffusion, transport u, toxicity tox, open-mode inc and sink) are keyed
+diffusion, transport u, toxicity tox, open-mode inc, sink and source cap)
+are keyed
 '<field>_<compound>' (e.g. 'tox_W') and take DEFAULTS['compound'] unless a
 preset overrides them. Every key list is derived from these (param_keys,
 defaults); none is maintained by hand.
@@ -48,7 +49,7 @@ G_A, G_B, G_C, G_M, G_K = range(GENE_BYTES)
 # Energy-budget entries, in the order of the C enum (CHEMCA_EN_*).
 ENERGY_KEYS = ('light', 'yield', 'cost', 'death', 'split', 'open_in', 'open_out')
 
-COMPOUND_FIELDS = ('G', 'diff', 'u', 'tox', 'inc', 'sink')   # chemca_set_compound order
+COMPOUND_FIELDS = ('G', 'diff', 'u', 'tox', 'inc', 'sink', 'cap')   # chemca_set_compound order
 
 # ── Defaults: the one source ─────────────────────────────────────────
 
@@ -64,7 +65,9 @@ DEFAULTS = dict(
     light=0.0,         # rate of the preset's environment (light) reaction
     repro_gate='energy',  # 'energy': e >= 1; 'mass': body mass >= mass_repro
     mass_repro=1.0,    # body-mass threshold of the mass gate (body: u_c == 0)
-    compound=dict(G=0.0, diff=0.0, u=0.0, tox=0.0, inc=0.0, sink=0.0),
+    # cap: open-mode source cap, 0 = none; after the source fires a site holds
+    # at most cap, the excess discarded (EvoCA's F <= 1 food rule)
+    compound=dict(G=0.0, diff=0.0, u=0.0, tox=0.0, inc=0.0, sink=0.0, cap=0.0),
 )
 assert tuple(DEFAULTS['compound']) == COMPOUND_FIELDS
 
@@ -169,7 +172,8 @@ _SIGS = {
     'get_N': ([], _I), 'get_K': ([], _I), 'get_step': ([], _L),
     'kmax': ([], _I), 'nslot': ([], _I), 'gene_bytes': ([], _I), 'nk': ([], _I),
     'energy_count': ([], _I), 'k_of': ([_I], _F),
-    'set_compound': ([_I, _F, _F, _F, _F, _F, _F], _I), 'get_compound': ([_I, _f32p], _I),
+    'set_compound': ([_I] + [_F] * len(COMPOUND_FIELDS), _I), 'get_compound': ([_I, _f32p], _I),
+    'compound_fields': ([], _I),
     'env_rx_clear': ([], None), 'env_rx_add': ([_I, _I, _F], _I),
     'env_rx_set_rate': ([_I, _F], _I), 'env_rx_set_field': ([_I, _f32p], _I),
     'env_rx_count': ([], _I), 'env_rx_get': ([_I, _ip, _ip, _f32p, _ip], _I),
@@ -210,8 +214,8 @@ class ChemCA:
             fn.argtypes, fn.restype = args, res
         L = self._lib
         layout = (L.chemca_nslot(), L.chemca_gene_bytes(), L.chemca_nk(), L.chemca_kmax(),
-                  L.chemca_energy_count())
-        assert layout == (NSLOT, GENE_BYTES, NK, KMAX, len(ENERGY_KEYS)), layout
+                  L.chemca_energy_count(), L.chemca_compound_fields())
+        assert layout == (NSLOT, GENE_BYTES, NK, KMAX, len(ENERGY_KEYS), len(COMPOUND_FIELDS)), layout
         self._N = 0
         self._params = None
         self._init_params = None
@@ -363,6 +367,14 @@ class ChemCA:
 
     def k_of(self, k_idx):
         return float(self._lib.chemca_k_of(int(k_idx)))
+
+    def compound_params(self, c):
+        """The per-compound fields as C holds them: {field: value} over
+        COMPOUND_FIELDS (after C's clamping, e.g. u in [0, 1])."""
+        out = np.zeros(len(COMPOUND_FIELDS), np.float32)
+        if self._lib.chemca_get_compound(self.cidx(c), _ptr(out, _f32p)):
+            raise ValueError(f"no compound {c!r}")
+        return dict(zip(COMPOUND_FIELDS, out.astype(float).tolist()))
 
     # ── State ────────────────────────────────────────────────────────
 

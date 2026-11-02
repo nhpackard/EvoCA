@@ -9,8 +9,8 @@
  *
  * World: an N x N periodic lattice; K <= CHEMCA_KMAX compounds, each with an
  * environmental field E_c(x), a free energy G_c, a diffusion strength, a
- * transport rate u_c, a toxicity threshold, and (open mode) a uniform source
- * and a proportional sink. Environment reactions A -> B (the "light") run at
+ * transport rate u_c, a toxicity threshold, and (open mode) a uniform source,
+ * a proportional sink and a source cap. Environment reactions A -> B (the "light") run at
  * every site. Alive cells carry private stores a_c, an energy e and
  * CHEMCA_NSLOT reaction genes with an active mask.
  *
@@ -32,6 +32,7 @@
                                   * 1e-3..55 at the default k_min */
 #define CHEMCA_C_NONE      0xFF  /* "no catalyst" */
 #define CHEMCA_MAX_ENVRX   8     /* max environment reactions */
+#define CHEMCA_COMPOUND_FIELDS 7 /* chemca_set_compound values per compound */
 
 /* Gene byte offsets within a slot. */
 enum { CHEMCA_G_A = 0, CHEMCA_G_B = 1, CHEMCA_G_C = 2, CHEMCA_G_M = 3, CHEMCA_G_K = 4 };
@@ -77,11 +78,15 @@ void  chemca_set_repro_gate(int g);   int   chemca_get_repro_gate(void);
 void  chemca_set_mass_repro(float v); float chemca_get_mass_repro(void);
 
 /* Per-compound configuration: free energy, diffusion (core_diffuse
- * strength), transport rate, toxicity threshold (0 = none), open-mode
- * uniform source per site and proportional sink rate. out[6] in that order. */
+ * strength), transport rate, toxicity threshold (0 = none), and for open
+ * mode the uniform source per site, the proportional sink rate, and the
+ * source cap (0 = none): after the source fires a site holds at most cap,
+ * the excess discarded as outflow (EvoCA's F <= 1 food rule).
+ * out[CHEMCA_COMPOUND_FIELDS] in that order. */
 int  chemca_set_compound(int c, float G, float diff, float u, float tox,
-                         float inc, float sink);
-int  chemca_get_compound(int c, float *out6);
+                         float inc, float sink, float cap);
+int  chemca_get_compound(int c, float *out);
+int  chemca_compound_fields(void);
 
 /* Environment reactions A -> B at a rate per step (scalar, or a per-site
  * field r(x) once set). Applied in the order added. */

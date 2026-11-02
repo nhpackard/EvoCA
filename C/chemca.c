@@ -53,7 +53,8 @@ static float   *E_tmp = NULL;    /* [cells] diffusion scratch */
 
 /* Per-compound configuration. */
 static float cG[CHEMCA_KMAX], cdiff[CHEMCA_KMAX], cu[CHEMCA_KMAX],
-             ctox[CHEMCA_KMAX], cinc[CHEMCA_KMAX], csink[CHEMCA_KMAX];
+             ctox[CHEMCA_KMAX], cinc[CHEMCA_KMAX], csink[CHEMCA_KMAX],
+             ccap[CHEMCA_KMAX];
 
 /* Environment reactions. */
 typedef struct { int A, B; float rate; float *field; } envrx_t;
@@ -110,7 +111,7 @@ int chemca_init(int N, int K)
     for (int c = 0; c < K; c++) E[c] = calloc(gcells, sizeof(float));
     E_tmp = calloc(gcells, sizeof(float));
     for (int c = 0; c < CHEMCA_KMAX; c++) {
-        cG[c] = cdiff[c] = cu[c] = ctox[c] = cinc[c] = csink[c] = 0.0f;
+        cG[c] = cdiff[c] = cu[c] = ctox[c] = cinc[c] = csink[c] = ccap[c] = 0.0f;
         flux_in[c] = flux_out[c] = 0.0;
     }
     memset(en_last, 0, sizeof en_last);
@@ -162,19 +163,22 @@ float chemca_k_of(int k_idx)
 }
 
 int chemca_set_compound(int c, float G, float diff, float u, float tox,
-                        float inc, float sink)
+                        float inc, float sink, float cap)
 {
     if (c < 0 || c >= gK) return -1;
     cG[c] = G; cdiff[c] = nonneg(diff); cu[c] = unit(u);
     ctox[c] = nonneg(tox); cinc[c] = nonneg(inc); csink[c] = nonneg(sink);
+    ccap[c] = nonneg(cap);
     return 0;
 }
+
+int chemca_compound_fields(void) { return CHEMCA_COMPOUND_FIELDS; }
 
 int chemca_get_compound(int c, float *out)
 {
     if (c < 0 || c >= gK) return -1;
     out[0] = cG[c]; out[1] = cdiff[c]; out[2] = cu[c];
-    out[3] = ctox[c]; out[4] = cinc[c]; out[5] = csink[c];
+    out[3] = ctox[c]; out[4] = cinc[c]; out[5] = csink[c]; out[6] = ccap[c];
     return 0;
 }
 
@@ -359,10 +363,18 @@ static void phase_env(void)
     }
     if (!g_open) return;
     for (int c = 0; c < gK; c++) {
-        if (cinc[c] <= 0.0f && csink[c] <= 0.0f) continue;
+        if (cinc[c] <= 0.0f && csink[c] <= 0.0f && ccap[c] <= 0.0f) continue;
         double fs = -expm1(-(double)csink[c]), in = 0.0, out = 0.0;
         for (size_t i = 0; i < gcells; i++) {
             E[c][i] += cinc[c]; in += cinc[c];
+            if (ccap[c] > 0.0f && E[c][i] > ccap[c]) {
+                /* Source cap (EvoCA's food rule): after the source fires
+                 * the site holds at most cap; the excess is discarded and
+                 * booked as outflow. As in EvoCA, this also clips mass that
+                 * arrived from elsewhere (deaths, diffusion) above the cap. */
+                out += (double)(E[c][i] - ccap[c]);
+                E[c][i] = ccap[c];
+            }
             if (csink[c] > 0.0f) {
                 float rm = (float)((double)E[c][i] * fs);
                 if (rm > E[c][i]) rm = E[c][i];
