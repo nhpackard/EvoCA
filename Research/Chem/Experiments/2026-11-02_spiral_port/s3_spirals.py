@@ -26,6 +26,9 @@ CHEM = {
     'chem307': dict(u_F=0.75, tox_W=1.6, u_W=0.09, sink_W=0.1, sink_F=0.004),
     'chem418': dict(u_F=1.0, tox_W=2.4, u_W=0.09, sink_W=0.05, sink_F=0.004),
     'chem13': dict(u_F=0.2, tox_W=0.792, u_W=0.4, sink_W=0.1, sink_F=0.004),
+    # with ChemCA's food cap (EvoCA's food rule exactly): s5 scan indices
+    'cap137': dict(u_F=1.0, tox_W=1.6, u_W=0.4, sink_W=0.05, cap_F=1.0),
+    'cap105': dict(u_F=0.75, tox_W=1.6, u_W=0.2, sink_W=0.05, cap_F=1.0),
 }
 EVO = {'evoca': {}, 'evoca_nomut': dict(mu_lut=0.0, mu_egene=0.0, mu_egenome=0.0)}
 
