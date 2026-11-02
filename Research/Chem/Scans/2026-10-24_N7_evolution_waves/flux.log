@@ -1,0 +1,15 @@
+Running 20 flux runs across 10 workers...
+  W1 s1: flux 8175  per birth 3.98  D/pop 1.00  397s
+  W1 s0: flux 8175  per birth 3.98  D/pop 1.00  407s
+  W1 s2: flux 8177  per birth 3.98  D/pop 1.00  411s
+  W1 s3: flux 8173  per birth 3.98  D/pop 1.00  412s
+  T1 s1: flux 8195  per birth 5.26  D/pop 1.00  416s
+  T1 s0: flux 8195  per birth 5.23  D/pop 1.00  433s
+  T1 s2: flux 8195  per birth 5.27  D/pop 1.00  562s
+  T1 s3: flux 8195  per birth 5.24  D/pop 1.00  574s
+  W2 s0: flux 8185  per birth 4.62  D/pop 1.00  716s
+  W2 s2: flux 8193  per birth 4.70  D/pop 1.00  716s
+  W2 s1: flux 8192  per birth 4.66  D/pop 1.00  727s
+  W2 s3: flux 8194  per birth 4.68  D/pop 1.00  739s
+/Users/n/.pyenv/versions/3.14.3/lib/python3.14/multiprocessing/resource_tracker.py:396: UserWarning: resource_tracker: There appear to be 6 leaked semaphore objects to clean up at shutdown: {'/mp-9lqaj74g', '/mp-419x8dq2', '/mp-61lkmuw5', '/mp-wqzuxwm1', '/mp-s7jbmhti', '/mp-d68u3zle'}
+  warnings.warn(

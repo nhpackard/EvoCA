@@ -1,0 +1,16 @@
+osc (79.4,.128) {'prop': True, 'speed': 0.30864197530864196, 'fwhm': np.int64(6), 'vpeak': 0.5994149253950886, 'second': 1.0}
+osc2 (141.5,.094) {'prop': True, 'speed': 0.40160642570281124, 'fwhm': np.int64(6), 'vpeak': 0.6634563387190273, 'second': 1.0}
+excit (86.8,.092) {'prop': True, 'speed': 0.3225806451612903, 'fwhm': np.int64(5), 'vpeak': 0.6051344146732675, 'second': 1.0}
+spiral (60,.05) {'prop': True, 'speed': 0.2604166666666667, 'fwhm': np.int64(5), 'vpeak': 0.5402109221541205, 'second': 1.0}
+spiral2 (60,.03) {'prop': True, 'speed': 0.2597402597402597, 'fwhm': np.int64(5), 'vpeak': 0.5372285662087755, 'second': 1.0}
+front (25.6,.346) {'prop': False}
+speed map (rows dv, cols du):
+[[  nan   nan   nan   nan   nan   nan   nan]
+ [  nan   nan   nan   nan   nan   nan   nan]
+ [0.178 0.167   nan   nan   nan   nan   nan]
+ [0.274 0.265 0.248 0.228 0.198 0.169   nan]
+ [0.351 0.342 0.328 0.311 0.285 0.26  0.215]
+ [0.448 0.441 0.427 0.413 0.391 0.368 0.327]
+ [0.532 0.526 0.513 0.5   0.478 0.459 0.418]
+ [0.69  0.68  0.671 0.658 0.633 0.613 0.578]]
+dp sweep: [(0.0, 0.26, np.int64(5)), (0.05, 0.26, np.int64(5)), (0.15, 0.26, np.int64(5)), (0.3, 0.26, np.int64(5)), (0.6, 0.261, np.int64(5)), (0.9, 0.262, np.int64(5))]

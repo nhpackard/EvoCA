@@ -1,6 +1,6 @@
-# CHEM-N1: wave and spiral survey under two-way waste exchange (2026-10-23)
+# [CHEM-N1](../../ISSUES.md): wave and spiral survey under two-way waste exchange (2026-10-23)
 
-**Why.** Two-way exchange (CHEM-D4, `waste_exchange=1`) produced traveling phase waves and wave sources in one seed (`Experiments/2026-10-23_twoway_exchange`). Does it give spirals, and where?
+**Why.** Two-way exchange ([CHEM-D4](../../ISSUES.md), `waste_exchange=1`) produced traveling phase waves and wave sources in one seed (`Experiments/2026-10-23_twoway_exchange`). Does it give spirals, and where?
 
 **Design** (driver `scan.py`):
 - Recipe `Runs/2026-10-23_chem_fw_spiralpoint.evoca`, with the standard rule, mutation on and a halfplane start; 6000 steps.

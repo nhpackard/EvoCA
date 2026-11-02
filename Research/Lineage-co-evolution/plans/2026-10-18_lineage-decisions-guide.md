@@ -1,4 +1,4 @@
-# Lineage-co-evolution: guide to decisions LIN-D1, LIN-D2, LIN-D3 (2026-10-15)
+# Lineage-co-evolution: guide to decisions [LIN-D1](../ISSUES.md), [LIN-D2](../ISSUES.md), [LIN-D3](../ISSUES.md) (2026-10-15)
 
 For N. This is the homework behind the three Lineage decisions on the desk
 (`06-seeding-findings.md` §D item 4). It unpacks each one, adds short
@@ -20,9 +20,9 @@ runs live in `/private/tmp/claude-505/lin/`.
 
 | Decision | What `ISSUES.md` recommends | My recommendation | What changed |
 |---|---|---|---|
-| **LIN-D1**: redesign of #8 (does selection jointly retain LUT and egene changes?) | Option A (Hamming magnitudes) with `restricted_mu=1`, plus a synthetic-coupling power check | **Keep #8, but use Option A′.** (i) Measure the LUT magnitude **post hoc on expressed bits**: Hamming distance restricted to the lineage's own used-mask (`get_eff_used_mask`). (ii) Leave `restricted_mu=0`. (iii) Fit an outcome model on **all** edges with a ΔLUT×Δegene interaction, not a correlation among survivors. (iv) Use the child's **offspring count** as the outcome. (v) Run the power check post hoc on real edge tables. | `restricted_mu` masks with the **population union** of queried bits, which is 180–250 of 250 bits whenever the population isn't crashing [V]. It is nearly a no-op, and it makes the LUT mutation rate depend on demography. Correlation among survivors is also **scale-dependent**: additive harm with no co-adaptation gives ρ = −0.055 among survivors in a toy model [V]. |
-| **LIN-D2**: the lineage unit for H1 | (a) restrict to `mu_lut` ≤ 0.003, plus (b) a Python clade roll-up along `parent_id` | **Use barcoded clades, tracked exactly in Python every step.** Every alive cell gets a barcode at a marking time, and children inherit it. Re-mark every few hundred steps. Fitness is a clade's log-frequency growth against a neutral null driven by the same demography. Keep the genotype rows for the D3 punctuation work. Low `mu_lut` becomes a cross-check, not the main regime. | A vectorized per-step tracker is **exact**: 0–3 unresolved parent lookups in 114k–327k births. It costs a few ms per step at N=256 [V]. Clades coalesce fast: 9216 marks fall to 2–5 survivors in 1200 steps at N=96 [V], so re-marking is required. Genotype churn is driven by the **egene** rates as well as by `mu_lut` [A], so restricting `mu_lut` alone does not fix the unit. |
-| **LIN-D3**: actual-tax column in the reducer | Add the column (small C change) before H1 relies on `net` | **Defer the column. Decide a new upstream defect first: food overdraw at `m_scale` > 1.** If overdraw is fixed, nominal and actual tax differ by about 0.4% [V] and the column is optional. If overdraw is intended, define an energy-consistent net per clade instead. | **New finding [V]:** eating can take more than the food present, `mouthful = (m/25)·score·F` > F, whenever `m_scale·score/25` > 1. F_food goes negative in 22–44% of cells, live cells carry negative `f_priv`, and "eviction dissipation" goes negative (−349k in the 4b control). At `m_scale=3` (the #3c/#8/notebook regime), the 20–23% gap between nominal and actual tax is almost entirely this effect. At `m_scale=1` the gap is 0.4%. |
+| **[LIN-D1](../ISSUES.md)**: redesign of #8 (does selection jointly retain LUT and egene changes?) | Option A (Hamming magnitudes) with `restricted_mu=1`, plus a synthetic-coupling power check | **Keep #8, but use Option A′.** (i) Measure the LUT magnitude **post hoc on expressed bits**: Hamming distance restricted to the lineage's own used-mask (`get_eff_used_mask`). (ii) Leave `restricted_mu=0`. (iii) Fit an outcome model on **all** edges with a ΔLUT×Δegene interaction, not a correlation among survivors. (iv) Use the child's **offspring count** as the outcome. (v) Run the power check post hoc on real edge tables. | `restricted_mu` masks with the **population union** of queried bits, which is 180–250 of 250 bits whenever the population isn't crashing [V]. It is nearly a no-op, and it makes the LUT mutation rate depend on demography. Correlation among survivors is also **scale-dependent**: additive harm with no co-adaptation gives ρ = −0.055 among survivors in a toy model [V]. |
+| **[LIN-D2](../ISSUES.md)**: the lineage unit for H1 | (a) restrict to `mu_lut` ≤ 0.003, plus (b) a Python clade roll-up along `parent_id` | **Use barcoded clades, tracked exactly in Python every step.** Every alive cell gets a barcode at a marking time, and children inherit it. Re-mark every few hundred steps. Fitness is a clade's log-frequency growth against a neutral null driven by the same demography. Keep the genotype rows for the D3 punctuation work. Low `mu_lut` becomes a cross-check, not the main regime. | A vectorized per-step tracker is **exact**: 0–3 unresolved parent lookups in 114k–327k births. It costs a few ms per step at N=256 [V]. Clades coalesce fast: 9216 marks fall to 2–5 survivors in 1200 steps at N=96 [V], so re-marking is required. Genotype churn is driven by the **egene** rates as well as by `mu_lut` [A], so restricting `mu_lut` alone does not fix the unit. |
+| **[LIN-D3](../ISSUES.md)**: actual-tax column in the reducer | Add the column (small C change) before H1 relies on `net` | **Defer the column. Decide a new upstream defect first: food overdraw at `m_scale` > 1.** If overdraw is fixed, nominal and actual tax differ by about 0.4% [V] and the column is optional. If overdraw is intended, define an energy-consistent net per clade instead. | **New finding [V]:** eating can take more than the food present, `mouthful = (m/25)·score·F` > F, whenever `m_scale·score/25` > 1. F_food goes negative in 22–44% of cells, live cells carry negative `f_priv`, and "eviction dissipation" goes negative (−349k in the 4b control). At `m_scale=3` (the #3c/#8/notebook regime), the 20–23% gap between nominal and actual tax is almost entirely this effect. At `m_scale=1` the gap is 0.4%. |
 
 **New cross-cutting defect for the A-list (proposed A9) [V].**
 
@@ -39,7 +39,7 @@ Affected records and plans:
 - campaign #3 (`m_scale` 1.5–2.5);
 - #3c and the #8 spec (3.0);
 - the pure-evo winners (up to 2.5);
-- Resource-driving R1 (2.5–5) and the planned RES-N1 (`m_scale` ∈ {2.5, 3.5}).
+- Resource-driving R1 (2.5–5) and the planned [RES-N1](../../Resource-driving/ISSUES.md) (`m_scale` ∈ {2.5, 3.5}).
 
 This is N's call. A fix belongs on its own branch with the parity probe at
 `m_scale` ≤ 1, where it should be a no-op.
@@ -52,7 +52,7 @@ This is N's call. A fix belongs on its own branch with the parity probe at
    `mu_lut` 0.01/0.03 columns are crashed populations of 320–410 cells (D2).
 3. Notebook §3, **cells 20–23**: the binary-indicator saturation and Hamming
    variance (D1).
-4. `Docs/plan-8-lineage-coevolution.md`, "Possible fixes", **Option F
+4. `Research/Lineage-co-evolution/plans/plan-8-lineage-coevolution.md`, "Possible fixes", **Option F
    caveat**. It already warned that the active footprint is most of 250 bits;
    `ISSUES.md` dropped that warning (D1).
 5. `Docs/checkpoint 3 July 2026.md`, lines ~1376–1435. The original D2 intent
@@ -151,13 +151,13 @@ then dies, by tax (actual tax removed = negative `f_before`) or by eviction
   (0.45%), positive `death_cum`, and pop 331.
 
 **Consequences.**
-- **LIN-D3's 20–23% gap is overdraw, not "tax a dying cell could not pay".**
+- **[LIN-D3](../ISSUES.md)'s 20–23% gap is overdraw, not "tax a dying cell could not pay".**
   An actual-tax column would faithfully record negative tax for indebted
   cells; it would encode the defect rather than correct for it.
-- **LIN-Q3's "constant per-capita net −0.020"** (control, cell 32) is the
+- **[LIN-Q3](../ISSUES.md)'s "constant per-capita net −0.020"** (control, cell 32) is the
   leak's signature. A population of 9,136 paying 0.035 each per step on an
   intake of about 139 per step can only persist on erased debt. The structural
-  point of LIN-Q3 still holds without the leak: intake ≈ source, so raw net is
+  point of [LIN-Q3](../ISSUES.md) still holds without the leak: intake ≈ source, so raw net is
   a pool share. But the negative sign and the high density are artifacts.
 - **Density at `m_scale=3` (0.97 at N=96) far exceeds `food_inc/tax` = 0.43.**
   The Resource-driving pilot reports density ≈ `food_inc/tax` below 1 [R].
@@ -202,7 +202,7 @@ The LUT mutation spectrum then depends on demographic phase, which is a new
 confound for any survival-based statistic. It also makes #8 study a different
 evolutionary process from #3c and H1.
 
-`Docs/plan-8-lineage-coevolution.md` already noted under Option F that "active
+`Research/Lineage-co-evolution/plans/plan-8-lineage-coevolution.md` already noted under Option F that "active
 footprint at N=256 is often most of 250 → may not fully de-saturate";
 `ISSUES.md` lost that caveat. The binary indicator would still saturate:
 `1 − exp(−0.03·240)` = 0.9993.
@@ -304,7 +304,7 @@ The unresolved lookups are probably children of founders (`parent_id`=0).
 Script: `/private/tmp/claude-505/lin/barcode.py`.
 
 **Implications.**
-- (i) LIN-D2 option (b) is **exact and cheap if sampled every step**. With
+- (i) [LIN-D2](../ISSUES.md) option (b) is **exact and cheap if sampled every step**. With
   periodic snapshots it is lossy, because dead intermediates' links are lost.
   The #8 spec's S=50 has the same loss.
 - (ii) Coalescence is fast (boom-bust bottlenecks), so H1 needs **re-marking**
@@ -349,7 +349,7 @@ problem.
 
 ---
 
-## 3. LIN-D1: the redesign of #8
+## 3. [LIN-D1](../ISSUES.md): the redesign of #8
 
 ### 3.1 The hypothesis #8 tests
 
@@ -410,7 +410,7 @@ large exists.
 
 ---
 
-## 4. LIN-D2: the lineage unit for H1
+## 4. [LIN-D2](../ISSUES.md): the lineage unit for H1
 
 ### 4.1 The problem
 
@@ -429,10 +429,10 @@ the checkpoint says "reduce by lineage root (walk `parent_id` chains)"
 |---|---|---|---|
 | (a) Low `mu_lut` (≤ 0.003) | No dev; genotypes persist | Excludes the regime of #3c/#8; **also needs low egene rates** (§2.4); bottleneck dynamics differ | 0 |
 | (b) Python roll-up from periodic snapshots | No C | Lossy: chains break at unsampled dead intermediates; hash↔clade mapping is ambiguous | moderate |
-| **(b+) Per-step barcode tracker (recommended)** | **Exact** (§2.5); cheap; any mutation rate; a clade's log-frequency growth is the relative-fitness quantity LIN-Q3 asks for, immune to pool-share pinning; endowments internal; table bounded by N² per mark | Clades coalesce fast, so re-marking is needed; per-clade intake/tax come from per-cell accumulators (`get_lineage_intake`/`_tax`) and lose about one step per death | ~1–2 days Python |
+| **(b+) Per-step barcode tracker (recommended)** | **Exact** (§2.5); cheap; any mutation rate; a clade's log-frequency growth is the relative-fitness quantity [LIN-Q3](../ISSUES.md) asks for, immune to pool-share pinning; endowments internal; table bounded by N² per mark | Clades coalesce fast, so re-marking is needed; per-clade intake/tax come from per-cell accumulators (`get_lineage_intake`/`_tax`) and lose about one step per death | ~1–2 days Python |
 | (c) C clade reducer, keyed by an inherited per-cell barcode | Fast at scale; exact intake/tax | C change on merged code (additive, parity-safe); only needed if (b+) is too slow for N=256 campaigns | small C |
 | (d) Full birth-event log (child, parent, step, hash) | Any post-hoc unit | About 24 B per birth: ~2.4 GB per N=256/8000-step run | moderate C/IO |
-| Add `parent_hash` to the reducer row | Exact genotype phylogeny; solves the LIN-N1 gap (i) for D3 punctuation | Does not fix the H1 unit on its own | ~10 lines of additive C |
+| Add `parent_hash` to the reducer row | Exact genotype phylogeny; solves the [LIN-N1](../ISSUES.md) gap (i) for D3 punctuation | Does not fix the H1 unit on its own | ~10 lines of additive C |
 
 **The neutral null for H1, which is the real open item.** H1 step 2 assumes a
 per-lineage shadow. The neutral shadow is population-level and LUT-only (see
@@ -456,7 +456,7 @@ cross-check, at low `mu_lut` **and** low egene rates. Decide on (c) only if
 
 ---
 
-## 5. LIN-D3: tax basis in the reducer
+## 5. [LIN-D3](../ISSUES.md): tax basis in the reducer
 
 ### 5.1 The problem as originally framed
 
@@ -476,7 +476,7 @@ for the small residual only. So the decision is downstream of A9:
 |---|---|
 | Overdraw fixed (clamp) | The gap is ~0.4%. The column is optional exactness; add it only if some other change is touching the reducer anyway, together with `parent_hash`. |
 | Overdraw kept as debt semantics | Do not add a bare actual-tax column. Define the per-clade energy budget `intake − actual tax − eviction loss = Δstore`, booked per clade at the barcode level (§4). Report net only alongside that identity. |
-| Undecided | Treat `net` as relative within a run only, not absolute, and keep H1 fitness on births and clade growth rather than `net` (LIN-Q3). |
+| Undecided | Treat `net` as relative within a run only, not absolute, and keep H1 fitness on births and clade growth rather than `net` ([LIN-Q3](../ISSUES.md)). |
 
 ### 5.3 Unresolved for D3
 
@@ -496,7 +496,7 @@ negative") suggests not.
   only re-routes the shadow's draws: §3 (cell 20 `edge_table`) and §4
   (cells 26 and 30 `run_lineage`) never call `neutral_enable()` [V: code
   read]. That makes them a convenient parity check on the `shadow-rng` branch.
-- **LIN-Q4 is answered** by A2 [R/V in `06-seeding-findings.md`]. Enabling
+- **[LIN-Q4](../ISSUES.md) is answered** by A2 [R/V in `06-seeding-findings.md`]. Enabling
   the shadow does perturb the real run's stream. Close it once A2 merges.
 - **The #3c fork design stays valid**, because both arms ran shadow-on
   identically.
@@ -514,18 +514,18 @@ so you can find them without counting.
 
 | # | Where | What to look at | Bears on |
 |---|---|---|---|
-| 1 | §4b "Per-lineage net-return trajectories…", **cell 30** (output table) and **cell 32** (observations) | `total intake` ≈ source (414,067 vs 414,720); nominal vs actual tax; the "−0.020 per-capita net" bullet. Read it knowing the dense, negative-net steady state is the overdraw leak (§2.1). The 70% `net` < 0 also reflects the uncounted endowment (§1.2). | D3, LIN-Q3, A9 |
+| 1 | §4b "Per-lineage net-return trajectories…", **cell 30** (output table) and **cell 32** (observations) | `total intake` ≈ source (414,067 vs 414,720); nominal vs actual tax; the "−0.020 per-capita net" bullet. Read it knowing the dense, negative-net steady state is the overdraw leak (§2.1). The 70% `net` < 0 also reflects the uncounted endowment (§1.2). | D3, [LIN-Q3](../ISSUES.md), A9 |
 | 2 | §4a "What does a hash-keyed 'lineage' resolve…", **cell 26** (table) and **cell 28** | The "alive cells" row: 6,385 → 3,160 → **410 → 320**. The `mu_lut` ≥ 0.01 columns are bottlenecked populations. 582k genotypes even at `mu_lut`=0.001 shows the egene-driven churn (§2.4). | D2 |
 | 3 | §3 "Campaign #8 … binary-indicator degeneracy", **cell 20** (table), **cell 22** (figure), **cell 23** | Analytic vs measured P(ΔLUT>0); the Hamming sd growing 0.5→2.7; Spearman ≈ 0 with ~5–11k surviving edges (noise floor about ±0.01). Notice that "surviving" means seen across ≥ 40 steps; that is the cut A′ removes. | D1 |
-| 4 | §2 "Campaign #3c…", **cell 15** (table), **cell 17** (figure), **cell 18** | C's boom-bust cycles in seed 1; the dyn-excess artifact in A; paired C−A of −3.9/−1.0/−0.3/+26 across seeds. Then see §2.6 here for the by-`mu_lut` split of the recorded campaign. | D1 motivation, LIN-Q2 |
-| 5 | §1 "Campaign #3…", **cell 8** (table) and **cell 11** | Config 253 is extinct here but survived in the record; the shadow flip; 3b at 46% extinct. A quick read. | A2, LIN-Q4 |
-| 6 | §4c "D3 preview…", **cells 34–35** | Negene saturates by ~500 steps; no population-level staircase. The per-lineage linkage need is what `parent_hash` in the reducer would solve. | D2 (genotype rows retained), LIN-N1 |
-| 7 | §5 "Current state and directions", **cell 36** | Note that it lists only LIN-D1 and LIN-D2; **LIN-D3 is missing** there (a minor inconsistency with `ISSUES.md`). | — |
-| 8 | `Docs/plan-8-lineage-coevolution.md`: "Possible fixes" (Options A–F, especially the **F caveat**), then "Original spec" D3/D5 and "Caveats" | The spec's claim that the permutation null "cancels survivor-capture bias" (true for capture, not for the §2.3 selection effect); the regime `m_scale=3.0`, S=50, `T_surv`=200. | D1 |
+| 4 | §2 "Campaign #3c…", **cell 15** (table), **cell 17** (figure), **cell 18** | C's boom-bust cycles in seed 1; the dyn-excess artifact in A; paired C−A of −3.9/−1.0/−0.3/+26 across seeds. Then see §2.6 here for the by-`mu_lut` split of the recorded campaign. | D1 motivation, [LIN-Q2](../ISSUES.md) |
+| 5 | §1 "Campaign #3…", **cell 8** (table) and **cell 11** | Config 253 is extinct here but survived in the record; the shadow flip; 3b at 46% extinct. A quick read. | A2, [LIN-Q4](../ISSUES.md) |
+| 6 | §4c "D3 preview…", **cells 34–35** | Negene saturates by ~500 steps; no population-level staircase. The per-lineage linkage need is what `parent_hash` in the reducer would solve. | D2 (genotype rows retained), [LIN-N1](../ISSUES.md) |
+| 7 | §5 "Current state and directions", **cell 36** | Note that it lists only [LIN-D1](../ISSUES.md) and [LIN-D2](../ISSUES.md); **[LIN-D3](../ISSUES.md) is missing** there (a minor inconsistency with `ISSUES.md`). | — |
+| 8 | `Research/Lineage-co-evolution/plans/plan-8-lineage-coevolution.md`: "Possible fixes" (Options A–F, especially the **F caveat**), then "Original spec" D3/D5 and "Caveats" | The spec's claim that the permutation null "cancels survivor-capture bias" (true for capture, not for the §2.3 selection effect); the regime `m_scale=3.0`, S=50, `T_surv`=200. | D1 |
 | 9 | `Docs/checkpoint 3 July 2026.md` ~1376–1381 (original D2 intent: reduce by lineage root) and ~1407–1435 (H1 four-step program) | What H1 promises; step 2's per-lineage shadow, which does not exist. | D2, H1 |
-| 10 | `Docs/Oct2026/01-branch-review.md`, "Semantic note for N" and "The `lineage-return` crash" | The nominal/actual definitions. The `enable_lineage()` trap: `init(lineage=True)` is the safe path. | D3 |
+| 10 | `Docs/Archive/Oct2026/01-branch-review.md`, "Semantic note for N" and "The `lineage-return` crash" | The nominal/actual definitions. The `enable_lineage()` trap: `init(lineage=True)` is the safe path. | D3 |
 | 11 | `Research/Lineage-co-evolution/Scans/2026-05-19_3c_coevolution_substrate/notes.md` | The recorded #3c finding as written in May. | D1 context |
-| 12 | `Research/Lineage-co-evolution/digests/coevolution-substrate.ipynb`, cell 0 | Draft status line is stale ("Research/_drafts/"); its outputs were run from `/private/tmp/evoca_restructure`. It needs the §2.6 split before it is finalized (LIN-N6). | housekeeping |
+| 12 | `Research/Lineage-co-evolution/digests/coevolution-substrate.ipynb`, cell 0 | Draft status line is stale ("Research/_drafts/"); its outputs were run from `/private/tmp/evoca_restructure`. It needs the §2.6 split before it is finalized ([LIN-N6](../ISSUES.md)). | housekeeping |
 
 To reproduce the §2.6 split (5 lines):
 
@@ -548,15 +548,15 @@ print(a.final_pop.mean(), c.final_pop.mean(), a.min_pop.mean(), c.min_pop.mean()
   regime, so it is not a counterexample.
 - `Research/Lineage-co-evolution/Scans/2026-05-17_pure_evo_egene_on_winners/results.csv`:
   campaign #3, `m_scale` 1.5–2.5 (median 2.5), so partly in the overdraw
-  regime. It has no `notes.md` or `scan_config.json` (LIN-Q6).
+  regime. It has no `notes.md` or `scan_config.json` ([LIN-Q6](../ISSUES.md)).
 - `Research/Lineage-co-evolution/Scans/2026-05-19_8_lineage_coevolution/scan.py`:
   the harness. Its reusable machinery is the incremental `birth_id` map and
   the permutation null. `_egene_keys` is the D1 egene key.
 - `Docs/devlog/2026-05-17_research-campaigns.md` ~185: the #8 rationale as
   first written, including the "vs mutation-rate product" framing.
-- `Research/Resource-driving/ISSUES.md` (RES-Q5, RES-N1) and
+- `Research/Resource-driving/ISSUES.md` ([RES-Q5](../../Resource-driving/ISSUES.md), [RES-N1](../../Resource-driving/ISSUES.md)) and
   `Research/Resource-driving/Scans/2026-05-18_R1_mscale_bracket/`: the
-  bracket covers `m_scale` 2.5–5, and the planned RES-N1 uses {2.5, 3.5}.
+  bracket covers `m_scale` 2.5–5, and the planned [RES-N1](../../Resource-driving/ISSUES.md) uses {2.5, 3.5}.
   Both are in the overdraw regime. The "U-shaped viability in `m_scale`" may
   partly be the leak. This is cross-workstream; flagging it only.
 - Memory notes: `dyn-shadow-frozen-rich-substrate` (do not read
@@ -578,7 +578,7 @@ print(a.final_pop.mean(), c.final_pop.mean(), a.min_pop.mean(), c.min_pop.mean()
 4. Add an A9 row to `06-seeding-findings.md` and notify the Resource-driving
    workstream.
 
-**LIN-D1.**
+**[LIN-D1](../ISSUES.md).**
 1. Approve A′ (§3.3), with `restricted_mu=0`.
 2. Build the per-step tracker (shared with D2), the expressed-Hamming
    computation, and the GLM with interaction on log and logit scales.
@@ -587,7 +587,7 @@ print(a.final_pop.mean(), c.final_pop.mean(), a.min_pop.mean(), c.min_pop.mean()
 4. Only then run the 2 arms × 8 seeds of the original spec. The frozen arm
    becomes optional, since ΔL≡0 is a trivial null.
 
-**LIN-D2.**
+**[LIN-D2](../ISSUES.md).**
 1. Approve (b+) barcodes as the H1 unit, with re-marking every ~200 steps and
    the neutral-resampler null.
 2. Pilot at N=96: the clade log-frequency growth distribution, real vs
@@ -596,7 +596,7 @@ print(a.final_pop.mean(), c.final_pop.mean(), a.min_pop.mean(), c.min_pop.mean()
 4. Separately, approve the ~10-line additive `parent_hash` field in `lret`
    rows (for D3 punctuation).
 
-**LIN-D3.**
+**[LIN-D3](../ISSUES.md).**
 1. Park until A9 is decided.
 2. If A9 is fixed, fold the actual-tax column into the same additive reducer
    change as `parent_hash`, or drop it.
@@ -604,8 +604,8 @@ print(a.final_pop.mean(), c.final_pop.mean(), a.min_pop.mean(), c.min_pop.mean()
    analysis instead.
 
 **Housekeeping (no decision needed).**
-- Close LIN-Q4 when A2 merges.
-- Add LIN-D3 to notebook §5.
+- Close [LIN-Q4](../ISSUES.md) when A2 merges.
+- Add [LIN-D3](../ISSUES.md) to notebook §5.
 - Update the digest's status line.
 - Record in `ISSUES.md` that `restricted_mu` is population-union (§2.2), so
   that Option F is not re-proposed.

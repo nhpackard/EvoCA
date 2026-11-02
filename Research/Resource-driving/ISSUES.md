@@ -2,8 +2,10 @@
 _Updated 2026-10-23_
 
 ## Decisions needed (N)
-- **RES-D1** (resolved 2026-10-15): N authorized the Tier-2 merge; `resource-driving` (C1 `food_per`) is on `main` after bit-for-bit parity at `food_per=1`. Record: `Docs/Oct2026/01-branch-review.md`, Tier-2 section.
+### Open
 - **RES-D2**: Evolution arms for the RES-N1 campaign — options: (a) LUT-only (`mu_egene = mu_egenome = 0`), where `A_new` is well posed; (b) joint LUT + egene as in R1 and the checkpoint's two "exception" hypotheses, where `A_new` is not well posed (RES-Q3) and only the fixed-space `eg_excess` / `dyn_excess` and eff-activity are interpretable; (c) both as separate arms. Recommendation: (c), with (a) as the primary inverted-U figure. Blocks: RES-N1 design freeze.
+### Resolved
+- **RES-D1** (resolved 2026-10-15): N authorized the Tier-2 merge; `resource-driving` (C1 `food_per`) is on `main` after bit-for-bit parity at `food_per=1`. Record: `Docs/Archive/Oct2026/01-branch-review.md`, Tier-2 section.
 
 ## Open questions
 - **RES-Q1**: Is the high-resource flank a drift regime (raw diversity high, excess near zero), as checkpoint section B predicts? R1 never sampled `food_inc` above 0.018, so the high half of the inverted U is untested at campaign scale. The 2026-10-15 pilot (1 seed, `tax` 0.035, LUT-only, N=128, 3000 steps; notebook pilot section) shows `A_new` rising, peaking in the interior and collapsing at `food_inc/tax` about 2.9 while raw distinct-genome count saturates — suggestive only, and confounded by occupancy (below ratio 1 more cells means more genomes; judge excess per capita or against a population-matched baseline). 2026-10-23: re-run under the standard model (`food_cap=1`), the pilot keeps the shape: `A_new` peaks at ratio 0.6 (1689) and is 7 at ratio 2.86, while the raw count saturates at 15851. Source: `Docs/checkpoint 3 July 2026.md` section B; notebook pilot.

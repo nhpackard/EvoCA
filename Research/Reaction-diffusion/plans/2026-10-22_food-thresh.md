@@ -1,6 +1,6 @@
 # Refractory eating gates `food_min` and `mouthful_min` (2026-10-22)
 
-Branch `food-thresh`. Prompted by N after the spiral-wave finding (`Docs/2026-10-21_spirals.md`): the only spirals in EvoCA need the legacy uncapped mouthful (`food_cap=0`, defect A9), whose negative-food trough behind each front acts as a refractory zone. N proposed a capped rule with a refractory gate, M'(x) = 0 for F(x) < θ, otherwise M(x), and chose to implement both readings of θ as separate parameters.
+Branch `food-thresh`. Prompted by N after the spiral-wave finding (`Research/Reaction-diffusion/plans/2026-10-21_spirals.md`): the only spirals in EvoCA need the legacy uncapped mouthful (`food_cap=0`, defect A9), whose negative-food trough behind each front acts as a refractory zone. N proposed a capped rule with a refractory gate, M'(x) = 0 for F(x) < θ, otherwise M(x), and chose to implement both readings of θ as separate parameters.
 
 ## Plan
 

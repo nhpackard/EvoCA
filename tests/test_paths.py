@@ -49,6 +49,7 @@ def test_evoca_from_scan_writes_relative_provenance(tmp_path):
 
 
 def test_export_recipe_workstream_and_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(evoca_paths.REPO_ROOT)
     s = EvoCA(); s.init(16)
     p = s.export_recipe('x', runs_dir=str(tmp_path))
     assert os.path.dirname(p) == str(tmp_path)
@@ -59,3 +60,31 @@ def test_export_recipe_workstream_and_env(tmp_path, monkeypatch):
     monkeypatch.delenv('EVOCA_WORKSTREAM')
     assert evoca_paths.runs_dir().endswith(os.path.join('_unsorted', 'Runs'))
     s.free()
+
+
+def test_default_runs_dir_follows_notebook_directory(monkeypatch):
+    """A notebook's kernel runs in its own directory: Research/Chem/Chem.ipynb
+    (or a notebook in a subdirectory such as Research/Chem/plans/) exports to Research/Chem/Runs; outside
+    a workstream it is _unsorted; EVOCA_WORKSTREAM still overrides."""
+    monkeypatch.delenv('EVOCA_WORKSTREAM', raising=False)
+    chem_runs = os.path.join(evoca_paths.RESEARCH, 'Chem', 'Runs')
+    for d in ('Chem', os.path.join('Chem', 'plans')):
+        monkeypatch.chdir(os.path.join(evoca_paths.RESEARCH, d))
+        assert evoca_paths.runs_dir() == chem_runs
+    monkeypatch.chdir(evoca_paths.RESEARCH)
+    assert evoca_paths.runs_dir().endswith(os.path.join('_unsorted', 'Runs'))
+    monkeypatch.chdir(os.path.join(evoca_paths.RESEARCH, 'Chem'))
+    monkeypatch.setenv('EVOCA_WORKSTREAM', 'Ring-complexity')
+    assert evoca_paths.runs_dir() == os.path.join(evoca_paths.RESEARCH, 'Ring-complexity', 'Runs')
+
+
+def test_export_recipe_lands_in_notebook_workstream(monkeypatch):
+    """Through the public door the Export button uses: sim.export_recipe(desc)."""
+    monkeypatch.delenv('EVOCA_WORKSTREAM', raising=False)
+    monkeypatch.chdir(os.path.join(evoca_paths.RESEARCH, 'Chem'))
+    s = EvoCA(); s.init(16)
+    p = s.export_recipe('_pytest_cwd_ws')
+    try:
+        assert os.path.dirname(p) == os.path.join(evoca_paths.RESEARCH, 'Chem', 'Runs')
+    finally:
+        os.remove(p); s.free()

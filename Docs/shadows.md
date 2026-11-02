@@ -94,7 +94,7 @@ It is checked three ways:
   introduced the neutral shadow as the calibration that separates adaptive persistence
   from persistence that happens anyway. They used it to classify dynamics by diversity
   `D`, mean cumulative activity `Ācum`, and new activity `Anew`.
-- **Channon** (2001, ECAL, "Passing the ALife test", `Docs/channon_ad_ecal2001.pdf`)
+- **Channon** (2001, ECAL, "Passing the ALife test", `Docs/references/channon_ad_ecal2001.pdf`)
   states the operational recipe. The shadow "mirrors the real run in every detail except
   that selection is random. Whenever a real organism is killed, a randomly chosen shadow
   organism is also killed. Whenever a real organism is born … a new shadow organism is
@@ -813,7 +813,7 @@ The names below assume "drift" (section 9).
 - **`A_new` for fixed spaces.** The per-component band is `[q_{1−α}(A^S_{·,k}), ∞)`.
   `A_new,fs(t) = (1/D_G) Σ_{k: A^G_k > band_k} A^G_k`, in Channon's normalization; a
   recent-crossing window is optional. With R = 8 the per-component quantile is crude, so
-  use `μ_k + 3σ_k` instead. This is an optional consumer and is not needed for ACT-D1.
+  use `μ_k + 3σ_k` instead. This is an optional consumer and is not needed for [ACT-D1](../Research/Activity-metrics/ISSUES.md).
 
 ### 6.5 What the stylized check says about calibration and power [run]
 
@@ -933,7 +933,7 @@ regression test is shown to fail with its fix reverted (CLAUDE.md).
 | **P5 reproducible** | Same seed twice, drift | All drift keys identical |
 | **Clonal wiring** | GoL founder, all μ = 0 | All drift statistics exactly 0 |
 | **Frozen-clonal marker null** | GoL founder, genome μ = 0, marker μ ∈ {0.001, 0.003, 0.01}; N ∈ {64, 128}; 20 seeds each; 5,000 steps | Marker `Z` p-values: rejection ≤ 0.10 at α = 0.05 (20 seeds; looser band, since the misspecification is real). Record the marker effect-size distribution: its 95th percentile is the **EvoCA null band** |
-| **Draft floor** | Causal-control JOINT and LUT_only bases with the marker on, 4 seeds, N=128, 5,000 steps | Report `marker_drift_*` next to `eg_`/`dyn_drift_*`. No pass/fail, but ACT-D1 rankings use channel effect sizes **minus** the marker floor |
+| **Draft floor** | Causal-control JOINT and LUT_only bases with the marker on, 4 seeds, N=128, 5,000 steps | Report `marker_drift_*` next to `eg_`/`dyn_drift_*`. No pass/fail, but [ACT-D1](../Research/Activity-metrics/ISSUES.md) rankings use channel effect sizes **minus** the marker floor |
 | **Standing-variation freeze** | Random-LUT founder, μ = 0, selective base | `dyn_drift_z` > 0 in ≥ 18/20 seeds. This is the test that inverts the old frozen null |
 | **Old-key parity** | `main` vs branch, `fs_shadow='tracking'` | Every pre-existing `run_sim` key bit-identical (`tests/test_metrics_regression.py`) |
 | **Dynamical self-selection** | GoL-like quiescent vs active configs | Report `dyn_expression_bias`. Expected larger in quiescent fields; a hypothesis, recorded rather than asserted |
@@ -1034,7 +1034,7 @@ This is a natural point to offer `/code-review ultra` (user-triggered) before me
 `python/evoca_py.py`, `python/dyn_analysis.py`; `tests/test_fixed_space_shadows.py`,
 `tests/test_zscores.py`.
 
-**Recorded:** `Docs/Oct2026/07-activity-objective-guide.md` (§2.1–2.5, §5);
+**Recorded:** `Research/Activity-metrics/plans/2026-10-18_activity-objective-guide.md` (§2.1–2.5, §5);
 `Docs/EvoCA_research_directions.md` §2; memory notes `shadow-models-lut-only-mismatch`
 and `dyn-shadow-frozen-rich-substrate`.
 
@@ -1045,7 +1045,7 @@ and `dyn-shadow-frozen-rich-substrate`.
 - Bedau, M. A., Snyder, E., Packard, N. H. (1998). A classification of long-term
   evolutionary dynamics. *Artificial Life VI*, 228–237.
 - Channon, A. D. (2001). Passing the ALife test: activity statistics classify evolution
-  in Geb as unbounded. *ECAL 2001*, LNCS 2159. (`Docs/channon_ad_ecal2001.pdf`: shadow
+  in Geb as unbounded. *ECAL 2001*, LNCS 2159. (`Docs/references/channon_ad_ecal2001.pdf`: shadow
   recipe, `Anew` band definition, isolated-occurrence screening.)
 - Channon, A. D. (2006). Unbounded evolutionary dynamics in a system of agents that
   actively process and transform their environment. *Genetic Programming and Evolvable

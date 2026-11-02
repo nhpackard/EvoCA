@@ -1,6 +1,6 @@
 """Campaign #8 — direct lineage co-evolution metric.
 
-Spec: Docs/plan-8-lineage-coevolution.md.
+Spec: Research/Lineage-co-evolution/plans/plan-8-lineage-coevolution.md.
 
 ΔLUT and Δegene are drawn by independent Poisson passes at the
 mutation step, so they are independent across reproduction edges *by

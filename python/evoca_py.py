@@ -651,7 +651,7 @@ class EvoCA:
         self.restricted_mu = int(restricted_mu)
         self.food_per   = max(1, int(food_per))
         self.food_cap   = 1 if int(food_cap) else 0
-        # Food/waste chemistry (chem milestone 2; Docs/plan-chem.md §7).
+        # Food/waste chemistry (chem milestone 2; Research/Chem/plans/plan-chem.md §7).
         # n_chem=2 is the food/waste preset; the waste metaparams need it.
         self.n_chem     = int(n_chem)
         for k, v in waste.items():
@@ -2164,8 +2164,10 @@ class EvoCA:
                       workstream=None, runs_dir=None):
         """Export current initialization recipe to
         <runs_dir>/<date>_<descriptor>.evoca. runs_dir defaults to
-        Research/<workstream>/Runs; workstream defaults to the
-        EVOCA_WORKSTREAM env var, else Research/_unsorted/Runs.
+        Research/<workstream>/Runs; workstream defaults to
+        evoca_paths.default_workstream(): the EVOCA_WORKSTREAM env var, else
+        the workstream containing the working directory (the notebook's),
+        else Research/_unsorted/Runs.
 
         Returns the filepath written.
         """

@@ -15,7 +15,7 @@ Nothing here is implemented. Section 13 lists the decisions for N.
 
 ## Status and corrections (2026-10-24, after N's reading)
 
-- **Status: design only, Track B, later.** N: "let's not gallop ahead". Current work stays in vanilla EvoCA's food/waste mode (Track A): understand its dynamics and their evolutionary properties, including wgenes (CHEM-N3, which is *not* paused; §8e's recommendation is withdrawn). The one thing vanilla cannot do cleanly is a genetic metabolic rate (§4), which is why chemca exists at all.
+- **Status: design only, Track B, later.** N: "let's not gallop ahead". Current work stays in vanilla EvoCA's food/waste mode (Track A): understand its dynamics and their evolutionary properties, including wgenes ([CHEM-N3](../ISSUES.md), which is *not* paused; §8e's recommendation is withdrawn). The one thing vanilla cannot do cleanly is a genetic metabolic rate (§4), which is why chemca exists at all.
 - **Gray-Scott is agreed as the reference starting point for chemca**, with a correction to §0 point 4 and §6.
   - Gray-Scott has three species: U + 2V -> 3V, V -> P, with U fed and everything washed out. P is inert, so the dynamics are usually written with two variables.
   - The autocatalysis is **cubic**. My F + W -> 2W is quadratic, and that mostly gives simple invasion fronts. The threshold behavior (spots, pulses, spiral-like waves) needs the cubic term.
@@ -24,7 +24,7 @@ Nothing here is implemented. Section 13 lists the decisions for N.
     - P is the waste in the toxic sense.
     - Toxicity on P gives the refractory zone; on A it gives the "need some, die of too much" tension.
   - The first chemca is therefore three compounds, not two.
-- **§2 (statistics) is superseded by CHEM-N6** (`Research/Chem/Scans/2026-10-24_N6_layered_fronts/notes.md`).
+- **§2 (statistics) is superseded by [CHEM-N6](../ISSUES.md)** (`Research/Chem/Scans/2026-10-24_N6_layered_fronts/notes.md`).
   - Following N's suggestion, the layered fronts were measured instead of the cores.
   - The result: excitation waves, also one-way at tox 0.4. They are irregular in space, so they show no spectral ring, but each site fires with one period (115-120 steps). The site period is the working discriminator.
   - Core tracking (§2c) was not built.
@@ -34,8 +34,8 @@ Nothing here is implemented. Section 13 lists the decisions for N.
 ## 0. Summary
 
 **Scan statistics (section 2).**
-- The point N watched (one-way exchange, `waste_tox` 0.4, `waste_sink` 0.019) was **never measured with the wave statistics**. CHEM-N1 ran one-way only as a control, at tox 1.0 / sink 0.015. The toxicity sweep in the notebook recorded alive std only.
-- The CHEM-N1 spiral test is also biased against what N saw. It matches phase defects within 1 block (8 cells) at lags of 60-480 steps. A spiral tip that meanders, which real tips do, moves farther than that between frames. A noisy front with a meandering core therefore scores as "no spiral".
+- The point N watched (one-way exchange, `waste_tox` 0.4, `waste_sink` 0.019) was **never measured with the wave statistics**. [CHEM-N1](../ISSUES.md) ran one-way only as a control, at tox 1.0 / sink 0.015. The toxicity sweep in the notebook recorded alive std only.
+- The [CHEM-N1](../ISSUES.md) spiral test is also biased against what N saw. It matches phase defects within 1 block (8 cells) at lags of 60-480 steps. A spiral tip that meanders, which real tips do, moves farther than that between frames. A noisy front with a meandering core therefore scores as "no spiral".
 - R, alive std and the global period are bulk measures; they can rule out synchronized pulsing, but they cannot detect spirals.
 - Proposal:
   - track defects frame to frame instead of a fixed-lag match;
@@ -44,14 +44,14 @@ Nothing here is implemented. Section 13 lists the decisions for N.
   - calibrate every statistic against N's visual labels on a set of films before it ranks anything.
 
 **Pareto generations (section 3).**
-- What exists is post-hoc selection only. The cone/box selection was ported from pdt-server as `~/Projects/conepareto` (`select`, layers, regions, wedge-angle derivation). The generational sampler around it was explicitly not ported (report `Docs/Oct2026/05-cone-pareto-package.md`, "Not ported").
-- EvoCA uses `select` only to pick galleries from finished grids (Reaction-diffusion, Activity-metrics). ACT-D2 and RXD-N1 still wait on it.
+- What exists is post-hoc selection only. The cone/box selection was ported from pdt-server as `~/Projects/conepareto` (`select`, layers, regions, wedge-angle derivation). The generational sampler around it was explicitly not ported (report `Research/Activity-metrics/plans/2026-10-15_cone-pareto-package.md`, "Not ported").
+- EvoCA uses `select` only to pick galleries from finished grids (Reaction-diffusion, Activity-metrics). [ACT-D2](../../Activity-metrics/ISSUES.md) and [RXD-N1](../../Reaction-diffusion/ISSUES.md) still wait on it.
 - No EvoCA board item ever proposed replacing grids with generations. The idea lives only in the pdt-server comparison (`~/Projects/pdt-server/pdt-param-optimization.md`: "the thing PDT has that EvoCA lacks: sequential [...] active learning").
 - Recommendation: build a small model-agnostic generational driver, but only after the statistics are calibrated (otherwise it optimizes a miscalibrated objective faster), and use it first on the v2 model.
 
 **Chem v2 (sections 4-11).** N's instinct is right: the metabolism N describes does not fit EvoCA's energy bookkeeping. The core facts:
 1. **The tax already is a food→waste reaction**, at a fixed rate (`g_metab_product`: the tax converts compound 0 into waste). What N proposes changing is the *rate law* (genetic, proportional to stock) and, implicitly, *what the reaction gives the agent*.
-2. **That second point conflicts with pinned decision B** (`Docs/plan-chem.md` §2). Under it, the reproduction currency is stored free energy, `f = Σ energy · amount`. Converting food into energy-free waste then *lowers* `f`, so any rate gene evolves to zero. A reaction is only worth running if it *pays*, so the redesign needs a separate energy currency `e` that is produced by the reaction and spent on reproduction. Mass (food + waste) is conserved; energy is not, because it enters with the environmental waste→food regeneration (a "light" field) and leaves as heat.
+2. **That second point conflicts with pinned decision B** (`Research/Chem/plans/plan-chem.md` §2). Under it, the reproduction currency is stored free energy, `f = Σ energy · amount`. Converting food into energy-free waste then *lowers* `f`, so any rate gene evolves to zero. A reaction is only worth running if it *pays*, so the redesign needs a separate energy currency `e` that is produced by the reaction and spent on reproduction. Mass (food + waste) is conserved; energy is not, because it enters with the environmental waste→food regeneration (a "light" field) and leaves as heat.
 3. **The tension N worries about is partly already there.** Stoichiometry fixes the waste made per unit of energy, so a rate gene cannot make "less waste per offspring"; it can only set the *tempo*. Fast cells win the eviction race and slow cells lose it, while fast cells poison themselves unless they export. The result is an interior optimum `k*`. But in a uniform world a single optimum means convergence and stasis, the vanilla result again. Sustained evolutionary activity needs `k*` to depend on the neighbors.
 4. **The most natural way to make cells need waste** is product activation: the waste catalyzes the agent's own reaction, `F + W → 2W`. A cell then needs some waste to run its metabolism and dies from too much. Its optimum depends on the waste its neighbors export, which is the density dependence point 3 asks for. Two analogies support it:
    - glycolysis is activated by its own products (Sel'kov's 1968 model of glycolytic oscillations);
@@ -66,11 +66,11 @@ Nothing here is implemented. Section 13 lists the decisions for N.
    - Per-compound free energies `G_c` make every reaction's yield `G_A − G_B`. That rules out free-energy cycles in larger networks.
 6. **Code: a separate model in the same repository and library, not a branch and not flags in `evoca.c`.**
    - A new `C/chemca.c` with its own step function and genome.
-   - A small shared core (PRNG, Poisson, diffusion, neighbor choice) extracted from `evoca.c`, guarded by the existing bit-exact goldens. This retires CHEM-P1 along the way.
+   - A small shared core (PRNG, Poisson, diffusion, neighbor choice) extracted from `evoca.c`, guarded by the existing bit-exact goldens. This retires [CHEM-P1](../ISSUES.md) along the way.
    - A `ChemCA` Python class behind a common sim interface, with `"model"` in recipes (missing means `"evoca"`, a load-time default), and `build_sim` dispatching on it.
    - The Research tree stays on `main`.
    - The main cost is `controls.py`, which makes 56 direct `_lib.` calls and must move to sim methods. That is a layer-boundary move and a new pluggable point, so I flag it and suggest `/code-review ultra` there.
-7. **Conflict to resolve:** CHEM-D3/N3 (wgenes) is decided, but wgenes are CA-pattern genes for the current model. If v2 goes ahead without a CA, wgenes are superseded by transport genes. I suggest pausing CHEM-N3 until N decides.
+7. **Conflict to resolve:** [CHEM-D3](../ISSUES.md)/N3 (wgenes) is decided, but wgenes are CA-pattern genes for the current model. If v2 goes ahead without a CA, wgenes are superseded by transport genes. I suggest pausing [CHEM-N3](../ISSUES.md) until N decides.
 
 ---
 
@@ -110,10 +110,10 @@ Nothing here is implemented. Section 13 lists the decisions for N.
 
 | Result | Source | What it implies for v2 |
 |---|---|---|
-| The balance regime is only 0.001-0.002 wide in `waste_sink` | CHEM-N5 | A per-site sink against density-proportional production is a fine-tuning problem. A closed mass budget changes its form (§5). |
-| W piles up to 5-12 when the sink is slower than production, and acts as uniform aging | CHEM-D2, CHEM-Q3 | Unbounded W is an artifact of an open system without a regeneration path. Mass conservation bounds it (§5). |
-| One-way exchange: local cycling, no propagation (soft refractory zone) | CHEM-N5 | The exchange law matters more than toxicity. v2 starts with two-way (passive) transport. |
-| Two-way exchange: traveling waves with stationary sources over a broad region; no spirals resolved; phase noisy at 32-64 cells because colonies are speckle | CHEM-N1, CHEM-Q4 | The speckle plausibly comes from CA-pattern eating (patchy intake). A model without CA-gated intake is a direct test of that hypothesis (§8). |
+| The balance regime is only 0.001-0.002 wide in `waste_sink` | [CHEM-N5](../ISSUES.md) | A per-site sink against density-proportional production is a fine-tuning problem. A closed mass budget changes its form (§5). |
+| W piles up to 5-12 when the sink is slower than production, and acts as uniform aging | [CHEM-D2](../ISSUES.md), [CHEM-Q3](../ISSUES.md) | Unbounded W is an artifact of an open system without a regeneration path. Mass conservation bounds it (§5). |
+| One-way exchange: local cycling, no propagation (soft refractory zone) | [CHEM-N5](../ISSUES.md) | The exchange law matters more than toxicity. v2 starts with two-way (passive) transport. |
+| Two-way exchange: traveling waves with stationary sources over a broad region; no spirals resolved; phase noisy at 32-64 cells because colonies are speckle | [CHEM-N1](../ISSUES.md), [CHEM-Q4](../ISSUES.md) | The speckle plausibly comes from CA-pattern eating (patchy intake). A model without CA-gated intake is a direct test of that hypothesis (§8). |
 | N's eye: one-way, tox 0.4, sink 0.019, N=256 shows noisy fronts and "almost spirals" | this message | The statistics must be checked against the eye (§2). |
 | Vanilla EvoCA evolves to stasis (accepted); activity moves into chem | memory, 2026-10-23 | The v2 design must provide density- or frequency-dependent selection, or it reproduces stasis (§6). |
 
@@ -123,7 +123,7 @@ Nothing here is implemented. Section 13 lists the decisions for N.
 
 ### 2a. What the scans compute now
 
-CHEM-N1 (`Research/Chem/Scans/2026-10-23_N1_twoway_waves/scan.py`, module `python/evoca_waves.py`) uses 8×8 blocks and a burn-in to step 3000. CHEM-N5 and the toxicity sweep used only the first three statistics in the table below.
+[CHEM-N1](../ISSUES.md) (`Research/Chem/Scans/2026-10-23_N1_twoway_waves/scan.py`, module `python/evoca_waves.py`) uses 8×8 blocks and a burn-in to step 3000. [CHEM-N5](../ISSUES.md) and the toxicity sweep used only the first three statistics in the table below.
 
 | Statistic | Definition | What it detects | What it misses |
 |---|---|---|---|
@@ -138,7 +138,7 @@ CHEM-N1 (`Research/Chem/Scans/2026-10-23_N1_twoway_waves/scan.py`, module `pytho
 ### 2b. Why "almost spirals" would score as "no spirals"
 
 1. **Coverage gap, not detector failure, for the point N watched.**
-   - CHEM-N1 sampled one-way exchange only at its control point (tox 1.0, sink 0.015, wdiff 0.01).
+   - [CHEM-N1](../ISSUES.md) sampled one-way exchange only at its control point (tox 1.0, sink 0.015, wdiff 0.01).
    - The tox 0.4 / sink 0.019 one-way point exists only in the notebook's toxicity sweep, which recorded alive std.
    - That point has never been through the wave statistics. Separately, "tox 0.4 destroys structure" was a two-way result and should not be read as covering one-way.
 2. **Matching tolerance against tip motion.**
@@ -146,7 +146,7 @@ CHEM-N1 (`Research/Chem/Scans/2026-10-23_N1_twoway_waves/scan.py`, module `pytho
    - At a lag of 60 steps a meandering tip moves tens of cells, several blocks, so a live core fails the 1-block test.
    - The long-lag survival test can only detect *stationary* cores, which is exactly the "stationary sources" N1 found (target sources, not spirals). It is blind to the noisy-front, wandering-core spiral N describes.
 3. **Phase from a fixed center.** θ = atan2(W − W0, F − F0) about each block's time-mean over steps 2000-3000. If the pattern drifts after step 3000 (nonstationary sources, coarsening), the center is stale and θ is distorted. Noise in F and W at the 8-cell scale enters θ directly; there is no temporal smoothing.
-4. **One block size.** b = 8 is below the 32-64-cell noise scale reported in CHEM-Q4. Defects at b = 8 are mostly speckle. b was never varied.
+4. **One block size.** b = 8 is below the 32-64-cell noise scale reported in [CHEM-Q4](../ISSUES.md). Defects at b = 8 are mostly speckle. b was never varied.
 5. **One-dimensional film.** The kymograph is the middle row only. A spiral appears in a row cut as a source with alternating-direction waves, which looks much like a target source.
 
 ### 2c. Replacements
@@ -157,7 +157,7 @@ Ordered by value per cost; all are cheap on stored frames.
 |---|---|---|
 | **Local time-series phase** | Per block, the Hilbert transform of the band-passed W(t) (or alive(t)) around the dominant period. Standard in cardiac reentry phase mapping. | It does not depend on a global center and smooths over time, so θ is less noisy than atan2 on one frame. |
 | **Tracked defects** | Frames every 10 steps; link each defect to the nearest same-sign defect within `v_max · Δt` (about 2 blocks); output trajectories and **lifetimes**; chance from the same linking on time-shuffled frames. | Spiral cores are long-lived trajectories, even when they meander. Noise defects live about one frame. This retires the fixed-lag survival test. |
-| **Phase-coherence length** ξ | The spatial autocorrelation of `e^{iθ}` and the distance where it falls to 1/e. | The quantitative form of CHEM-Q4. A spiral needs ξ much larger than the core size; noise has ξ of about one block. |
+| **Phase-coherence length** ξ | The spatial autocorrelation of `e^{iθ}` and the distance where it falls to 1/e. | The quantitative form of [CHEM-Q4](../ISSUES.md). A spiral needs ξ much larger than the core size; noise has ξ of about one block. |
 | **Radial structure factor S(k)** of W or alive | 2D FFT, radially averaged; peak position and width | The pattern wavelength, and mosaic coherence (a narrow peak) against speckle (a broad one). It replaces alive std as the "mosaic" measure. |
 | **Space-time spectrum** | FFT over (x, y, t) of stored frames | Bulk oscillation (a peak at k = 0), traveling waves (a ridge ω = c·k), and stationary patterns (ω = 0) are separated cleanly. |
 | **Front roughness** | Interface width of the alive/dead or high/low-W front against front length | Measures "noisy fronts" directly, which is the visual feature N named. |
@@ -167,7 +167,7 @@ Ordered by value per cost; all are cheap on stored frames.
 
 Global rule: a plausible result is the moment to check against something external. Here the external instrument is N's eye. The procedure:
 
-1. Pick about 30 runs spanning the CHEM-N1 grid, CHEM-N5 and the tox 0.4 / sink 0.019 one-way point. Save 300-step films (colormode 6) at N=512.
+1. Pick about 30 runs spanning the [CHEM-N1](../ISSUES.md) grid, [CHEM-N5](../ISSUES.md) and the tox 0.4 / sink 0.019 one-way point. Save 300-step films (colormode 6) at N=512.
 2. N labels each film: bulk / stationary / target / spiral-like / noise.
 3. Compute every statistic in §2c on the same runs.
 4. Keep the statistics that separate the labels, and set thresholds there.
@@ -187,17 +187,17 @@ Cost: about 30 runs (minutes on torque) plus about 30 minutes of N's viewing. Th
 |---|---|
 | 2026-05-21 | `pdt-server/pdt-param-optimization.md` compares PDT's generation loop (explore/exploit sampling, refit per generation) with EvoCA's one-shot grids: "the thing PDT has that EvoCA lacks: sequential, surrogate-driven active learning." |
 | Oct 2026 | `prompt1-Oct2026.md`: N asks to abstract the restricted (cone) Pareto approach from pdt-server for any dual-parameter optimization. |
-| Oct 2026 | Review `Docs/Oct2026/00-review-of-prompt1.md` §6-§8. EvoCA's "optimization" is scalarization over a static grid, with weaknesses: compensation, concave regions unreachable, pool-relative normalization, silent weighting. It proposes a package. |
-| Oct 2026 | `~/Projects/conepareto` built, with R parity (`05-cone-pareto-package.md`): `select`, layers, regions, hypervolume, and later wedge-angle derivation and `on_shortfall`. **"Not ported: [...] the lambda-sweep sampler. They sit around `select` rather than inside it; say if you want them."** No answer was recorded. |
+| Oct 2026 | Review `Docs/Archive/Oct2026/00-review-of-prompt1.md` §6-§8. EvoCA's "optimization" is scalarization over a static grid, with weaknesses: compensation, concave regions unreachable, pool-relative normalization, silent weighting. It proposes a package. |
+| Oct 2026 | `~/Projects/conepareto` built, with R parity (`Research/Activity-metrics/plans/2026-10-15_cone-pareto-package.md`): `select`, layers, regions, hypervolume, and later wedge-angle derivation and `on_shortfall`. **"Not ported: [...] the lambda-sweep sampler. They sit around `select` rather than inside it; say if you want them."** No answer was recorded. |
 | Oct 2026 | Used post-hoc: `rd_pareto_picks` / `rd_pareto_layers` galleries (Reaction-diffusion), and Activity-metrics notebook 4a. |
-| open | ACT-D2 ("adopt Pareto selection for (dyn, eg)?", recommendation yes, box region) and RXD-N1 (re-select the 04-27 winners with box/wedge) are still open on the board. |
+| open | [ACT-D2](../../Activity-metrics/ISSUES.md) ("adopt Pareto selection for (dyn, eg)?", recommendation yes, box region) and [RXD-N1](../../Reaction-diffusion/ISSUES.md) (re-select the 04-27 winners with box/wedge) are still open on the board. |
 
 So the generational search was never built. The selection half exists; the sampling half does not. I found no board item for it in EvoCA. It fell between the pdt comparison and the port's "not ported" list.
 
 ### 3b. Why not run it on the current chem scans right away
 
 - **The objective is not calibrated** (§2). A generational search climbs whatever statistic it is given. With the current spiral statistic it would climb toward stationary target sources, the thing that statistic actually rewards.
-- **Single-seed noise.** pdt-server's own critique (§2b of the comparison) applies: an arg-max over noisy evaluations selects the lucky ones. The CHEM-N1 seeds disagree enough (defect excess 0.15-0.21) to matter.
+- **Single-seed noise.** pdt-server's own critique (§2b of the comparison) applies: an arg-max over noisy evaluations selects the lucky ones. The [CHEM-N1](../ISSUES.md) seeds disagree enough (defect excess 0.15-0.21) to matter.
 - **The parameter space is about to change.** If v2 is adopted, the v1 parameters (`waste_sink`, `food_inc`) disappear (§5). A driver written generically survives that; a v1-specific campaign does not.
 
 ### 3c. Driver sketch (model-agnostic)
@@ -214,7 +214,7 @@ So the generational search was never built. The selection half exists; the sampl
   - spawn `per_gen` children around the selected points (Gaussian in normalized space, width halved each generation, plus 20% fresh LHS points against premature collapse);
   - **re-evaluate the survivors with fresh seeds** each generation, so a lucky survivor cannot persist.
 - Outputs: one `results.csv` per generation plus a lineage column, so the existing `Scan` and `Gallery` tooling reads each generation as a scan.
-- Budget: 5 generations × 50 points × 2 seeds = 500 runs, about the cost of four CHEM-N1 grids, over a 5-8-parameter space a grid cannot cover.
+- Budget: 5 generations × 50 points × 2 seeds = 500 runs, about the cost of four [CHEM-N1](../ISSUES.md) grids, over a 5-8-parameter space a grid cannot cover.
 - Two objectives must be named first. For chem, candidates are (pattern coherence ξ or tracked-core lifetime, persistence or viability), and in v2 (pattern, evolutionary activity on reaction genes).
 
 The surrogate model PDT uses is left out on purpose: EvoCA evaluates the true objective cheaply enough, and §1 of the pdt comparison argues that the surrogate is where PDT's weakness lies.
@@ -259,10 +259,10 @@ N's point 5: conservation of mass for food + waste, with an environmental waste�
 - **Energy** enters via `r`, is carried as F's potential `G_F`, is realized by agents into `e`, and leaves as dissipation (reproduction overhead, death, maintenance). Energy is booked as a flux, not conserved.
 - **Gone:** `food_inc` (replaced by `r` acting on the existing W), `waste_sink` (W is not destroyed, only recycled), and the F ≤ 1 regeneration cap. `F` can still be capped at 1 per site by limiting the regeneration to `min(ΔF, 1 − F)`, so that a site does not hold more food than a cell can eat.
 
-**What this does to the CHEM-N5 and CHEM-D2 problems** (a hypothesis to test, not a result):
+**What this does to the [CHEM-N5](../ISSUES.md) and [CHEM-D2](../ISSUES.md) problems** (a hypothesis to test, not a result):
 
 - In v1, production scales with density, `ρ · tax`, while the sink is a fixed per-site removal `waste_sink`. Balance therefore needs `waste_sink ≈ ρ* · tax`, and nearby values either pile W up (aging regime, W of 5-12) or starve the field. That is the 0.001-wide band.
-- In v2, total W is bounded by `M`, so W cannot exceed `m̄` on average. The pile-up of CHEM-D2 cannot happen in the mean, though local accumulation can.
+- In v2, total W is bounded by `M`, so W cannot exceed `m̄` on average. The pile-up of [CHEM-D2](../ISSUES.md) cannot happen in the mean, though local accumulation can.
 - Consumption and regeneration feed back on each other: agents die when W is high, stop producing, and `r` restores F. That loop is a relaxation oscillator by construction, the predator-prey-like cycle that the v1 balance regime only reached by tuning.
 - **Fine-tuning moves, it does not vanish:** the regime is set by `(m̄, r)` against the agents' rates. The rates evolve, though, so the population can tune itself to the environment, which v1's fixed tax could not.
 - **Test:** a 2D scan over `(m̄, r)` at fixed genes, looking for the width of the oscillating regime, against the v1 band.
@@ -302,7 +302,7 @@ N's point 4: if waste is toxic, agents will evolve rates that make little of it;
 ### 6c. What A predicts (for checking stage 2 against)
 
 - **Ignition.** A newborn inherits half its parent's `w`, a metabolic inheritance of catalyst. A cell with `w = 0` cannot start unless it takes up W from its site. Colonies therefore spread into waste-primed ground and stall in clean ground, which is a front-propagation mechanism with a built-in excitability threshold.
-- **Refractoriness.** Behind a front, W is high (toxic) and F depleted. Regeneration `r` converts W back to F, so the refractory time is about `1/r`. The v1 refractory zone was "soft" (CHEM-N5); here the refractory variable is the same W that ignites, which is the Gray-Scott structure in which waves and spiral-like patterns are known to occur.
+- **Refractoriness.** Behind a front, W is high (toxic) and F depleted. Regeneration `r` converts W back to F, so the refractory time is about `1/r`. The v1 refractory zone was "soft" ([CHEM-N5](../ISSUES.md)); here the refractory variable is the same W that ignites, which is the Gray-Scott structure in which waves and spiral-like patterns are known to occur.
 - **Selection on k** is density dependent: the best `k` is lower in high-W regions (toxicity close) and higher in fresh ground. A traveling front could carry a different `k` distribution than its wake, which is the coupling between pattern and evolution that the activity direction wants.
 
 ---
@@ -361,24 +361,24 @@ The current `tax_per_egene` is a mass tax per egene position, so it goes. Withou
 ### 8c. Transport (uptake and export)
 
 - v1 has egene eating for F and `disp` for W.
-- Recommendation for stage 1: passive two-way transport for both compounds, `d_c = u_c · (E_c − a_c)`, with fixed `u_F` and `u_W` as metaparameters. Two-way is what propagated in CHEM-N1.
+- Recommendation for stage 1: passive two-way transport for both compounds, `d_c = u_c · (E_c − a_c)`, with fixed `u_F` and `u_W` as metaparameters. Two-way is what propagated in [CHEM-N1](../ISSUES.md).
 - Transport genes `(compound, u_idx)` can be stage 2 or 3. They supersede wgenes (§8e).
 
 ### 8d. Does a chem agent keep the CA (LUT and egene eating)?
 
 This is N's call. My recommendation is **no in stages 1-2, then optional CA gating in stage 4**:
 
-- **Without the CA**, the model isolates metabolic evolution and RD pattern formation. If CHEM-Q4's speckle comes from CA-pattern intake (a hypothesis, not established), v2 will show coherent phase where v1 could not, and that test is worth having on its own.
+- **Without the CA**, the model isolates metabolic evolution and RD pattern formation. If [CHEM-Q4](../ISSUES.md)'s speckle comes from CA-pattern intake (a hypothesis, not established), v2 will show coherent phase where v1 could not, and that test is worth having on its own.
 - **The case for keeping it:** without the CA, v2 is an individual-based reaction-diffusion model, and EvoCA's distinctive feature, heritable local dynamics coupled to resources, is gone.
 - **The middle path** (stage 4): the CA state `v` gates expression. An rgene runs only when `v = 1`, so LUT evolution sets the temporal program of metabolism (dormancy under toxicity, alternation). For that to be adaptive, the LUT inputs need some chemical sensing (for example, a bit for `w > tox/2`). That is a separate design step, best taken after stage 2 shows what the chemistry does alone.
 
-### 8e. Conflict: CHEM-D3 / CHEM-N3 (wgenes)
+### 8e. Conflict: [CHEM-D3](../ISSUES.md) / [CHEM-N3](../ISSUES.md) (wgenes)
 
-- CHEM-D3 decided on wgenes: egene-like D4 patterns that scale excretion, in the *current* model.
+- [CHEM-D3](../ISSUES.md) decided on wgenes: egene-like D4 patterns that scale excretion, in the *current* model.
 - In v2 without a CA, a pattern gene has no input. The heritable-exchange role passes to transport genes (`compound, u_idx`).
-- CHEM-D3's motivation was that eating and excreting would demand different CA patterns and so select for temporal alternation. That maps onto the stage-4 CA gating, not onto stage 1.
+- [CHEM-D3](../ISSUES.md)'s motivation was that eating and excreting would demand different CA patterns and so select for temporal alternation. That maps onto the stage-4 CA gating, not onto stage 1.
 - Resolution options:
-  - (a) pause CHEM-N3 until N decides on v2 (my recommendation: building wgenes into v1 now would be dev in the model being superseded);
+  - (a) pause [CHEM-N3](../ISSUES.md) until N decides on v2 (my recommendation: building wgenes into v1 now would be dev in the model being superseded);
   - (b) build wgenes in v1 anyway, as the CA-coupled baseline for comparing against v2 at stage 4.
 
 ---
@@ -400,7 +400,7 @@ N's point 7: branches, or a separate model (`sim_build_chem`), possibly with sep
 
 - **`C/core.c`, `C/core.h`.** Extract only what both models need and what is pure:
   - the PRNG and `poisson_sample`;
-  - one `diffuse(field, tmp, d)`, the CHEM-P1 refactor, which unifies the three copies of the box blur;
+  - one `diffuse(field, tmp, d)`, the [CHEM-P1](../ISSUES.md) refactor, which unifies the three copies of the box blur;
   - Moore-neighbor helpers.
 
   These must be byte-for-byte equivalent in behavior; the existing goldens (`chem_parity`, food goldens) are the guard. The alternative of copying the helpers into `chemca.c` leaves two copies of the PRNG to drift, against the "state it once" rule.
@@ -434,7 +434,7 @@ N's point 7: branches, or a separate model (`sim_build_chem`), possibly with sep
 ### 9d. Research tree
 
 - v2 work stays in `Research/Chem/`. Scans record `model` in `scan_config.json`.
-- The v1 results (CHEM-N1, CHEM-N5) remain reproducible because v1 is untouched.
+- The v1 results ([CHEM-N1](../ISSUES.md), [CHEM-N5](../ISSUES.md)) remain reproducible because v1 is untouched.
 - Notebook sections label their model.
 - Development happens on a short-lived feature branch per stage with the usual merge gate (test notebook, review), not a long-lived model branch.
 
@@ -463,7 +463,7 @@ Each regression test is shown failing with its fix reverted (standing rule).
 |---|---|---|---|
 | **0a** | Statistics: §2c in `evoca_waves.py` (Hilbert phase, tracked defects, ξ, S(k), the space-time spectrum); constructed-field tests (meandering spiral pair, plane wave, target source, noise) | module, tests | the tests separate the four constructed cases |
 | **0b** | Eye calibration (§2d) plus the one-way tox 0.4 / sink 0.019 coverage check | labeled set, a table of which statistics separate labels | N's labels |
-| **0c** | `C/core.c` extraction (CHEM-P1) | refactor | all goldens bit-exact |
+| **0c** | `C/core.c` extraction ([CHEM-P1](../ISSUES.md)) | refactor | all goldens bit-exact |
 | **1** | `chemca` skeleton: two compounds, mass-conserving, `r(x)` regeneration, two-way transport, rgenes F → W with C ∈ {none, W}, energy currency, `c_g`, `m_e`, toxicity; `ChemCA`; recipes `model`; colormodes; `controls.py` refactor | branch, test notebook, `/code-review ultra` offered | §10 table green; mass identity exact |
 | **2** | Experiments: (`m̄`, `r`) regime map; does evolution choose autocatalysis; does `k` track pattern phase; the generational Pareto driver (§3c) on (pattern, activity) | scans, Chem notebook section | the §2d-calibrated statistics |
 | **3** | `n_chem > 2`: free energies `G_c`, the full (A, B, C, k) genes, transport genes, the light-harvesting gene (the producer niche); sparse store if the universe grows | dev plan | cycle-yield and mass tests |
@@ -490,7 +490,7 @@ I wrote a first draft and then critiqued it from the position of a rival expert 
    - *Objection:* activity statistics key on genome identity, and continuous mutation makes every birth novel, so activity saturates trivially, the opposite of what moving activity into chem needs.
    - *Revision:* discrete log-spaced `k_idx` (§8a).
 4. **Overclaiming the mass-conservation fix.**
-   - *Draft:* "a closed mass budget removes the narrow balance band of CHEM-N5".
+   - *Draft:* "a closed mass budget removes the narrow balance band of [CHEM-N5](../ISSUES.md)".
    - *Objection:* unjustified generalization. The band comes from matching a fixed sink to density-proportional production, and in a closed system the matching moves to `(m̄, r)`.
    - *Revision:* §5 states it as a hypothesis with a test. The claim kept is the structural one: W is bounded by `M`, which does follow. An open mode is kept for comparison.
 5. **Pareto generations now.**
@@ -500,7 +500,7 @@ I wrote a first draft and then critiqued it from the position of a rival expert 
 6. **Copying helpers into `chemca.c`.**
    - *Draft:* a separate library with copied PRNG and diffusion.
    - *Objection:* two copies of one fact drift.
-   - *Revision:* extract `core.c` under the goldens (§9b), which also retires CHEM-P1.
+   - *Revision:* extract `core.c` under the goldens (§9b), which also retires [CHEM-P1](../ISSUES.md).
 7. **Silent departure from decision A.**
    - *Draft:* dense stores, no comment.
    - *Revision:* flagged in §9b, with the reason (decision A targets large universes) and the condition for switching back.
@@ -516,7 +516,7 @@ A further objection I considered and did not adopt: "drop the CA permanently; it
 3. **The need for waste.** Autocatalysis offered as a gene choice (C = none or W), with plain metabolism as the control (§6b)?
 4. **Rate law.** Mass action with the exponential integrator; discrete log-spaced rates; free energies `G_c` per compound (§7, §8a)?
 5. **The CA.** Leave the CA and egene eating out of stages 1-2, with CA gating as a stage-4 option (§8d)?
-6. **Wgenes.** Pause CHEM-N3 (wgenes in v1) pending v2, or build them as the CA-coupled baseline (§8e)?
+6. **Wgenes.** Pause [CHEM-N3](../ISSUES.md) (wgenes in v1) pending v2, or build them as the CA-coupled baseline (§8e)?
 7. **Code.** A separate model `chemca` in the same repo and library, with a shared `core.c`, a sim interface, recipe `model` keys and the `controls.py` refactor (§9)? The name `chemca` is a placeholder.
 8. **Statistics.** Do stages 0a-0b first (new statistics plus your labels on about 30 films), and the one-way tox 0.4 coverage check now (§2c, §2d)?
-9. **Pareto generations.** Build the model-agnostic driver (§3c) after calibration, and answer ACT-D2 at the same time (the same `select` call)?
+9. **Pareto generations.** Build the model-agnostic driver (§3c) after calibration, and answer [ACT-D2](../../Activity-metrics/ISSUES.md) at the same time (the same `select` call)?

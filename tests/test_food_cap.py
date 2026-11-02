@@ -1,6 +1,6 @@
 """Tests for `food_cap` — the Phase-3 mouthful cap (A9 fix, 2026-10-15).
 
-Defect A9 (Docs/Oct2026/06-seeding-findings.md): the mouthful
+Defect A9 (Docs/Archive/Oct2026/06-seeding-findings.md): the mouthful
 `(m_scale/25)*score*F` was capped only by private headroom, never by the
 food present, so F_food went negative whenever m_scale*score > 25, and a
 negative F then made later mouthfuls negative (live cells with negative

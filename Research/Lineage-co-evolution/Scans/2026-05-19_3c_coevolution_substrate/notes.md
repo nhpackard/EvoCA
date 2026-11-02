@@ -1,7 +1,7 @@
 # 3c_coevolution_substrate (#3c)
 
 Egene evolution on a frozen *evolved* substrate vs co-evolving vs
-GoL-frozen anchors. Spec: `Docs/plan-3c-coevolution-substrate.md`.
+GoL-frozen anchors. Spec: `Research/Lineage-co-evolution/plans/plan-3c-coevolution-substrate.md`.
 80 rows, 0 errors, 650 s torque. **`determinism_ok=True` on all
 30/30 A/C pairs** — the shared-fork crux (D-4) held exactly.
 Premise confirmed: A/C substrate `frac_evolved=1.000`, ~38k distinct

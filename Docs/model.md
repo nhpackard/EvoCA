@@ -252,7 +252,7 @@ the food present or the private headroom:
 > `m_scale > 1` a high-scoring cell ate more than was present, driving
 > `F(x)` negative, and the next mouthful from a negative `F` was itself
 > negative, so live cells could hold negative `f(x)` (defect A9,
-> `Docs/Oct2026/06-seeding-findings.md`; guide 08 §2.1). The `F(x)` term
+> `Docs/Archive/Oct2026/06-seeding-findings.md`; guide 08 §2.1). The `F(x)` term
 > in the `min` is the fix. The metaparameter `food_cap` (default 1)
 > selects it; `food_cap=0` restores the legacy rule bit-for-bit for
 > reproducing pre-fix runs and recipes (a recipe without a `food_cap`
