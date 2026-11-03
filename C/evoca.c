@@ -2453,17 +2453,21 @@ void evoca_activity_update(void)
 /* Activity flux probe: for each bucket, walk the past `window` ticks and
  * reconstruct the activity trajectory from stored pop history. A tick
  * contributes one slope sample = pop iff the activity increment interval
- * (A_prev, A_now] overlaps [a_lo, a_hi]. Writes up to max_n float slopes
- * and returns the count written. */
-int evoca_activity_crossings(uint64_t a_lo, uint64_t a_hi, int window,
-                             float *slopes_out, int max_n)
+ * (A_prev, A_now] overlaps [a_lo, a_hi]. Writes the first max_n samples
+ * to slopes_out (may be NULL), adds every sample to *sum (may be NULL),
+ * and returns the total number of samples. */
+static int64_t act_crossings_walk(uint64_t a_lo, uint64_t a_hi, int window,
+                                  float *slopes_out, int64_t max_n,
+                                  double *sum)
 {
-    if (!act_keys || window <= 0 || max_n <= 0) return 0;
+    if (sum) *sum = 0.0;
+    if (!act_keys || window <= 0) return 0;
     if (window > FLUX_W_MAX) window = FLUX_W_MAX;
     if ((uint32_t)window > flux_t) window = (int)flux_t;
     if (window <= 0) return 0;
 
-    int n = 0;
+    int64_t n = 0;
+    double s = 0.0;
     for (int i = 0; i < act_cap; i++) {
         if (act_keys[i] == ACT_EMPTY) continue;
         uint64_t A_after = act_vals[i].activity;
@@ -2474,14 +2478,33 @@ int evoca_activity_crossings(uint64_t a_lo, uint64_t a_hi, int window,
             uint32_t h = act_pop_hist[base + slot];
             uint64_t A_before = (A_after >= h) ? A_after - h : 0;
             if (h > 0 && A_before < a_hi && A_after >= a_lo) {
-                if (n >= max_n) return n;
-                slopes_out[n++] = (float)h;
+                if (slopes_out && n < max_n) slopes_out[n] = (float)h;
+                s += (double)h;
+                n++;
             }
             if (A_before < a_lo) break;
             A_after = A_before;
         }
     }
+    if (sum) *sum = s;
     return n;
+}
+
+int evoca_activity_crossings(uint64_t a_lo, uint64_t a_hi, int window,
+                             float *slopes_out, int max_n)
+{
+    if (max_n < 0) max_n = 0;
+    int64_t n = act_crossings_walk(a_lo, a_hi, window, slopes_out, max_n, NULL);
+    return n > INT32_MAX ? INT32_MAX : (int)n;
+}
+
+double evoca_activity_flux_sum(uint64_t a_lo, uint64_t a_hi, int window,
+                               int64_t *n_out)
+{
+    double s;
+    int64_t n = act_crossings_walk(a_lo, a_hi, window, NULL, 0, &s);
+    if (n_out) *n_out = n;
+    return s;
 }
 
 void evoca_activity_render_col(int32_t *col, int height)
@@ -2747,15 +2770,17 @@ int evoca_activity_get(uint32_t *keys, uint64_t *activities,
 {
     int n = 0;
     if (!act_keys) return 0;
-    for (int i = 0; i < act_cap && n < max_n; i++) {
+    for (int i = 0; i < act_cap; i++) {
         if (act_keys[i] == ACT_EMPTY) continue;
-        keys[n]       = act_keys[i];
-        activities[n] = act_vals[i].activity;
-        pop_counts[n] = act_vals[i].pop_count;
-        colors[n]     = act_vals[i].color;
+        if (n < max_n) {
+            keys[n]       = act_keys[i];
+            activities[n] = act_vals[i].activity;
+            pop_counts[n] = act_vals[i].pop_count;
+            colors[n]     = act_vals[i].color;
+        }
         n++;
     }
-    return n;
+    return n;   /* total entries; > max_n means the buffer was too small */
 }
 
 /* ── Effective-rule activity (eff_activity) exported API ─────────────
@@ -2795,15 +2820,17 @@ int evoca_eff_activity_get(uint32_t *keys, uint64_t *activities,
 {
     int n = 0;
     if (!eff_keys) return 0;
-    for (int i = 0; i < eff_cap && n < max_n; i++) {
+    for (int i = 0; i < eff_cap; i++) {
         if (eff_keys[i] == ACT_EMPTY) continue;
-        keys[n]       = eff_keys[i];
-        activities[n] = eff_vals[i].activity;
-        pop_counts[n] = eff_vals[i].pop_count;
-        colors[n]     = eff_vals[i].color;
+        if (n < max_n) {
+            keys[n]       = eff_keys[i];
+            activities[n] = eff_vals[i].activity;
+            pop_counts[n] = eff_vals[i].pop_count;
+            colors[n]     = eff_vals[i].color;
+        }
         n++;
     }
-    return n;
+    return n;   /* total entries; > max_n means the buffer was too small */
 }
 
 /* Count distinct effective-rule species currently alive (pop_count>0). */
@@ -3421,15 +3448,17 @@ int evoca_n_activity_get(uint32_t *keys, uint64_t *activities,
 {
     int n = 0;
     if (!nact_keys) return 0;
-    for (int i = 0; i < nact_cap && n < max_n; i++) {
+    for (int i = 0; i < nact_cap; i++) {
         if (nact_keys[i] == ACT_EMPTY) continue;
-        keys[n]       = nact_keys[i];
-        activities[n] = nact_vals[i].activity;
-        pop_counts[n] = nact_vals[i].pop_count;
-        colors[n]     = nact_vals[i].color;
+        if (n < max_n) {
+            keys[n]       = nact_keys[i];
+            activities[n] = nact_vals[i].activity;
+            pop_counts[n] = nact_vals[i].pop_count;
+            colors[n]     = nact_vals[i].color;
+        }
         n++;
     }
-    return n;
+    return n;   /* total entries; > max_n means the buffer was too small */
 }
 
 void evoca_nq_activity_deciles(float *deciles_out)

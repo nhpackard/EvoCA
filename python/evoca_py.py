@@ -478,6 +478,10 @@ class EvoCA:
             ctypes.c_uint64, ctypes.c_uint64, ctypes.c_int,
             ctypes.POINTER(ctypes.c_float), ctypes.c_int]
         L.evoca_activity_crossings.restype  = ctypes.c_int
+        L.evoca_activity_flux_sum.argtypes = [
+            ctypes.c_uint64, ctypes.c_uint64, ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int64)]
+        L.evoca_activity_flux_sum.restype  = ctypes.c_double
         L.evoca_count_distinct_genomes.argtypes = []
         L.evoca_count_distinct_genomes.restype  = ctypes.c_int
         L.evoca_get_population.argtypes = []
@@ -1832,16 +1836,9 @@ class EvoCA:
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
         return out.reshape(self._N, self._N)
 
-    def activity_crossings(self, decile_lo=2, decile_hi=3, window=8,
-                           max_n=65536):
-        """Return activity-wave slope samples across a decile band.
-
-        Reconstructs the last `window` ticks of activity for every live
-        G-activity bucket and collects one slope sample per tick whose
-        activity increment overlaps [decile_lo..decile_hi) of the current
-        live-bucket distribution. Each sample is the bucket's population
-        at that tick.
-        """
+    def _flux_band(self, decile_lo, decile_hi):
+        """[a_lo, a_hi) activity bounds of the decile band of the live
+        G-activity distribution, or None if the band is empty."""
         # Deciles (p10..p90) are normalized by D = distinct live genomes.
         deciles = np.zeros(9, dtype=np.float32)
         self._lib.evoca_q_activity_deciles(
@@ -1852,23 +1849,63 @@ class EvoCA:
         hi_i = max(lo_i, min(9, int(decile_hi) - 1))
         a_lo = int(deciles[lo_i] * D) if lo_i < 9 else 0
         a_hi = int(deciles[hi_i] * D) if hi_i < 9 else 0
-        if a_hi <= a_lo:
+        return (a_lo, a_hi) if a_hi > a_lo else None
+
+    def activity_crossings(self, decile_lo=2, decile_hi=3, window=8,
+                           max_n=65536):
+        """Return activity-wave slope samples across a decile band.
+
+        Reconstructs the last `window` ticks of activity for every live
+        G-activity bucket and collects one slope sample per tick whose
+        activity increment overlaps [decile_lo..decile_hi) of the current
+        live-bucket distribution. Each sample is the bucket's population
+        at that tick. `max_n` is only the first buffer size: all samples
+        are returned.
+        """
+        band = self._flux_band(decile_lo, decile_hi)
+        if band is None:
             return np.zeros(0, dtype=np.float32)
-        buf = np.zeros(max_n, dtype=np.float32)
-        n = self._lib.evoca_activity_crossings(
-            ctypes.c_uint64(a_lo), ctypes.c_uint64(a_hi),
-            int(window),
-            buf.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-            int(max_n))
-        return buf[:n].copy()
+        while True:
+            buf = np.zeros(max_n, dtype=np.float32)
+            n = self._lib.evoca_activity_crossings(
+                ctypes.c_uint64(band[0]), ctypes.c_uint64(band[1]),
+                int(window),
+                buf.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                int(max_n))
+            if n <= max_n:
+                return buf[:n].copy()
+            max_n = n
 
     def activity_flux(self, decile_lo=2, decile_hi=3, window=8):
-        """Mean activity flow per tick through the decile band."""
-        slopes = self.activity_crossings(decile_lo=decile_lo,
-                                         decile_hi=decile_hi, window=window)
-        if len(slopes) == 0:
+        """Mean activity flow per tick through the decile band: the sum of
+        activity_crossings() over `window`, computed in C without a buffer
+        (so it has no cap)."""
+        band = self._flux_band(decile_lo, decile_hi)
+        if band is None:
             return 0.0
-        return float(slopes.sum()) / float(window)
+        return float(self._lib.evoca_activity_flux_sum(
+            ctypes.c_uint64(band[0]), ctypes.c_uint64(band[1]),
+            int(window), None)) / float(window)
+
+    @staticmethod
+    def _read_table(cfn, max_n):
+        """Read an activity table through a C *_activity_get reader. The
+        reader returns the total entry count, so `max_n` is only the first
+        buffer size: a larger table is re-read whole, never truncated."""
+        while True:
+            keys = np.zeros(max_n, dtype=np.uint32)
+            acts = np.zeros(max_n, dtype=np.uint64)
+            pops = np.zeros(max_n, dtype=np.uint32)
+            cols = np.zeros(max_n, dtype=np.int32)
+            n = cfn(keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+                    acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+                    pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
+                    cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
+                    max_n)
+            if n <= max_n:
+                return {'hash': keys[:n], 'activity': acts[:n],
+                        'pop_count': pops[:n], 'color': cols[:n]}
+            max_n = n
 
     def get_activity(self, max_n=4096):
         """Return activity table as dict of arrays.
@@ -1876,18 +1913,7 @@ class EvoCA:
         Returns dict with keys: 'hash', 'activity', 'pop_count', 'color',
         each a numpy array of length n (actual number of entries).
         """
-        keys = np.zeros(max_n, dtype=np.uint32)
-        acts = np.zeros(max_n, dtype=np.uint64)
-        pops = np.zeros(max_n, dtype=np.uint32)
-        cols = np.zeros(max_n, dtype=np.int32)
-        n = self._lib.evoca_activity_get(
-            keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
-            acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
-            pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
-            cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
-            max_n)
-        return {'hash': keys[:n], 'activity': acts[:n],
-                'pop_count': pops[:n], 'color': cols[:n]}
+        return self._read_table(self._lib.evoca_activity_get, max_n)
 
     # ── Effective-rule activity (eff_activity) ───────────────────────
 
@@ -1910,18 +1936,7 @@ class EvoCA:
         with keys 'hash', 'activity', 'pop_count', 'color'. Parallel to
         get_activity() but over the effective-rule species key. Call
         eff_activity_update() first to populate pop_count/activity."""
-        keys = np.zeros(max_n, dtype=np.uint32)
-        acts = np.zeros(max_n, dtype=np.uint64)
-        pops = np.zeros(max_n, dtype=np.uint32)
-        cols = np.zeros(max_n, dtype=np.int32)
-        n = self._lib.evoca_eff_activity_get(
-            keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
-            acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
-            pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
-            cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
-            max_n)
-        return {'hash': keys[:n], 'activity': acts[:n],
-                'pop_count': pops[:n], 'color': cols[:n]}
+        return self._read_table(self._lib.evoca_eff_activity_get, max_n)
 
     def eff_count_distinct(self):
         """Count of distinct effective-rule species currently alive
@@ -2089,18 +2104,7 @@ class EvoCA:
     def get_n_activity(self, max_n=4096):
         """Return N-activity table (shadow). Same key/value layout as
         get_activity — both use the same FNV-1a LUT-content hash."""
-        keys = np.zeros(max_n, dtype=np.uint32)
-        acts = np.zeros(max_n, dtype=np.uint64)
-        pops = np.zeros(max_n, dtype=np.uint32)
-        cols = np.zeros(max_n, dtype=np.int32)
-        n = self._lib.evoca_n_activity_get(
-            keys.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
-            acts.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
-            pops.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32)),
-            cols.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
-            max_n)
-        return {'hash': keys[:n], 'activity': acts[:n],
-                'pop_count': pops[:n], 'color': cols[:n]}
+        return self._read_table(self._lib.evoca_n_activity_get, max_n)
 
     def nq_activity_deciles(self):
         """Return 9-element float array with N-activity deciles p10..p90."""

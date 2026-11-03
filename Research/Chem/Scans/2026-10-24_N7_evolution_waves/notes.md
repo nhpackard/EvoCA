@@ -57,7 +57,7 @@ control.
    evolution".
    - The measure built for this is the **activity flux** (N, 2026-10-24): the population of
      genomes crossing a low activity band (p20-p30) per tick, the light-blue/teal trace of the
-     controls time-series probe. See "Activity flux" below for why it could not be used here.
+     controls time-series probe. See "Activity flux" below.
 3. **Evolution may break waves (T1).** T1's waves disappear after 2000-15000 steps in every seed.
    Whether that is evolution (for example egene or LUT change damping the excitability) or a slow
    transient of the medium needs a mutation-off control.
@@ -65,31 +65,19 @@ control.
    condition): at N=512 with about 90 000 genomes the top genome is a tiny fraction. It is
    uninformative here.
 
-## Activity flux (`flux.py`, 2026-10-24): two defects, no result
+## Activity flux (`flux.py`)
 
-The run (five conditions x 4 seeds, activity updated every tick) gave flux of about 8190 in
-**every** condition and seed, although births differ 5-fold. Two problems:
+The first flux run (2026-10-24) was discarded: the flux summed a 65536-sample buffer and read
+8192 in every condition. The cap is fixed (2026-11-03: `evoca_activity_flux_sum` sums without a
+buffer, and the activity-table readers no longer truncate; `tests/test_activity_flux.py`). The
+N7 evolution measures above were not affected: their table read (200 000) holds the whole
+table at N = 512 (about 100 000 entries, checked).
 
-1. **Clipping.** `EvoCA.activity_crossings` collects crossing samples into a buffer of
-   `max_n = 65536`. When it fills, the sum stops, and `activity_flux = sum / window` pins at
-   65536 / 8 = 8192. Checked with a larger buffer at t = 3000:
-   - W1: 72136 samples, flux 9019 (reported 8194);
-   - C0: 82624 samples, flux 10333 (reported 8197).
-
-   Nothing signals the truncation. This affects the GUI probe trace too, whenever the band holds
-   more than 65536 genome-ticks (large N, high diversity).
-2. **Degenerate when every genome is a singleton.** In this recipe D/pop = 1.00: every cell
-   carries its own LUT genome. A singleton's activity is its age, and each genome inside the
-   band adds 1 per tick, so the unclipped flux is about the number of genomes in one decile,
-   D/10 (W1: 9019 / 78045 = 0.116; C0: 10333 / 100673 = 0.103). It measures diversity, not
-   clones rising.
-
-The runs were stopped. To use the flux as intended:
-
-- fix the clipping (a quick fix in Python: pass `max_n` >= live buckets x window; or the proper
-  fix in C: compute the sum without a buffer);
-- measure where genomes have populations, at a lower `mu_lut` (D << pop), or on a coarser
-  identity (egene keys, effective-rule species).
+A second limit is not a bug: at the recipe's `mu_lut` = 0.03 nearly every birth is a new
+genome (D/pop = 1), and a singleton's activity is its age, so the flux then counts genomes
+aging through the band (about D/10). The rerun therefore records the clonal part of the flux
+(buckets with pop >= 2) and adds a `mu_lut` sweep. Results: see "Activity flux, rerun" below
+when it is in.
 
 ## Caveats
 

@@ -166,6 +166,8 @@ void evoca_step(void);
 
 void evoca_activity_update(void);
 void evoca_activity_render_col(int32_t *col, int height);
+/* The *_activity_get table readers write at most max_n entries and return
+ * the TOTAL entry count; a return > max_n means the buffer was too small. */
 int  evoca_activity_get(uint32_t *keys, uint64_t *activities,
                         uint32_t *pop_counts, int32_t *colors, int max_n);
 
@@ -292,11 +294,15 @@ void evoca_nq_activity_deciles(float *deciles_out);
  * ticks (capped at a small compile-time bound) and reconstruct the activity
  * trajectory from stored pop history. A tick contributes one slope sample
  * = pop iff the activity increment interval (A_prev, A_now] overlaps
- * [a_lo, a_hi]. Writes up to max_n float slopes and returns the count
- * written. Use evoca_q_activity_deciles + live diversity count to pick
- * [a_lo, a_hi] bounds from the current distribution. */
-int evoca_activity_crossings(uint64_t a_lo, uint64_t a_hi, int window,
-                             float *slopes_out, int max_n);
+ * [a_lo, a_hi]. evoca_activity_crossings writes the first max_n samples and
+ * returns the TOTAL count (> max_n: the buffer was too small).
+ * evoca_activity_flux_sum returns the sum of all samples, with no buffer
+ * and so no cap (the count goes to *n_out if non-NULL). Use
+ * evoca_q_activity_deciles + live diversity count to pick [a_lo, a_hi]. */
+int    evoca_activity_crossings(uint64_t a_lo, uint64_t a_hi, int window,
+                                float *slopes_out, int max_n);
+double evoca_activity_flux_sum(uint64_t a_lo, uint64_t a_hi, int window,
+                               int64_t *n_out);
 
 /* Count distinct LUT content hashes across live cells. Useful for driving
  * band bounds in the flux probe and as a diversity trace. */
