@@ -170,3 +170,10 @@ a positive second peak, so there is no regular wave train, only a typical patch 
   goes extinct (in the initial boom and bust); at 0.3 and 1.0 the food is mixed so fast that no
   fronts form: a fine, uniform scatter of cells (scale 3–9).
 - Figures: `figs/s6_sweep_wsink0.019.png`, `figs/s6_sweep_wsink0.01.png`.
+
+**N's verdict (2026-11-02, from watching the runs): food_inc 0.012 (the recipe value) stays best.**
+Lower food_inc does lengthen the wavelength (more green between fronts), but the fronts become
+structured, with fingers/worms reaching into the food, which distorts the spiral/horseshoe dynamics.
+Higher food_inc supports more live cells per front, so the fronts are fatter, and the fat front
+averages the fine structure out. So front spacing and front smoothness trade off through food_inc;
+widening the spacing needs a different knob that leaves front thickness alone (open).
