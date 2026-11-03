@@ -8,6 +8,7 @@ Workstream question: what is the right measure of adaptive (vs. drift/turnover) 
 - [`plans/2026-10-18_activity-objective-guide.md`](plans/2026-10-18_activity-objective-guide.md): Guide for N to choosing the primary activity objective (ACT-D1).
 - [`plans/2026-10-18_drift-shadow-findings.md`](plans/2026-10-18_drift-shadow-findings.md): Drift-shadow statistics and findings; the `drift-shadow` branch is still unmerged.
 - [`plans/2026-10-15_cone-pareto-package.md`](plans/2026-10-15_cone-pareto-package.md): The `conepareto` package (port of the pdt-server cone/box Pareto selection), used for ACT-D2.
+- [`plans/2026-11-03_pareto-search.md`](plans/2026-11-03_pareto-search.md): Generations of Pareto search instead of grids (design only; ACT-N8). Moved from the chem v2 plan §3.
 
 ## Decisions needed (N)
 - **ACT-D1**: Which readout is the primary activity objective for re-ranking the pure-evo scans (and for any new campaign's selection step)? Candidates are listed in `Docs/Archive/Oct2026/00-review-of-prompt1.md` section 7; the review's expectation was "A_new on eff-species, z-scored against the fixed-space shadow". First-look evidence from the example runs weakens that single-scalar plan:
@@ -39,6 +40,7 @@ Workstream question: what is the right measure of adaptive (vs. drift/turnover) 
 - **ACT-N5**: Long-run (>= 50k ticks) at a pure-evo winner to characterize absolute (not just differential) behavior of the excess metrics; listed as step 4 of `Scans/2026-05-17_pure_evo_analysis.md`. Kind: campaign; N=128 is enough to start.
 - **ACT-N6**: Calibration study for the z-score aggregate (ACT-Q9) and the diversity guards (ACT-Q3). Kind: analysis, then dev. Needed before z-tail counts are used as an objective.
 - **ACT-N7**: Reaction-diffusion cross-check: the 04-27 balanced and evo-focused winners were picked on the legacy composite, the legacy rule and an older eating model; re-rank them under the D1 objective (the RD-robustness #4 inputs came from those). 2026-10-23: both inputs now have standard-model rescans (`Reaction-diffusion/Scans/2026-10-23_rescan_0427_standard`, `Scans/2026-10-23_evo_focus_standard`); in the evo_focus rescan the recorded winner, cfg 232, ranks 50th of 250 even under the legacy composite. Kind: analysis; coordinate with Reaction-diffusion.
+- **ACT-N8** (2026-11-03): Build the model-agnostic generational Pareto driver (`python/evoca_search.py`, sketch in [`plans/2026-11-03_pareto-search.md`](plans/2026-11-03_pareto-search.md) §3): LHS generation 0, 2 seeds per point, `conepareto.select`, children around survivors, survivors re-run with fresh seeds. Objective pairs (N): activity vs. structure, or LUT vs. egene activity. Kind: needs dev (about a day). Blocks on: a calibrated objective pair (ACT-D1 for activity; a structure statistic for pair A).
 
 ## Parked
 - Per-gene open-space (LUT-hash) neutral shadow with zero-fill (checkpoint G3): decided against (changes the estimand; pooled shadow is the correct estimator there).

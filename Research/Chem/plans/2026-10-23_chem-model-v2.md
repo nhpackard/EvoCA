@@ -43,7 +43,7 @@ Nothing here is implemented. Section 13 lists the decisions for N.
   - add a phase-coherence length and the space-time spectrum;
   - calibrate every statistic against N's visual labels on a set of films before it ranks anything.
 
-**Pareto generations (section 3).**
+**Pareto generations (section 3, moved 2026-11-03 to [`Activity-metrics/plans/2026-11-03_pareto-search.md`](../../Activity-metrics/plans/2026-11-03_pareto-search.md)).**
 - What exists is post-hoc selection only. The cone/box selection was ported from pdt-server as `~/Projects/conepareto` (`select`, layers, regions, wedge-angle derivation). The generational sampler around it was explicitly not ported (report `Research/Activity-metrics/plans/2026-10-15_cone-pareto-package.md`, "Not ported").
 - EvoCA uses `select` only to pick galleries from finished grids (Reaction-diffusion, Activity-metrics). [ACT-D2](../../Activity-metrics/ISSUES.md) and [RXD-N1](../../Reaction-diffusion/ISSUES.md) still wait on it.
 - No EvoCA board item ever proposed replacing grids with generations. The idea lives only in the pdt-server comparison (`~/Projects/pdt-server/pdt-param-optimization.md`: "the thing PDT has that EvoCA lacks: sequential [...] active learning").
@@ -80,7 +80,7 @@ Nothing here is implemented. Section 13 lists the decisions for N.
 |---|---|---|
 | 1 | Starting facts | What the current chem actually does, and the prior results the design must answer to |
 | 2 | Scan statistics review | What each statistic measures, what it misses, why "almost spirals" went undetected, replacements |
-| 3 | Pareto generations | History, status, why not yet, a driver sketch |
+| 3 | Pareto generations | Moved to `Activity-metrics/plans/2026-11-03_pareto-search.md` |
 | 4 | What a reaction must give an agent | The energy-currency conflict with pinned decision B |
 | 5 | Mass and energy accounting | Closed mass, open energy, the light field; what replaces `food_inc` and `waste_sink` |
 | 6 | Why agents would need waste | Options for the tension, the tempo argument, the recommendation |
@@ -181,43 +181,9 @@ Cost: about 30 runs (minutes on torque) plus about 30 minutes of N's viewing. Th
 
 ## 3. Pareto generations
 
-### 3a. History
-
-| Date | Event |
-|---|---|
-| 2026-05-21 | `pdt-server/pdt-param-optimization.md` compares PDT's generation loop (explore/exploit sampling, refit per generation) with EvoCA's one-shot grids: "the thing PDT has that EvoCA lacks: sequential, surrogate-driven active learning." |
-| Oct 2026 | `prompt1-Oct2026.md`: N asks to abstract the restricted (cone) Pareto approach from pdt-server for any dual-parameter optimization. |
-| Oct 2026 | Review `Docs/Archive/Oct2026/00-review-of-prompt1.md` §6-§8. EvoCA's "optimization" is scalarization over a static grid, with weaknesses: compensation, concave regions unreachable, pool-relative normalization, silent weighting. It proposes a package. |
-| Oct 2026 | `~/Projects/conepareto` built, with R parity (`Research/Activity-metrics/plans/2026-10-15_cone-pareto-package.md`): `select`, layers, regions, hypervolume, and later wedge-angle derivation and `on_shortfall`. **"Not ported: [...] the lambda-sweep sampler. They sit around `select` rather than inside it; say if you want them."** No answer was recorded. |
-| Oct 2026 | Used post-hoc: `rd_pareto_picks` / `rd_pareto_layers` galleries (Reaction-diffusion), and Activity-metrics notebook 4a. |
-| open | [ACT-D2](../../Activity-metrics/ISSUES.md) ("adopt Pareto selection for (dyn, eg)?", recommendation yes, box region) and [RXD-N1](../../Reaction-diffusion/ISSUES.md) (re-select the 04-27 winners with box/wedge) are still open on the board. |
-
-So the generational search was never built. The selection half exists; the sampling half does not. I found no board item for it in EvoCA. It fell between the pdt comparison and the port's "not ported" list.
-
-### 3b. Why not run it on the current chem scans right away
-
-- **The objective is not calibrated** (§2). A generational search climbs whatever statistic it is given. With the current spiral statistic it would climb toward stationary target sources, the thing that statistic actually rewards.
-- **Single-seed noise.** pdt-server's own critique (§2b of the comparison) applies: an arg-max over noisy evaluations selects the lucky ones. The [CHEM-N1](../ISSUES.md) seeds disagree enough (defect excess 0.15-0.21) to matter.
-- **The parameter space is about to change.** If v2 is adopted, the v1 parameters (`waste_sink`, `food_inc`) disappear (§5). A driver written generically survives that; a v1-specific campaign does not.
-
-### 3c. Driver sketch (model-agnostic)
-
-`python/evoca_search.py`:
-
-- `search(run_fn, space, objectives, region, gens, per_gen, seeds)`.
-- `space`: per-parameter bounds and scale (log or linear); sampling happens in normalized coordinates.
-- **Gen 0:** a Latin hypercube of 60-100 points.
-- **Each generation:**
-  - evaluate every point with 2 seeds;
-  - combine the seed values per objective as the mean minus half the seed spread, a cheap robustness penalty;
-  - `conepareto.select(s1, s2, region='box' | 'qbox' | 'wedge', k)`;
-  - spawn `per_gen` children around the selected points (Gaussian in normalized space, width halved each generation, plus 20% fresh LHS points against premature collapse);
-  - **re-evaluate the survivors with fresh seeds** each generation, so a lucky survivor cannot persist.
-- Outputs: one `results.csv` per generation plus a lineage column, so the existing `Scan` and `Gallery` tooling reads each generation as a scan.
-- Budget: 5 generations × 50 points × 2 seeds = 500 runs, about the cost of four [CHEM-N1](../ISSUES.md) grids, over a 5-8-parameter space a grid cannot cover.
-- Two objectives must be named first. For chem, candidates are (pattern coherence ξ or tracked-core lifetime, persistence or viability), and in v2 (pattern, evolutionary activity on reaction genes).
-
-The surrogate model PDT uses is left out on purpose: EvoCA evaluates the true objective cheaply enough, and §1 of the pdt comparison argues that the surrogate is where PDT's weakness lies.
+Moved 2026-11-03 to [`Activity-metrics/plans/2026-11-03_pareto-search.md`](../../Activity-metrics/plans/2026-11-03_pareto-search.md)
+(N: the search is not chem-specific). That plan keeps this section's history, reasons and driver
+sketch, and adds N's objective pairs.
 
 ---
 
