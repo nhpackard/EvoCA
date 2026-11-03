@@ -76,8 +76,45 @@ table at N = 512 (about 100 000 entries, checked).
 A second limit is not a bug: at the recipe's `mu_lut` = 0.03 nearly every birth is a new
 genome (D/pop = 1), and a singleton's activity is its age, so the flux then counts genomes
 aging through the band (about D/10). The rerun therefore records the clonal part of the flux
-(buckets with pop >= 2) and adds a `mu_lut` sweep. Results: see "Activity flux, rerun" below
-when it is in.
+(buckets with pop >= 2) and adds a `mu_lut` sweep.
+
+### Activity flux, rerun (2026-11-03, `flux.csv`, `flux.log`)
+
+20000 steps, second half sampled every 8 ticks, run locally (12 workers, 11-38 min per run).
+Means over seeds (A: 4 seeds, B: 2); D = distinct genomes.
+
+| part | cond | mu_lut | alive | births/tick | flux | flux / D | clonal frac | clonal flux | D/pop | top genome |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A | C0 | 0.03 | 0.39 | 469 | 10509 | 0.10 | 0.002 | 25 | 1.00 | 2 |
+| A | S1 | 0.03 | 0.39 | 470 | 10509 | 0.10 | 0.002 | 25 | 1.00 | 2 |
+| A | T1 | 0.03 | 0.38 | 1561 | 11676 | 0.12 | 0.001 | 9 | 1.00 | 2 |
+| A | W1 | 0.03 | 0.33 | 2054 | 10318 | 0.12 | 0.001 | 8 | 1.00 | 2 |
+| A | W2 | 0.03 | 0.35 | 1756 | 10889 | 0.12 | 0.001 | 8 | 1.00 | 2 |
+| B | C0 | 0.01 | 0.39 | 464 | 10294 | 0.11 | 0.09 | 976 | 0.93 | 5 |
+| B | C0 | 0.003 | 0.39 | 490 | 8840 | 0.12 | 0.30 | 2641 | 0.70 | 11 |
+| B | C0 | 0.001 | 0.40 | 464 | 6771 | 0.15 | 0.49 | 3348 | 0.45 | 25 |
+| B | W1 | 0.01 | 0.33 | 2058 | 10289 | 0.13 | 0.09 | 946 | 0.93 | 5 |
+| B | W1 | 0.003 | 0.34 | 2074 | 8956 | 0.17 | 0.47 | 4174 | 0.61 | 19 |
+| B | W1 | 0.001 | 0.37 | 2174 | 7046 | 0.21 | 0.70 | 4901 | 0.35 | 50 |
+
+Seed spread of the flux is small (sd across seeds <= 64).
+
+1. **At the recipe's mutation rate the uncapped flux is a diversity count.** It is 0.10-0.12 D in
+   every condition, clones carry 0.1-0.2% of it, and the five conditions differ by at most 13%,
+   though turnover differs 4.4-fold. It cannot compare the conditions.
+2. **Lowering `mu_lut` makes it a clone measure.** At 0.001 clones carry half (C0) to 70% (W1)
+   of the flux, and the top genome reaches 25-50 cells. 0.01 is not low enough (9%).
+3. **In the wave regime more of the flux is clonal**, at every `mu_lut` below 0.01: W1 0.47 and
+   0.70 vs C0 0.30 and 0.49, with twice the top-genome size. Per tick the clonal flux is 1.5x
+   C0's; per birth it is a third of C0's (2.3 vs 7.2 at 0.001), because W1 turns over 4.7x
+   faster. Which normalization is right is the same per-step vs per-generation question as
+   above; neither says whether the rise is selection.
+4. **Missing: a neutral reference.** Clones also rise through the band by drift. The test of
+   selection is the same clonal flux on the neutral shadow (identical births and deaths, random
+   parents), whose table the fix now reads in full: real clonal flux above the shadow's is
+   genomes rising faster than drift.
+5. Lowering `mu_lut` barely changes the ecology (alive and births within 10%), so the low-mu
+   runs are a fair comparison point.
 
 ## Caveats
 

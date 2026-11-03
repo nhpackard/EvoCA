@@ -1,0 +1,34 @@
+Running 32 flux runs across 12 workers...
+  A W1 mu 0.03 s3: flux 10274  clonal 0.00  per birth 5.00  D/pop 1.00  top 2  662s
+  A W1 mu 0.03 s0: flux 10329  clonal 0.00  per birth 5.03  D/pop 1.00  top 2  663s
+  A W1 mu 0.03 s1: flux 10356  clonal 0.00  per birth 5.04  D/pop 1.00  top 2  666s
+  A W1 mu 0.03 s2: flux 10313  clonal 0.00  per birth 5.02  D/pop 1.00  top 2  683s
+  A T1 mu 0.03 s3: flux 11706  clonal 0.00  per birth 7.49  D/pop 1.00  top 2  702s
+  A T1 mu 0.03 s2: flux 11716  clonal 0.00  per birth 7.53  D/pop 1.00  top 2  705s
+  A T1 mu 0.03 s0: flux 11607  clonal 0.00  per birth 7.41  D/pop 1.00  top 2  715s
+  A T1 mu 0.03 s1: flux 11677  clonal 0.00  per birth 7.49  D/pop 1.00  top 2  725s
+  A W2 mu 0.03 s0: flux 10859  clonal 0.00  per birth 6.13  D/pop 1.00  top 2  854s
+  A W2 mu 0.03 s1: flux 10874  clonal 0.00  per birth 6.18  D/pop 1.00  top 2  869s
+  A W2 mu 0.03 s2: flux 10948  clonal 0.00  per birth 6.28  D/pop 1.00  top 2  873s
+  A W2 mu 0.03 s3: flux 10876  clonal 0.00  per birth 6.22  D/pop 1.00  top 2  871s
+  B W1 mu 0.01 s0: flux 10287  clonal 0.09  per birth 5.00  D/pop 0.93  top 5  628s
+  B W1 mu 0.01 s1: flux 10291  clonal 0.09  per birth 5.00  D/pop 0.93  top 5  620s
+  A S1 mu 0.03 s2: flux 10508  clonal 0.00  per birth 22.34  D/pop 1.00  top 2  2232s
+  A S1 mu 0.03 s0: flux 10509  clonal 0.00  per birth 22.30  D/pop 1.00  top 2  2234s
+  A S1 mu 0.03 s1: flux 10506  clonal 0.00  per birth 22.40  D/pop 1.00  top 2  2236s
+  A S1 mu 0.03 s3: flux 10513  clonal 0.00  per birth 22.35  D/pop 1.00  top 2  2293s
+  B W1 mu 0.003 s0: flux 8911  clonal 0.47  per birth 4.29  D/pop 0.61  top 19  1241s
+  A C0 mu 0.03 s0: flux 10513  clonal 0.00  per birth 22.46  D/pop 1.00  top 2  2110s
+  B W1 mu 0.003 s1: flux 9001  clonal 0.47  per birth 4.34  D/pop 0.61  top 18  1259s
+  A C0 mu 0.03 s1: flux 10504  clonal 0.00  per birth 22.26  D/pop 1.00  top 2  2119s
+  A C0 mu 0.03 s3: flux 10507  clonal 0.00  per birth 22.49  D/pop 1.00  top 2  2104s
+  A C0 mu 0.03 s2: flux 10511  clonal 0.00  per birth 22.36  D/pop 1.00  top 2  2131s
+  B C0 mu 0.003 s0: flux 8833  clonal 0.30  per birth 18.01  D/pop 0.70  top 12  1316s
+  B C0 mu 0.003 s1: flux 8848  clonal 0.30  per birth 18.10  D/pop 0.70  top 11  1300s
+  B C0 mu 0.001 s0: flux 6771  clonal 0.49  per birth 14.63  D/pop 0.44  top 26  816s
+  B C0 mu 0.001 s1: flux 6771  clonal 0.49  per birth 14.57  D/pop 0.45  top 23  806s
+  B W1 mu 0.001 s1: flux 7062  clonal 0.70  per birth 3.25  D/pop 0.35  top 51  1489s
+  B W1 mu 0.001 s0: flux 7031  clonal 0.69  per birth 3.24  D/pop 0.35  top 49  1511s
+  B C0 mu 0.01 s1: flux 10295  clonal 0.09  per birth 22.17  D/pop 0.93  top 5  1547s
+  B C0 mu 0.01 s0: flux 10292  clonal 0.09  per birth 22.16  D/pop 0.93  top 5  1581s
+done
