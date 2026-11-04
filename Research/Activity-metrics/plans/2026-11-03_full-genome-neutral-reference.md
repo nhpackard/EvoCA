@@ -1,5 +1,7 @@
 # A full-genome neutral reference for evolutionary activity
 
+> **2026-11-03, later (read first).** This plan was written without reading `Docs/shadows.md` or the `drift-shadow` branch. The full-genome individual shadow with the shared mutation operator (§3 here) and the fixed-space projections (§13) already exist there as the drift shadow, validated synthetically, and its panmictic null fails EvoCA's neutral-marker test (marker $z$ from $-3.9$ to $-18$; `plans/2026-10-18_drift-shadow-findings.md`). A panmictic full-genome Channon shadow would inherit that failure. Before any build, re-scope against that branch and the 2026-10-18 D1 (pedigree-conditioned shadow). See `Docs/shadows.md` §14.5. The Channon-specific parts (open-space full-genome keys, the seeding split, a shadow flux history) are the only pieces not covered there.
+
 _2026-11-03. Plan, not yet built ([ACT-N9](../ISSUES.md)). N asked for both this and the
 egene-cost stratification of Pareto pair B (done: notebook §4a′); this is the larger piece._
 
@@ -224,7 +226,7 @@ comparison reads start to finish without the long Activity-metrics history. Sect
    exists with sections 1-6, and section 7 waits for this build.*
 3. **Primary band**: the shadow's (recommended) or each side's own?
 
-## 13. Addendum (2026-11-03): the fixed-space shadows need this too
+## 13. Addendum (2026-11-03): the fixed-space shadows need this too (superseded: see the note at the top; this re-derives `Docs/shadows.md` §4–§5)
 
 Computing N's paired readout (total variation, $\tfrac12\sum_k |G_k - N_k| / \sum G$; C
 `evoca_eg_tv`/`evoca_dyn_tv`, commit a5ac683) showed that the fixed-space drift shadows are

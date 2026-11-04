@@ -2,32 +2,32 @@
 _Updated 2026-10-23_
 
 ## Plans and design docs
-- [`plans/plan-chem.md`](plans/plan-chem.md): The `chem` branch plan: N_chem machinery (milestone 1, done), food/waste (milestone 2, done, on `main`). Milestone 3, the reaction network, is open as CHEM-N4. Review fixes in §8 (CHEM-F1).
+- [`plans/plan-chem.md`](plans/plan-chem.md): The `chem` branch plan: $N_\text{chem}$ machinery (milestone 1, done), food/waste (milestone 2, done, on `main`). Milestone 3, the reaction network, is open as CHEM-N4. Review fixes in §8 (CHEM-F1).
 - [`plans/2026-10-23_chem-model-v2.md`](plans/2026-10-23_chem-model-v2.md): Chem model v2 (`chemca`), a metabolism-based agent: design only, Track B (CHEM-D5). Implemented as `chemca` (merged to `main` 2026-11-02; see `plan-chemca.md`).
 - [`plans/plan-chemca.md`](plans/plan-chemca.md): The `chemca` implementation plan and summary: shared core (`C/core.c`), the ChemCA engine (`C/chemca.c`), its Python layer (`python/chemca_py.py`), presets `fw2` and `gs3`, tests and the test notebook `tests/notebooks/chemca-test.ipynb`. Merged 2026-11-02 after the cloud `/code-review ultra` (9 findings fixed). No GUI yet.
 
 ## Decisions needed (N)
-- **CHEM-D2**: Should environmental waste saturate? — Currently `W` is unbounded and mass-conserving: excretion stops at `W >= 1`, but deaths still return waste, so where the sink is slower than production (`waste_sink` < tax x density) `W` piles up to 5-12, cells can never excrete, and waste acts as uniform aging (lifespan ~ 1/tax). Option: cap `W` at 1 with the excess discarded and booked as an overflow sink, the counterpart of the food `F <= 1` regeneration cap (N's "parallel to food" principle). Recommendation: keep unbounded for now (conserving, and the balance regime is where structure appears); revisit if the aging regime matters.
+- **CHEM-D2**: Should environmental waste saturate? — Currently $W$ is unbounded and mass-conserving: excretion stops at $W \ge 1$, but deaths still return waste, so where the sink is slower than production (`waste_sink` < tax x density) $W$ piles up to 5-12, cells can never excrete, and waste acts as uniform aging (lifespan ~ 1/tax). Option: cap $W$ at 1 with the excess discarded and booked as an overflow sink, the counterpart of the food $F \le 1$ regeneration cap (N's "parallel to food" principle). Recommendation: keep unbounded for now (conserving, and the balance regime is where structure appears); revisit if the aging regime matters.
 
-- **CHEM-D5**: Chem model v2 (`chemca`), a metabolism-based agent as a separate model (`Research/Chem/plans/2026-10-23_chem-model-v2.md`, §13 lists 9 decisions). **Status (N, 2026-10-24): design only; Track B, later.** Current work stays in vanilla EvoCA food/waste (Track A): its dynamics and their evolution. An evolutionary Gray-Scott (three species: F + 2A -> 3A and A -> P inside agents, P -> F by light) is agreed as the reference starting point for chemca. CHEM-N3 (wgenes) is not paused: wgenes belong to vanilla.
+- **CHEM-D5**: Chem model v2 (`chemca`), a metabolism-based agent as a separate model (`Research/Chem/plans/2026-10-23_chem-model-v2.md`, §13 lists 9 decisions). **Status (N, 2026-10-24): design only; Track B, later.** Current work stays in vanilla EvoCA food/waste (Track A): its dynamics and their evolution. An evolutionary Gray-Scott (three species: $F + 2A \to 3A$ and $A \to P$ inside agents, $P \to F$ by light) is agreed as the reference starting point for chemca. CHEM-N3 (wgenes) is not paused: wgenes belong to vanilla.
 
 ## Decided
 - **CHEM-D4** (N, 2026-10-23): two-way (passive membrane) waste exchange is adopted **as an option**: metaparameter `waste_exchange` (0 = one-way excretion, the default, so every recipe is unchanged; 1 = two-way `d = waste_disp * (w - W)`), a checkbox in the controls. Bit-identical to the experiment patch; `waste_exchange=0` is bit-identical to the previous `main`. Tests `tests/test_waste_exchange.py` and the two-way cases of the waste-mass and energy identities. The wave/spiral survey under it is CHEM-N1.
 - **CHEM-D1** (2026-10-23): merged to `main` (`1a41c5d`, fast-forward) after a local review and the cloud `/code-review ultra`; findings fixed (CHEM-F1), shared `diffuse()` parked (CHEM-P1).
-- **CHEM-D3** (N, 2026-10-23): yes to wgenes, after a short look at global chem (CHEM-N5, done). Hereditary local chemistries are the longer-term goal; wgenes are the first step: the chemistry stays global and one exchange becomes heritable. Design (to confirm in the dev plan): wgenes use the egene representation (ternary D4 patterns, max signed match `wscore` clamped at 0); excretion `d = disp * (b + (1-b) * wscore/25) * a * (1-E)`, with a floor `b` so that `b = 1` reproduces today's uniform excretion bit-for-bit (the first parity test); `tax_per_wgene` and `mu_wgene` by symmetry with eating; wgenes enter the genome hash and the neutral shadow mutates them (see the egene shadow mismatch). Built as per-compound exchange genes (egenes = uptake of compound 0, wgenes = excretion of compound 1), separate sets from egenes at first. Motivation: eating and excreting then demand different local CA patterns, which can select for temporal alternation, a visible dynamics change driven by heritable function (the activity-to-visual link, `Research/Activity-metrics/plans/activity-thoughts.md`).
+- **CHEM-D3** (N, 2026-10-23): yes to wgenes, after a short look at global chem (CHEM-N5, done). Hereditary local chemistries are the longer-term goal; wgenes are the first step: the chemistry stays global and one exchange becomes heritable. Design (to confirm in the dev plan): wgenes use the egene representation (ternary D4 patterns, max signed match `wscore` clamped at 0); excretion `d = disp * (b + (1-b) * wscore/25) * a * (1-E)`, with a floor $b$ so that $b = 1$ reproduces today's uniform excretion bit-for-bit (the first parity test); `tax_per_wgene` and $\mu_\text{wgene}$ by symmetry with eating; wgenes enter the genome hash and the neutral shadow mutates them (see the egene shadow mismatch). Built as per-compound exchange genes (egenes = uptake of compound 0, wgenes = excretion of compound 1), separate sets from egenes at first. Motivation: eating and excreting then demand different local CA patterns, which can select for temporal alternation, a visible dynamics change driven by heritable function (the activity-to-visual link, `Research/Activity-metrics/plans/activity-thoughts.md`).
 
 ## Open questions
 - **CHEM-Q1**: Does food/waste give the standard (capped) model a refractory medium with propagating waves or spirals?
-  - **First look** (2026-10-23, N=256, one seed): a sustained oscillating patchy regime near the balance.
+  - **First look** (2026-10-23, $N = 256$, one seed): a sustained oscillating patchy regime near the balance.
   - **CHEM-N5** (2026-10-23, campaign): under the one-way exchange rule, **no**.
     - The balance regime is reproducible but only 0.001-0.002 wide in `waste_sink`.
     - Sites cycle locally without propagating, because the refractory zone is soft.
     - Lowering `waste_tox` hardens the zone everywhere at once, so it gives no contrast (toxicity sweep in the notebook).
   - **Two-way exchange** (CHEM-D4; CHEM-N1 campaign, 2026-10-23) gives **traveling waves with stationary sources** across a broad region, 3 seeds each.
-    - Wavelength about 200 cells; R about 0.1, against 0.4 for one-way.
+    - Wavelength about 200 cells; $R$ about 0.1, against 0.4 for one-way.
     - Defect survival over 4 periods reaches about twice the one-way level.
     - **No spirals resolved in 2D**: the phase field is noisy at 32-64 cells.
-  - **CHEM-N6** (2026-10-24): **excitation waves**, also under **one-way** exchange at `waste_tox` 0.4 / `waste_sink` 0.019 (N's interactive point), at N = 256-1024.
+  - **CHEM-N6** (2026-10-24): **excitation waves**, also under **one-way** exchange at `waste_tox` 0.4 / `waste_sink` 0.019 (N's interactive point), at $N = 256$-1024.
     - Space-time plots show fronts leaving sources, traveling at about 1-2 cells/step and annihilating on collision.
     - Sites fire with one period, 115-120 steps.
     - The fronts are irregular in space (many sources), so the spatial spectrum has no ring, only a knee at the patch scale.
@@ -40,7 +40,7 @@ _Updated 2026-10-23_
     - evolution itself (wgenes, CHEM-D3, may select tighter colony cycles);
     - a coarser readout.
   - Whether spirals matter enough to pursue is N's call.
-- **CHEM-Q5**: How does the wave regime shape evolution? CHEM-N7 (2026-10-24, N=512, 20000 steps, 4 seeds):
+- **CHEM-Q5**: How does the wave regime shape evolution? CHEM-N7 (2026-10-24, $N = 512$, 20000 steps, 4 seeds):
   - **Genotype persistence above drift collapses in waves.** Activity excess and A_new are 5-400 times lower than vanilla, per step and per generation. Mortality there is massive and largely genotype-blind: half of all deaths are toxic, and the generation time is 42 steps against 217.
   - **The phenotype moves directionally.** Egenes per cell rise from 1.0 to 1.38 (one-way waves) and 1.28 (two-way), against 1.02 in vanilla, and intake is about 15% higher. So: strong selection on a few traits, short-lived genotypes.
   - Vanilla's high activity is persistence (stasis), not innovation; these statistics cannot tell the two apart.
