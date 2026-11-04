@@ -220,5 +220,30 @@ comparison reads start to finish without the long Activity-metrics history. Sect
 1. **Go ahead with the C refactor** (one mutation operator shared by real and shadow, §3)? It
    touches the real step; the golden-hash test guards it. Recommended.
 2. **Notebook**: a new `neutral-reference.ipynb` (recommended) or a section in
-   `Activity-metrics.ipynb`?
+   `Activity-metrics.ipynb`? *Settled 2026-11-03: N said "put it in old-vs-new"; the notebook
+   exists with sections 1-6, and section 7 waits for this build.*
 3. **Primary band**: the shadow's (recommended) or each side's own?
+
+## 13. Addendum (2026-11-03): the fixed-space shadows need this too
+
+Computing N's paired readout (total variation, $\tfrac12\sum_k |G_k - N_k| / \sum G$; C
+`evoca_eg_tv`/`evoca_dyn_tv`, commit a5ac683) showed that the fixed-space drift shadows are
+memoryless. Each tick they rebuild their composition from the real run's
+(`q = (1-m) observed + m uniform`), so both the old excess and TV are real-run statistics
+([ACT-Q11](../ISSUES.md); `neutral-reference.ipynb` section 3). The repair belongs in this build:
+
+- **Egene keys from shadow individuals.** The full-genome shadow carries each member's
+  slots, so its 729-key histogram is a neutral egene composition with memory and drift.
+- **LUT buckets from shadow LUTs, real inputs.** Shadow members do not run the lattice. For
+  each LUT input $i$, take the real run's input use $w_i$, and take the fraction $p_i$ of
+  shadow members whose LUT outputs 1 at $i$. The shadow bucket mass is
+  $w_i (1-p_i), w_i p_i$, so the input marginal is shared by construction. That is the right
+  null: mutation changes outputs, not which neighborhoods occur.
+- **Statistic.** The paired TV between real and projected shadow, against the TV between two
+  independent shadows (replicate RNG streams) as the null spread.
+- **Tests.** Two that the memoryless shadow fails: (a) the identity
+  `TV = m x TV(real, uniform)` must *not* hold; (b) a neutral egene (eating independent of the
+  egene) must read TV(real, shadow) within the shadow-shadow spread. (a) is in
+  `tests/test_fixed_space_tv.py` as a strict xfail.
+- **Cost.** About half a day on top of §10. The projections are histograms of arrays the
+  shadow already holds.

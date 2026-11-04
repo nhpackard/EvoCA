@@ -14,15 +14,19 @@ Asserted here:
   * get_eg_shadow / get_dyn_shadow return the per-key arrays, with equal
     totals (the conservation the definition relies on);
   * eg_tv / dyn_tv (computed in C) equal TV recomputed from those arrays;
-  * a frozen arm (zero flux) gives TV = 0;
-  * a selective arm gives TV clearly above 0;
-  * run_sim emits eg_tv_* and dyn_tv_* (public-boundary reachability).
+  * a frozen arm (zero flux) gives TV = 0, and a mutating arm gives TV > 0.
+    These are mechanical checks, NOT evidence that TV detects selection:
+    the shadow is memoryless (ACT-Q11), so TV = m x TV(real, uniform);
+  * run_sim emits eg_tv_* and dyn_tv_* (public-boundary reachability);
+  * xfail (strict) until ACT-N9: the shadow must not reduce TV to that
+    identity.
 """
 import math
 import os
 import sys
 
 import numpy as np
+import pytest
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(_ROOT, 'python'))
@@ -79,7 +83,7 @@ def test_frozen_tv_is_zero(make_sim):
         assert sim.dyn_tv() < 1e-6, f'frozen dyn TV {sim.dyn_tv()} (seed {seed})'
 
 
-def test_selective_tv_positive(make_sim):
+def test_mutating_tv_positive(make_sim):
     for seed in (3, 5, 7):
         sim = _run(make_sim, SELECTIVE, 400, seed=seed)
         assert 0.01 < sim.eg_tv() <= 1.0, f'eg TV {sim.eg_tv()} (seed {seed})'
@@ -95,3 +99,31 @@ def test_run_sim_emits_tv():
         assert k in out, f'run_sim does not emit {k}'
         assert 0.0 <= out[k] <= 1.0, f'{k} = {out[k]}'
     assert out['dyn_tv_final'] > 0.0
+
+
+@pytest.mark.xfail(strict=True, reason='ACT-Q11: the fixed-space shadow is memoryless (rebuilt '
+                   'from the real composition each tick); fixed by the ACT-N9 projections')
+def test_shadow_is_not_a_function_of_the_real_run(make_sim):
+    """A neutral reference must carry its own history. Rebuild the
+    memoryless shadow from the real run alone, tick by tick:
+    N_k += T [(1 - m) o_k + m / K] with o the real composition and
+    m = 1 - exp(-flips / (births x 12)); assert that the C shadow is NOT
+    that (it currently matches to well under 1% of the total mass)."""
+    sim = make_sim(40, m_scale=1.2, **SELECTIVE)
+    sim.state(lut='gol', egenome='uniform', egenome_value=0b000011)
+    sim.set_v(np.random.default_rng(3).integers(0, 2, (40, 40), dtype=np.uint8))
+    sim.set_f_all(0.5)
+    sim.set_F_all(1.0)
+    sim.set_alive_fraction(0.6)
+    rebuilt = np.zeros(EG_NB)
+    for _ in range(400):
+        sim.step()
+        sim._lib.evoca_eg_activity_update()
+        o = sim.get_eg_activity()['pop_count'].astype(float)
+        T, r = o.sum(), sim._lib.evoca_get_repro_last()
+        if T == 0:
+            continue
+        m = 1 - math.exp(-sim._lib.evoca_get_eg_bitflips_last() / (r * 12.0)) if r > 0 else 0.0
+        rebuilt += T * ((1 - m) * o / T + m / EG_NB)
+    shadow = sim.get_eg_shadow()['shadow']
+    assert np.abs(shadow - rebuilt).sum() / shadow.sum() > 0.05
