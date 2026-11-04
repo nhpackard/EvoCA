@@ -4171,6 +4171,49 @@ void evoca_dyn_zscores(double *out)
     fs_zscores(dyn_act, dyn_nact, dyn_nact_var, DYN_NB, out);
 }
 
+/* Per-bucket cumulative activity, observed and shadow (nact plus its
+ * sub-unit carry). Both sides receive the same total mass each step,
+ * so Σobs = Σshadow up to the carry. */
+static void fs_pair_get(const uint64_t *obs_act, const uint64_t *nact,
+                        const double *frac, int K, double *obs, double *shadow)
+{
+    for (int k = 0; k < K; k++) {
+        obs[k]    = (double)obs_act[k];
+        shadow[k] = (double)nact[k] + frac[k];
+    }
+}
+
+void evoca_eg_shadow_get(double *obs, double *shadow)
+{
+    fs_pair_get(fs_eg_obs_act, eg_nact, eg_nact_frac, EG_NB, obs, shadow);
+}
+
+void evoca_dyn_shadow_get(double *obs, double *shadow)
+{
+    fs_pair_get(dyn_act, dyn_nact, dyn_nact_frac, DYN_NB, obs, shadow);
+}
+
+/* Paired total-variation distance between the observed and shadow
+ * cumulative-activity allocations:  ½ Σ_k |G_k − N_k| / Σ_k G_k  ∈ [0,1].
+ * The fraction of all activity that the real run placed differently
+ * from the drift shadow. Population cancels (equal totals) and no
+ * diversity count divides it, so it has no D_G = 1 blow-up. 0 under a
+ * zero-flux arm (the shadow tracks the realised composition). */
+static double fs_tv(const uint64_t *obs_act, const uint64_t *nact,
+                    const double *frac, int K)
+{
+    double tot = 0.0, dev = 0.0;
+    for (int k = 0; k < K; k++) {
+        double g = (double)obs_act[k];
+        tot += g;
+        dev += fabs(g - ((double)nact[k] + frac[k]));
+    }
+    return tot > 0.0 ? 0.5 * dev / tot : 0.0;
+}
+
+double evoca_eg_tv(void)  { return fs_tv(fs_eg_obs_act, eg_nact, eg_nact_frac, EG_NB); }
+double evoca_dyn_tv(void) { return fs_tv(dyn_act, dyn_nact, dyn_nact_frac, DYN_NB); }
+
 /* Bucket counts (so callers need not hard-code 729 / 500). */
 int evoca_eg_nbuckets(void)  { return EG_NB;  }
 int evoca_dyn_nbuckets(void) { return DYN_NB; }

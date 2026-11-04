@@ -435,6 +435,14 @@ class EvoCA:
         L.evoca_eg_zscores.restype         = None
         L.evoca_dyn_zscores.argtypes       = [ctypes.POINTER(ctypes.c_double)]
         L.evoca_dyn_zscores.restype        = None
+        _dp = ctypes.POINTER(ctypes.c_double)
+        for _f in (L.evoca_eg_shadow_get, L.evoca_dyn_shadow_get):
+            _f.argtypes = [_dp, _dp]
+            _f.restype  = None
+        L.evoca_eg_tv.argtypes             = []
+        L.evoca_eg_tv.restype              = ctypes.c_double
+        L.evoca_dyn_tv.argtypes            = []
+        L.evoca_dyn_tv.restype             = ctypes.c_double
         L.evoca_eg_nbuckets.argtypes       = []
         L.evoca_eg_nbuckets.restype        = ctypes.c_int
         L.evoca_dyn_nbuckets.argtypes      = []
@@ -2076,6 +2084,36 @@ class EvoCA:
         self._lib.evoca_dyn_zscores(
             out.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
         return out
+
+    def _fs_pair(self, cfn, K):
+        obs = np.zeros(K, dtype=np.float64)
+        sh = np.zeros(K, dtype=np.float64)
+        dp = ctypes.POINTER(ctypes.c_double)
+        cfn(obs.ctypes.data_as(dp), sh.ctypes.data_as(dp))
+        return {'obs': obs, 'shadow': sh}
+
+    def get_eg_shadow(self):
+        """Per-key cumulative activity of the eg fixed space (729
+        ternary egene keys): {'obs': real, 'shadow': drift shadow}, both
+        float64. The two totals are equal (same mass per step)."""
+        return self._fs_pair(self._lib.evoca_eg_shadow_get, EGENE_KEY_COUNT)
+
+    def get_dyn_shadow(self):
+        """Per-bucket cumulative activity of the dyn fixed space (500
+        LUT transition buckets): {'obs', 'shadow'}, as get_eg_shadow."""
+        return self._fs_pair(self._lib.evoca_dyn_shadow_get, DYN_ACT_COUNT)
+
+    def eg_tv(self):
+        """Paired total-variation distance between real and drift-shadow
+        egene activity: 1/2 sum_k |G_k - N_k| / sum_k G_k, in [0, 1]. The
+        fraction of activity the real run allocated differently from
+        drift; 0 under a zero-flux arm; no division by diversity."""
+        return float(self._lib.evoca_eg_tv())
+
+    def dyn_tv(self):
+        """Paired total-variation distance for the dyn fixed space (as
+        eg_tv). Interpretable only where mu_lut > 0."""
+        return float(self._lib.evoca_dyn_tv())
 
     # ── N-activity probe (Channon-style neutral shadow) ──────────────
 

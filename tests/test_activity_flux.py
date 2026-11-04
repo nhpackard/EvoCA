@@ -16,7 +16,7 @@ def diverse(make_sim):
     as the GUI and the flux runs do."""
     s = make_sim(48, mu_lut=0.02, food_inc=0.02, tax=0.01)
     s.set_seed(1)
-    s.set_lut_random(2)
+    s.set_lut_random(2, seed=1)
     s.set_egenome_random()
     s.set_alive_all()
     s.set_f_all(0.8)
@@ -37,7 +37,7 @@ def test_get_activity_returns_the_whole_table(diverse):
 def test_shadow_and_eff_tables_return_whole(make_sim):
     s = make_sim(48, mu_lut=0.02, food_inc=0.02, tax=0.01)
     s.set_seed(1)
-    s.set_lut_random(2)
+    s.set_lut_random(2, seed=1)
     s.set_egenome_random()
     s.set_alive_all()
     s.set_f_all(0.8)
@@ -70,7 +70,7 @@ def test_flux_beyond_the_old_65536_cap(make_sim):
     read at most 65536 / 8 = 8192 here."""
     s = make_sim(256, mu_lut=0.02, food_inc=0.02, tax=0.01)
     s.set_seed(1)
-    s.set_lut_random(2)
+    s.set_lut_random(2, seed=1)
     s.set_egenome_random()
     s.set_alive_all()
     s.set_f_all(0.8)

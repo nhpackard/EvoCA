@@ -319,6 +319,8 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
             sim._lib.evoca_eg_activity_update()
             samples['eg_excess_pc'].append(sim.eg_excess_pc())
             samples['dyn_excess_pc'].append(sim.dyn_excess_pc())
+            samples['eg_tv'].append(sim.eg_tv())
+            samples['dyn_tv'].append(sim.dyn_tv())
 
             # Energy-flux / dissipation readout (checkpoint §L, action L1).
             # Per-capita throughput Φ is the principled x-axis material for
@@ -477,6 +479,14 @@ def run_sim(params, n_steps=5000, sample_every=100, N=256, seed=0,
             out['dyn_excess_pc_slope'] = float(dyn_slope)
         else:
             out['dyn_excess_pc_slope'] = 0.0
+
+    # Paired total-variation distance (real vs drift shadow, same keys):
+    # a fraction in [0, 1], not cumulative, so final and second-half mean.
+    for key in ('eg_tv', 'dyn_tv'):
+        if samples[key]:
+            v = np.asarray(samples[key], dtype=float)
+            out[f'{key}_final'] = float(v[-1])
+            out[f'{key}_mean'] = float(v[len(v) // 2:].mean())
 
     pop_arr = np.asarray(samples['alive_density'], dtype=float) * (N * N)
     if pop_arr.size:

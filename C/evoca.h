@@ -250,6 +250,13 @@ double evoca_dyn_shadow_total(void);
  * NOTE: dyn z-scores are interpretable only where mu_lut>0. */
 void evoca_eg_zscores(double *out);
 void evoca_dyn_zscores(double *out);
+/* Per-bucket cumulative activity, observed and drift shadow (caller
+ * buffers of nbuckets doubles each), and their paired total-variation
+ * distance ½ Σ|G_k − N_k| / ΣG ∈ [0,1] (0 under a zero-flux arm). */
+void   evoca_eg_shadow_get(double *obs, double *shadow);
+void   evoca_dyn_shadow_get(double *obs, double *shadow);
+double evoca_eg_tv(void);
+double evoca_dyn_tv(void);
 int  evoca_eg_nbuckets(void);
 int  evoca_dyn_nbuckets(void);
 
